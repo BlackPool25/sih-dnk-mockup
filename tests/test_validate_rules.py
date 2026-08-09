@@ -24,7 +24,7 @@ from app.models import Document
 from app.schemas.shipment import Shipment
 from app.services.docs.__main__ import main as docs_cli_main
 from app.services.docs.document import build_document_data
-from app.services.docs.renderer import build_html, render, sdr_info
+from app.services.docs.renderer import build_html, build_preview, render, sdr_info
 from app.services.validate import (
     MSG_DESC_HS,
     MSG_DGFT_IEC_MISSING,
@@ -364,3 +364,106 @@ def test_cn22_pdf_shows_sdr_and_choice(tmp_path, clean_documents):
     ).stdout
     assert re.search(r"0\.18 SDR", text)
     assert re.search(r"CN22", text)
+
+
+# --- SDR enforcement gate: the label is derived, never user-picked ----------
+
+
+def _last_document_row():
+    with SessionLocal() as session:
+        return session.scalar(select(Document).order_by(Document.id.desc()).limit(1))
+
+
+def test_cn22_high_value_auto_switches_to_cn23(tmp_path, capsys, clean_documents):
+    """--form CN22 with a >300-SDR value MUST render CN23, record CN23 in the
+    documents row, and say so in the CLI output."""
+    out = tmp_path / "highval.pdf"
+    rc = docs_cli_main(
+        [
+            "render", "--category", "embroidered-home-textiles", "--qty", "8",
+            "--weight-g", "400", "--country", "US", "--form", "CN22",
+            "--iec", IEC, "--gstin", GSTIN, "--value-minor", "5000000",
+            "--out", str(out),
+        ]
+    )
+    assert rc == 0
+    printed = capsys.readouterr().out
+    assert "using CN23 instead of CN22" in printed
+    assert out.exists()
+    row = _last_document_row()
+    assert row.doc_type == "CN23"
+    assert row.structured_json["form_type"] == "CN23"
+
+
+def test_cn23_low_value_auto_switches_to_cn22(tmp_path, capsys, clean_documents):
+    """--form CN23 with a <=300-SDR value MUST render CN22, record CN22, and
+    say so in the CLI output."""
+    out = tmp_path / "lowval.pdf"
+    rc = docs_cli_main(
+        [
+            "render", "--category", "embroidered-home-textiles", "--qty", "8",
+            "--weight-g", "400", "--country", "US", "--form", "CN23",
+            "--iec", IEC, "--gstin", GSTIN, "--value-minor", "2000",
+            "--out", str(out),
+        ]
+    )
+    assert rc == 0
+    printed = capsys.readouterr().out
+    assert "using CN22 instead of CN23" in printed
+    assert out.exists()
+    row = _last_document_row()
+    assert row.doc_type == "CN22"
+    assert row.structured_json["form_type"] == "CN22"
+
+
+def test_cn22_low_value_stays_cn22_without_switch_note(tmp_path, capsys, clean_documents):
+    """A <=300-SDR parcel requested as CN22 stays CN22 — no switch note."""
+    out = tmp_path / "staycn22.pdf"
+    rc = docs_cli_main(
+        [
+            "render", "--category", "embroidered-home-textiles", "--qty", "8",
+            "--weight-g", "400", "--country", "US", "--form", "CN22",
+            "--iec", IEC, "--gstin", GSTIN, "--value-minor", "2000",
+            "--out", str(out),
+        ]
+    )
+    assert rc == 0
+    assert "instead of" not in capsys.readouterr().out
+    assert _last_document_row().doc_type == "CN22"
+
+
+def test_pbe_form_unaffected_by_sdr_gate(tmp_path, capsys, clean_documents):
+    """The SDR switch only applies to CN22/CN23 — a PBE render with any value
+    keeps its doc_type and prints no switch note."""
+    out = tmp_path / "pbe.pdf"
+    rc = docs_cli_main(
+        [
+            "render", "--category", "embroidered-home-textiles", "--qty", "8",
+            "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
+            "--iec", IEC, "--gstin", GSTIN, "--value-minor", "5000000",
+            "--out", str(out),
+        ]
+    )
+    assert rc == 0
+    assert "instead of" not in capsys.readouterr().out
+    assert _last_document_row().doc_type == "PBE_IV"
+
+
+def test_build_html_enforces_switch_consistency():
+    """Direct build_html calls also enforce the gate: the rendered form type
+    matches the derived label — never a 'CN22 form showing choice CN23'."""
+    data = _data(form="CN22", value_minor=5_000_000)  # >300 SDR
+    html = build_html(data, "CN22")
+    assert "CN23 — this detailed customs declaration" in html  # CN23 template
+    assert "auto-selected label: <strong>CN23</strong>" in html
+    assert "CN22 — this customs declaration" not in html
+
+    low = _data(form="CN23", value_minor=2000)  # <=300 SDR
+    html_low = build_html(low, "CN23")
+    assert "CN22 — this customs declaration" in html_low
+    assert "auto-selected label: <strong>CN22</strong>" in html_low
+
+
+def test_preview_note_surfaces_the_switch():
+    pv = build_preview(_data(form="CN22", value_minor=5_000_000))
+    assert "using CN23 instead of CN22" in pv

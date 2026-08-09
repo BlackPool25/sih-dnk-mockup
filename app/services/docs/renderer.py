@@ -261,6 +261,31 @@ def sdr_info(value_minor: int | None) -> dict:
     }
 
 
+def _cn_switch_note(requested: str, resolved: str, value_minor: int) -> str:
+    """Human note for an SDR-driven CN22/CN23 auto-switch (never user-picked)."""
+    relation = (
+        "exceeds 300 SDR" if resolved == "CN23" else "is within 300 SDR"
+    )
+    return f"value {_money(value_minor)} {relation} — using {resolved} instead of {requested}"
+
+
+def _resolve_cn_label(data: DocumentData, doc_type: str) -> tuple[str, DocumentData]:
+    """SDR enforcement gate: the CN22/CN23 label is derived from the declared
+    value (300-SDR threshold, document-stack.md §10) — NEVER user-picked.
+
+    Returns the ``(resolved doc_type, resolved DocumentData)``.  When the
+    derived label differs from the requested one, the form AND its
+    ``data.form_type`` are switched so the rendered ``sdr_choice`` always
+    equals the rendered form.  With no declared value the CN22 default applies
+    (low-value assumption, documented) — no switch.
+    """
+    if doc_type in ("CN22", "CN23") and data.value_minor is not None:
+        derived = sdr_info(data.value_minor)["cn_form"]
+        if derived != doc_type:
+            return derived, data.model_copy(update={"form_type": derived})
+    return doc_type, data
+
+
 def _cn_context(data: DocumentData) -> dict:
     """UPU CN22/CN23 block data — sender/consignee/contents + SDR note.
 
@@ -366,6 +391,11 @@ def build_html(document_data: DocumentData, doc_type: str) -> str:
             f"doc_type {doc_type!r} does not match DocumentData.form_type "
             f"{data.form_type!r}"
         )
+    # SDR enforcement gate (todo-14 fix): the CN22/CN23 label is derived from
+    # the declared value, never user-picked — a CN22 request for a >300-SDR
+    # parcel must render the CN23 form (and vice versa), so the form's
+    # sdr_choice always equals the rendered form type.
+    doc_type, data = _resolve_cn_label(data, doc_type)
     sections = _sections(data, _load_form_fields(doc_type))
     ctx: dict = {
         "doc_title": _DOC_TITLES[doc_type],
@@ -407,11 +437,18 @@ def build_preview(document_data: DocumentData) -> str:
     ]
     if data.form_type in ("CN22", "CN23"):
         sdr = sdr_info(data.value_minor)
-        lines.insert(-1, (
-            f"SDR value     : {_sdr_value(sdr['sdr_minor'])} → auto-selects "
-            f"{sdr['cn_form']} (threshold {sdr['max_sdr']} SDR; "
-            f"1 SDR = ₹{sdr['fx_minor_per_sdr'] / 100:.2f})"
-        ))
+        sdr_lines = [
+            (
+                f"SDR value     : {_sdr_value(sdr['sdr_minor'])} → auto-selects "
+                f"{sdr['cn_form']} (threshold {sdr['max_sdr']} SDR; "
+                f"1 SDR = ₹{sdr['fx_minor_per_sdr'] / 100:.2f})"
+            ),
+        ]
+        if data.value_minor is not None and sdr["cn_form"] != data.form_type:
+            sdr_lines.append(
+                "NOTE: " + _cn_switch_note(data.form_type, sdr["cn_form"], data.value_minor)
+            )
+        lines[-1:-1] = sdr_lines
     for section in _sections(data, _load_form_fields(data.form_type)):
         lines.append(f"[{section['name']}]")
         for row in section["rows"]:
@@ -486,14 +523,15 @@ def render(
         print(f"warning: {warning}", file=sys.stderr)
     if rules.errors:
         _raise_rules_error(rules.errors)
-    # CN22/CN23 auto-select: the 300-SDR threshold decides the label — never
-    # the user (document-stack.md §10).  Re-derive and override the request.
-    if doc_type in ("CN22", "CN23"):
-        derived = sdr_info(data.value_minor)["cn_form"]
-        if derived != doc_type:
-            doc_type = derived
-            data = data.model_copy(update={"form_type": derived})
     _gate_completeness(data, doc_type)
+    # SDR enforcement gate: the CN22/CN23 label is derived from the declared
+    # value (300-SDR threshold), never user-picked.  On a mismatch the form is
+    # auto-switched — the CLI/preview note names the switch and the
+    # ``documents`` row records the ACTUAL rendered doc_type.
+    resolved_doc_type, data = _resolve_cn_label(data, doc_type)
+    if resolved_doc_type != doc_type:
+        print(_cn_switch_note(doc_type, resolved_doc_type, data.value_minor))
+        doc_type = resolved_doc_type
 
     html = build_html(data, doc_type)
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
