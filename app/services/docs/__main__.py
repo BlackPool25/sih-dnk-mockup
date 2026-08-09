@@ -13,16 +13,20 @@ Flags:
     --yes            confirm the preview and write the PDF.
     --value-minor    optional declared value (INR minor units).
     --consignee      optional consignee name/address.
+    --iec            exporter IEC — the DGFT/KYC gate requires ≥1 of IEC/GSTIN.
+    --gstin          exporter GSTIN (15-char; gates alongside --iec).
 
 Exit codes:
     0  rendered (or preview printed with --yes).
-    1  invalid shipment / missing required fields / lane error /
+    1  invalid shipment / missing required fields / official filling-rule
+       rejection (e.g. "DGFT registration data missing") / lane error /
        confirm required (--preview without --yes).
     2  argparse usage error.
 
 Validity is deterministic-only: ``validate_shipment`` (business rules),
-``DocumentData.model_validate`` (shape) and ``missing_required``
-(completeness per pbe_field_schemas.required) — the LLM never validates.
+``DocumentData.model_validate`` (shape), ``validate_document_rules`` (the
+official PBE/CN22 filling rules) and ``missing_required`` (completeness per
+pbe_field_schemas.required) — the LLM never validates.
 """
 
 from __future__ import annotations
@@ -110,6 +114,8 @@ def cmd_render(args: argparse.Namespace) -> int:
             args.form,
             consignee=args.consignee,
             value_minor=args.value_minor,
+            iec=args.iec,
+            gstin=args.gstin,
         )
     except (LookupError, ValueError, ValidationError) as exc:
         if isinstance(exc, ValidationError):
@@ -134,7 +140,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     try:
         doc = render(data, args.form, out_path=args.out)
     except ValidationError as exc:
-        _print_validation_error(exc, "error: cannot render — required fields missing:")
+        _print_validation_error(exc, "error: cannot render — document data rejected:")
     except ValueError as exc:
         _error(str(exc))
     print(f"document rendered: {doc.file_path}")
@@ -188,6 +194,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     render_p.add_argument(
         "--consignee", default=None, help="optional consignee name/address"
+    )
+    render_p.add_argument(
+        "--iec",
+        default=None,
+        help="exporter IEC (10-char) — the DGFT/KYC gate requires IEC or GSTIN",
+    )
+    render_p.add_argument(
+        "--gstin",
+        default=None,
+        help="exporter GSTIN (15-char) — gates alongside --iec",
     )
     render_p.set_defaults(func=cmd_render)
 

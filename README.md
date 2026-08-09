@@ -5,7 +5,7 @@ prototype). It ships:
 
 - **A seeded configuration database** (Postgres 16 in Docker): 139 ITPS/EMS
   lanes, 8 product categories + HS codes + country duty rates, 51 US state
-  sales-tax rows, 85 config flags, 65 PBE field schemas — every rate carrying
+  sales-tax rows, 86 config flags, 116 PBE field schemas — every rate carrying
   provenance (source URL, level, confidence, verified-at).
 - **A read-only LLM access layer** (`app/services/db_tools`) — exactly six
   SELECT-only functions; the model never touches raw data.
@@ -148,8 +148,8 @@ Guardrails (pinned by tests):
   `ValueError`; unknown state/flag key → `KeyError`; unknown duty country →
   `[]` (never an error).
 - **Validation is deterministic** — business rules in `app/services/validate.py`
-  (`validate_shipment`, `missing_required`) plus Pydantic model validation; the
-  LLM never validates anything.
+  (`validate_shipment`, `missing_required`, `validate_document_rules`) plus
+  Pydantic model validation; the LLM never validates anything.
 
 ---
 
@@ -163,8 +163,9 @@ Guardrails (pinned by tests):
    inject a mock). Neither ever invents values: unstated fields stay sentinels
    (`-1` / `unknown`) so the CALLER asks the user.
 2. **Deterministic validation.** `validate_shipment` (business rules) +
-   `Shipment`/`DocumentData` Pydantic models + `missing_required` (completeness
-   per `pbe_field_schemas.required`) — no LLM in the loop.
+   `Shipment`/`DocumentData` Pydantic models + `validate_document_rules` (the
+   official PBE/CN22 filling rules) + `missing_required` (completeness per
+   `pbe_field_schemas.required`) — no LLM in the loop.
 3. **Preview before generate.** The CLI's `--preview` prints the full form
    summary — every section/field with its value, required fields marked, plus
    the hi/kn confirm labels from `config_flags` (`कृपया पुष्टि करें` /
@@ -173,7 +174,35 @@ Guardrails (pinned by tests):
 4. **Optional details.** A prompt collects the optional order fields
    (consignee name/address, declared value) before rendering; declined values
    render as "—" (the form is honest about what it does not know).
-5. **Render + immutable versioning.** Jinja2 → WeasyPrint → sha256 checksum;
+5. **Official filling rules.** Before any PDF, the renderer enforces the DNK
+   portal's own error taxonomy (pbe-iii-iv-fields.md §7, SOP v1.3) with the
+   **exact** official rejection strings — never paraphrased:
+
+   | Rule | Rejection (verbatim) |
+   |---|---|
+   | gross ≤ 110% of net | `gross weight exceeds 110% of net weight` |
+   | FOB ≤ invoice value | `FOB value exceeds invoice value` |
+   | Σ piece values ≤ parcel value | `Value of Sub pieces does not match` |
+   | Σ piece gross weights ≤ parcel weight | `Weight of Sub pieces does not match` |
+   | Description ↔ HS/CTH mismatch | `Description does not match with HS Code/CTH` |
+   | ITCH not applicable for restricted policy | `ITCH code not applicable for restricted policy` (WARN — never blocks) |
+   | DGFT registration data missing | `DGFT registration data missing` (once ≥1 KYC doc exists) |
+   | KYC Note-1: ≥1 of IEC/GSTIN | `booking requires at least one of IEC or GSTIN` |
+
+   A violating document is rejected with a pydantic `ValidationError` listing
+   the errors BEFORE WeasyPrint runs — no PDF, no `documents` row.  The
+   `--iec`/`--gstin` flags satisfy the DGFT/KYC gates; without either, render
+   is blocked.  `net_weight_g` defaults to the gross weight and `fob_minor` to
+   the declared value when only one figure is known — a single known figure is
+   never rejected for lacking the other.
+6. **SDR → CN22/CN23 auto-selection.** The SDR value is auto-computed from the
+   declared value using the seeded estimate `sdr.fx_minor_per_sdr` (1 SDR ≈
+   ₹109.42, itps-lane.md — `is_estimate=true`); the 300-SDR threshold **only
+   decides the label** (CN22 ≤ 300 SDR, CN23 > 300 SDR — document-stack.md
+   §10).  The label is derived, never user-picked: requesting CN22 for a
+   >300-SDR parcel auto-selects CN23.  The SDR value, threshold and resulting
+   choice are shown on the CN22/CN23 form and in the preview.
+7. **Render + immutable versioning.** Jinja2 → WeasyPrint → sha256 checksum;
    every render inserts a NEW `documents` row with `version = max(version)+1`
    and `supersedes_doc_id` pointing at the previous row — nothing is ever
    overwritten.
@@ -181,10 +210,12 @@ Guardrails (pinned by tests):
 ### Doc-render CLI
 
 ```bash
-# Happy path — render a PBE-IV for a US shipment
+# Happy path — render a PBE-IV for a US shipment (IEC + GSTIN satisfy the
+# DGFT/KYC gates; without either the render is blocked)
 uv run python -m app.services.docs render \
     --category embroidered-home-textiles --qty 8 --weight-g 400 \
-    --country US --form PBE_IV --out docs-out/pbe_sample.pdf
+    --country US --form PBE_IV --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
+    --out docs-out/pbe_sample.pdf
 # document rendered: docs-out/pbe_sample.pdf
 # checksum: <sha256>   document id: <id> (version <n>)
 
@@ -197,18 +228,35 @@ uv run python -m app.services.docs render \
 # Confirm (ಕನ್ನಡ): ದಯವಿಟ್ಟು ದೃಢೀಕರಿಸಿ
 # confirm required: re-run with --yes to write the PDF
 
-# Preview + confirm in one shot
+# Preview + confirm in one shot (gates need --iec/--gstin to reach the PDF)
 uv run python -m app.services.docs render \
     --category jute-products --qty 2 --weight-g 800 \
-    --country US --form PBE_III --preview --yes
+    --country US --form PBE_III --preview --yes \
+    --iec IN1234567890 --gstin 29ABCDE1234F1Z5
 
 # Prompt for optional order details before rendering
 uv run python -m app.services.docs render \
     --category small-brass-metalware --qty 3 --weight-g 250 \
-    --country AE --form INVOICE --ask-optional
+    --country AE --form INVOICE --ask-optional \
+    --iec IN1234567890 --gstin 29ABCDE1234F1Z5
 # Optional order details (press Enter to omit — renders as '—'):
 # Consignee name/address [empty]: ...
 # Declared value (INR minor units) [empty]: ...
+
+# Official-rule rejection — no --iec/--gstin ⇒ KYC gate blocks (exit 1)
+uv run python -m app.services.docs render \
+    --category embroidered-home-textiles --qty 8 --weight-g 400 \
+    --country US --form PBE_IV
+# error: cannot render — document data rejected:
+#   - rules: Value error, booking requires at least one of IEC or GSTIN
+
+# SDR → CN22/CN23 auto-selection: the label is derived from the declared value,
+# never user-picked.  A >300 SDR parcel (≈ ₹32,800) requested as CN22 renders
+# CN23 instead, with the SDR value + choice shown on the form.
+uv run python -m app.services.docs render \
+    --category embroidered-home-textiles --qty 8 --weight-g 400 \
+    --country US --form CN22 --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
+    --value-minor 4000000 --out docs-out/cn23-derived.pdf
 
 # Completeness error — missing required fields listed, exit 1, BEFORE any lookup
 uv run python -m app.services.docs render \
@@ -219,8 +267,9 @@ uv run python -m app.services.docs render \
 
 Form types: `PBE_III`, `PBE_IV`, `CN22`, `CN23`, `INVOICE`, `PACKING_LIST`.
 Exit codes: `0` rendered · `1` invalid shipment / missing required fields /
-confirm required · `2` argparse usage error. PDFs land in `docs-out/`
-(git-ignored); every render also persists an immutable `documents` row.
+official filling-rule rejection / lane error / confirm required · `2` argparse
+usage error. PDFs land in `docs-out/` (git-ignored); every render also
+persists an immutable `documents` row.
 
 ---
 
@@ -228,7 +277,7 @@ confirm required · `2` argparse usage error. PDFs land in `docs-out/`
 
 ```bash
 uv run python -m app.services.verify     # all gates PASS -> exit 0
-uv run pytest -q                          # full suite (89+ tests)
+uv run pytest -q                          # full suite (114+ tests)
 ```
 
 `verify` regenerates `seed/verification_report.md` (git-ignored) with the

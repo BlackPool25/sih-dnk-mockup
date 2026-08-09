@@ -3,10 +3,11 @@
 The LLM NEVER validates anything.  A model response is parsed by Pydantic
 (``Shipment.model_validate`` in extract.py) and then checked HERE — and only
 here — against the business rules: ISO2 destination, quantity/weight bounds,
-and required-field completeness.  This module is pure deterministic logic:
-no LLM calls, no imports from ``app.services.extract``.
+required-field completeness, and the OFFICIAL PBE/CN22 filling rules
+(``validate_document_rules``, pbe-iii-iv-fields.md §7).  This module is pure
+deterministic logic: no LLM calls, no imports from ``app.services.extract``.
 
-Two surfaces:
+Three surfaces:
 
 - ``validate_shipment`` — raises ``ValidationError`` on a business-rule
   violation.  Sentinel values (-1 / "unknown") are the contract's way of
@@ -15,11 +16,17 @@ Two surfaces:
 - ``missing_required`` — queries ``pbe_field_schemas`` for the required fields
   of a form type and returns the PBE field keys whose source value in the
   Shipment is absent.  That list drives the "ask the user" flow.
+- ``validate_document_rules`` — enforces the portal's official filling rules
+  (gross ≤ 110% of net, FOB ≤ invoice, Σ sub-piece value/weight, description ↔
+  HS/CTH, ITCH restricted-policy warning, DGFT/KYC gates) against a
+  ``DocumentData``.  Returns a ``DocumentRuleResult`` whose ``errors`` carry
+  the official rejection strings VERBATIM; the renderer raises on them.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from typing import NoReturn
 
 import pycountry
@@ -35,6 +42,8 @@ from app.schemas.shipment import (
     WEIGHT_UNSTATED,
     Shipment,
 )
+from app.services.db_tools import search_categories
+from app.services.docs.document import DocumentData
 
 _ISO2_RE = re.compile(r"^[A-Z]{2}$")
 
@@ -186,7 +195,169 @@ def missing_required(s: Shipment, form_type: str) -> list[str]:
     return missing
 
 
+# --- todo 14: the OFFICIAL PBE/CN22 filling rules (pbe-iii-iv-fields.md §7) ---
+#
+# Rejection strings are the portal's own error taxonomy (SOP v1.3 error table;
+# dnk-sop-wayback.txt §3.2.1) — VERBATIM, never paraphrased.  Every rule is
+# deterministic arithmetic / set logic / db_tools lookups; no model validates.
+
+MSG_SUB_PIECE_VALUE = "Value of Sub pieces does not match"
+MSG_SUB_PIECE_WEIGHT = "Weight of Sub pieces does not match"
+MSG_GROSS_110_NET = "gross weight exceeds 110% of net weight"
+MSG_FOB_INVOICE = "FOB value exceeds invoice value"
+MSG_DESC_HS = "Description does not match with HS Code/CTH"
+MSG_ITCH_RESTRICTED = "ITCH code not applicable for restricted policy"
+MSG_DGFT_IEC_MISSING = "DGFT registration data missing"
+MSG_KYC_IEC_OR_GSTIN = "booking requires at least one of IEC or GSTIN"
+
+# HS/ITCH codes the corpus flags as restricted-policy (no standard-policy
+# booking/claim): 5303 raw jute fibre (jute-products §1: "restricted-ish and
+# biosecurity-heavy") and 4403 wood in the rough (small-woodware §4.1: raw
+# timber/logs/sandalwood restricted/prohibited).  No restricted ITCH row is
+# seeded for these — the warning fires only when such a code is selected.
+_ITCH_RESTRICTED_POLICY_H6: frozenset[str] = frozenset({"5303", "4403"})
+
+# Words too generic to prove a description↔HS match (tokens are ≥ 4 letters).
+_DESC_STOPWORDS: frozenset[str] = frozenset(
+    {"with", "other", "similar", "parts", "incl", "and", "or"}
+)
+
+
+@dataclass(frozen=True)
+class DocumentRuleResult:
+    """Outcome of the official filling-rule checks.
+
+    ``errors`` reject the document (the renderer raises a pydantic
+    ``ValidationError`` listing them); ``warnings`` surface e.g. an ITCH code
+    not applicable for a restricted policy WITHOUT blocking.
+    """
+
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+def _significant_words(text: str) -> set[str]:
+    """Lowercase words of ≥ 4 letters minus the generic stopwords."""
+    return {
+        w for w in re.findall(r"[a-z]{4,}", text.lower())
+        if w not in _DESC_STOPWORDS
+    }
+
+
+def _word_overlap(a: str, b: str) -> bool:
+    return bool(_significant_words(a) & _significant_words(b))
+
+
+def _canonical_category_name(category_slug: str) -> str | None:
+    """The seeded DB name for a category slug — the trusted description."""
+    for row in search_categories(category_slug):
+        if row["slug"] == category_slug:
+            return row["name"]
+    return None
+
+
+def _primary_hs_row(data: DocumentData) -> dict | None:
+    """The first hs_codes row (lookup_hs_codes orders by hs6, deterministically)."""
+    return data.hs_codes[0] if data.hs_codes else None
+
+
+def _description_consistent(data: DocumentData, hs: dict) -> bool:
+    """True iff the rendered description matches the chosen HS row.
+
+    The description the form shows is the category name (PBE) or the HS row's
+    own description (CN22/23 — identical by construction).  Word overlap with
+    the chosen HS row's description proves consistency; a DB-curated category
+    name is trusted even when it shares no literal word, because it was
+    researched for the same HS code (e.g. "Embroidered Home Textiles" ↔ HS 6302
+    "Bed linen…" share no word but are the same taxonomy).
+    """
+    hs_desc = hs.get("description") or ""
+    rendered = (
+        data.category_name
+        if data.form_type in ("PBE_III", "PBE_IV")
+        else hs_desc
+    )
+    if _word_overlap(rendered, hs_desc):
+        return True
+    canonical = _canonical_category_name(data.category_slug)
+    return canonical is not None and rendered == canonical
+
+
+def _itch_restricted(hs: dict) -> bool:
+    """True iff the HS row's 6-digit code is restricted-policy ITCH."""
+    for code in (hs.get("hs6"), hs.get("itc_hs_8")):
+        if code:
+            six = re.sub(r"\D", "", str(code))[:6]
+            if six in _ITCH_RESTRICTED_POLICY_H6:
+                return True
+    return False
+
+
+def validate_document_rules(document_data: DocumentData) -> DocumentRuleResult:
+    """Enforce the official PBE/CN22 filling rules (pbe-iii-iv-fields.md §7).
+
+    Deterministic-only — pure arithmetic / set logic / db_tools lookups; the
+    LLM never validates.  ``errors`` carry the portal's official rejection
+    strings VERBATIM; ``warnings`` (restricted-policy ITCH) do not block.
+
+    Gate order (portal submission flow): KYC first (≥1 of IEC/GSTIN), then the
+    DGFT/IEC gate, which applies once at least one KYC document exists.
+    """
+    data = DocumentData.model_validate(document_data)
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if data.iec is None and data.gstin is None:
+        errors.append(MSG_KYC_IEC_OR_GSTIN)
+    elif data.iec is None:
+        errors.append(MSG_DGFT_IEC_MISSING)
+
+    # gross ≤ 110% of net — net defaults to the gross when only one weight is
+    # known, so a parcel that exceeds the tolerance must declare it explicitly.
+    if data.weight_grams > data.net_weight_g * 1.10:
+        errors.append(MSG_GROSS_110_NET)
+
+    # FOB ≤ invoice value — FOB defaults to the declared cost value.
+    if data.fob_minor is not None and data.fob_minor > data.value_minor:
+        errors.append(MSG_FOB_INVOICE)
+
+    # Σ piece values ≤ parcel value (multi-piece, when a unit value is known).
+    if (
+        data.quantity > 1
+        and data.unit_value_minor is not None
+        and data.quantity * data.unit_value_minor > data.value_minor
+    ):
+        errors.append(MSG_SUB_PIECE_VALUE)
+
+    # Σ piece gross weights ≤ parcel weight (multi-piece, when known).
+    if (
+        data.quantity > 1
+        and data.piece_gross_g is not None
+        and data.quantity * data.piece_gross_g > data.weight_grams
+    ):
+        errors.append(MSG_SUB_PIECE_WEIGHT)
+
+    hs = _primary_hs_row(data)
+    if hs is not None and not _description_consistent(data, hs):
+        errors.append(MSG_DESC_HS)
+
+    if hs is not None and _itch_restricted(hs):
+        warnings.append(MSG_ITCH_RESTRICTED)
+
+    return DocumentRuleResult(errors=errors, warnings=warnings)
+
+
 __all__ = [
+    "MSG_DESC_HS",
+    "MSG_DGFT_IEC_MISSING",
+    "MSG_FOB_INVOICE",
+    "MSG_GROSS_110_NET",
+    "MSG_ITCH_RESTRICTED",
+    "MSG_KYC_IEC_OR_GSTIN",
+    "MSG_SUB_PIECE_VALUE",
+    "MSG_SUB_PIECE_WEIGHT",
+    "DocumentRuleResult",
     "missing_required",
+    "validate_document_rules",
     "validate_shipment",
 ]

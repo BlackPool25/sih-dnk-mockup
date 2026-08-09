@@ -6,7 +6,7 @@ up afterwards (rows are immutable — tests must not pollute the chain).
 
 Covers:
 - happy path: ``render()`` on a complete DocumentData -> Document with a
-  64-hex sha256 checksum, PBE_IV.
+  64-hex sha256 checksum, PBE_IV (IEC+GSTIN supplied for the todo-14 gates).
 - failures: unknown doc_type -> ValueError; INCOMPLETE DocumentData ->
   ValidationError raised BEFORE WeasyPrint, NO PDF, documents count unchanged.
 - CLI: ``--preview`` without ``--yes`` never calls the renderer;
@@ -16,6 +16,9 @@ Covers:
   ``missing_required`` gates render.
 - immutable versioning: re-render -> version 2, supersedes_doc_id = 1, count
   increments, no row overwritten; different content -> different checksum.
+
+(The todo-14 official filling rules themselves are tested in
+``tests/test_validate_rules.py``.)
 """
 
 import hashlib
@@ -57,8 +60,17 @@ def _validated_shipment() -> Shipment:
 
 
 def _complete_data():
-    """A complete DocumentData from REAL DB lookups (missing_required == [])."""
-    return build_document_data(_validated_shipment(), "PBE_IV")
+    """A complete DocumentData from REAL DB lookups (missing_required == []).
+
+    IEC + GSTIN are supplied so the todo-14 DGFT/KYC filling-rule gate passes;
+    the same pair is passed via ``--iec``/``--gstin`` in the CLI tests.
+    """
+    return build_document_data(
+        _validated_shipment(),
+        "PBE_IV",
+        iec="IN1234567890",
+        gstin="29ABCDE1234F1Z5",
+    )
 
 
 def _doc_count(doc_type: str) -> int:
@@ -221,6 +233,10 @@ def test_preview_with_yes_renders(tmp_path, capsys, clean_documents):
             "PBE_IV",
             "--preview",
             "--yes",
+            "--iec",
+            "IN1234567890",
+            "--gstin",
+            "29ABCDE1234F1Z5",
             "--out",
             str(out),
         ]

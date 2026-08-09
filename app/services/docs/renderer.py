@@ -18,6 +18,7 @@ Pipeline, in order:
 from __future__ import annotations
 
 import hashlib
+import sys
 from pathlib import Path
 from typing import NoReturn
 
@@ -34,7 +35,7 @@ from app.services.docs.document import (
     DocumentData,
     to_shipment,
 )
-from app.services.validate import missing_required
+from app.services.validate import missing_required, validate_document_rules
 
 DOCS_OUT = Path("docs-out")  # git-ignored (see .gitignore)
 
@@ -224,6 +225,42 @@ def _by_key(sections: list[dict]) -> dict[str, dict]:
     return by_key
 
 
+def _sdr_value(sdr_minor: int | None) -> str:
+    """Render an SDR figure (2-decimals) — "—" when no value was declared."""
+    if sdr_minor is None:
+        return "—"
+    return f"{sdr_minor / 100:,.2f} SDR"
+
+
+def sdr_info(value_minor: int | None) -> dict:
+    """SDR figure + CN22/CN23 auto-selection (todo 14, document-stack.md §10).
+
+    The 300-SDR threshold ONLY decides the label — the DNK portal auto-computes
+    the SDR value and the exporter never enters it (pbe-iii-iv-fields.md §5).
+    CN22 when ``value_minor <= max_sdr * fx``, else CN23.  ``fx`` is the seeded
+    estimate ``sdr.fx_minor_per_sdr`` (1 SDR ≈ ₹109.42, itps-lane.md §6); with
+    no declared value the CN22 default applies (low-value assumption).
+    """
+    sdr_fx_minor = int(get_config_flag("sdr.fx_minor_per_sdr")["flag_value"])
+    max_sdr = int(get_config_flag("cn22.sdr_max")["flag_value"])
+    threshold_minor = max_sdr * sdr_fx_minor
+    if value_minor is None:
+        return {
+            "sdr_minor": None,
+            "fx_minor_per_sdr": sdr_fx_minor,
+            "max_sdr": max_sdr,
+            "threshold_minor": threshold_minor,
+            "cn_form": "CN22",
+        }
+    return {
+        "sdr_minor": round(value_minor * 100 / sdr_fx_minor),  # 2-dec SDR minor
+        "fx_minor_per_sdr": sdr_fx_minor,
+        "max_sdr": max_sdr,
+        "threshold_minor": threshold_minor,
+        "cn_form": "CN22" if value_minor <= threshold_minor else "CN23",
+    }
+
+
 def _cn_context(data: DocumentData) -> dict:
     """UPU CN22/CN23 block data — sender/consignee/contents + SDR note.
 
@@ -246,6 +283,7 @@ def _cn_context(data: DocumentData) -> dict:
         "computed automatically by the DNK portal (India Post) — the exporter "
         "need not enter it."
     )
+    sdr = sdr_info(data.value_minor)
     return {
         "sender": "—",
         "sender_ref": "—",  # Sender's Customs reference (IOSS for the EU) — DNK SOP
@@ -258,6 +296,10 @@ def _cn_context(data: DocumentData) -> dict:
         "value": _money(data.value_minor),
         "non_delivery": "—",  # abandoned / return / non-priority — DNK SOP
         "num_invoices": "—",  # number of invoices/licenses/certificates — DNK SOP
+        "sdr_value": _sdr_value(sdr["sdr_minor"]),
+        "sdr_choice": sdr["cn_form"],
+        "sdr_threshold": f"{sdr['max_sdr']} SDR",
+        "sdr_fx": f"1 SDR = ₹{sdr['fx_minor_per_sdr'] / 100:.2f}",
         "sdr_note": note,
     }
 
@@ -275,6 +317,25 @@ def _raise_missing(missing: list[str], fields: list[dict]) -> NoReturn:
             "ctx": {"error": ValueError(f"missing required field {key!r}")},
         }
         for key in missing
+    ]
+    raise ValidationError.from_exception_data("DocumentData", line_errors)
+
+
+def _raise_rules_error(errors: list[str]) -> NoReturn:
+    """pydantic ValidationError listing the official filling-rule rejections.
+
+    Carries the portal's exact rejection strings (pbe-iii-iv-fields.md §7) —
+    never paraphrased.
+    """
+    line_errors = [
+        {
+            "type": "value_error",
+            "loc": ("rules",),
+            "msg": err,
+            "input": None,
+            "ctx": {"error": ValueError(err)},
+        }
+        for err in errors
     ]
     raise ValidationError.from_exception_data("DocumentData", line_errors)
 
@@ -344,6 +405,13 @@ def build_preview(document_data: DocumentData) -> str:
         f"Declared value: {_money(data.value_minor)}",
         "",
     ]
+    if data.form_type in ("CN22", "CN23"):
+        sdr = sdr_info(data.value_minor)
+        lines.insert(-1, (
+            f"SDR value     : {_sdr_value(sdr['sdr_minor'])} → auto-selects "
+            f"{sdr['cn_form']} (threshold {sdr['max_sdr']} SDR; "
+            f"1 SDR = ₹{sdr['fx_minor_per_sdr'] / 100:.2f})"
+        ))
     for section in _sections(data, _load_form_fields(data.form_type)):
         lines.append(f"[{section['name']}]")
         for row in section["rows"]:
@@ -397,8 +465,9 @@ def render(
 
     Raises:
         ValueError: unknown ``doc_type`` or form-type mismatch.
-        ValidationError: ``DocumentData`` shape invalid, or required
-            pbe_field_schemas fields missing (raised BEFORE WeasyPrint).
+        ValidationError: ``DocumentData`` shape invalid, an official
+            filling-rule rejection (pbe-iii-iv-fields.md §7) or required
+            pbe_field_schemas fields missing (all raised BEFORE WeasyPrint).
     """
     data = DocumentData.model_validate(document_data)
     if doc_type not in _TEMPLATE_FILE:
@@ -410,6 +479,20 @@ def render(
             f"doc_type {doc_type!r} does not match DocumentData.form_type "
             f"{data.form_type!r}"
         )
+    # Official filling-rule gate (todo 14): reject with the portal's exact
+    # strings BEFORE WeasyPrint; restricted-policy ITCH codes warn, never block.
+    rules = validate_document_rules(data)
+    for warning in rules.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    if rules.errors:
+        _raise_rules_error(rules.errors)
+    # CN22/CN23 auto-select: the 300-SDR threshold decides the label — never
+    # the user (document-stack.md §10).  Re-derive and override the request.
+    if doc_type in ("CN22", "CN23"):
+        derived = sdr_info(data.value_minor)["cn_form"]
+        if derived != doc_type:
+            doc_type = derived
+            data = data.model_copy(update={"form_type": derived})
     _gate_completeness(data, doc_type)
 
     html = build_html(data, doc_type)
@@ -439,4 +522,4 @@ def render(
     return row
 
 
-__all__ = ["build_html", "build_preview", "render"]
+__all__ = ["build_html", "build_preview", "render", "sdr_info"]

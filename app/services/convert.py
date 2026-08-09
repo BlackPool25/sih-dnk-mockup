@@ -858,6 +858,11 @@ FLAG_SPECS: list[tuple[str, object, str, str, str, bool, date | None]] = [
     ("ems.insurance_addl_100_minor", 600, _EMS_SCHEDULE_IV, "L1", "high", False, None),
     # --- forms / volumetric / KYC ---
     ("cn22.sdr_max", 300, _CN22_POSTALSTUDY, "L3", "high", False, None),
+    # 1 SDR = ₹109.4194 (2024) ⇒ 300 SDR ≈ ₹32,800 — itps-lane.md §6; the SDR
+    # value is AUTO-computed by the DNK portal (document-stack.md §10), the
+    # exporter never enters it.  Stored in INR minor units (10942 paise).
+    ("sdr.fx_minor_per_sdr", 10942, "data/05-itps-ems-lanes/itps-lane.md",
+     "L3", "low", True, None),
     ("kyc.declared_value_minor", 2500000, _EMS_CLICKPOST, "L5", "low", True, None),
     ("volumetric.divisors", [4000, 5000, 6000], _EMS_CONFLICTS, "L5", "unverified", True, None),
     ("pbe.declaration_clusters", 6, _PBE_NTF104, "L1", "moderate", False, None),

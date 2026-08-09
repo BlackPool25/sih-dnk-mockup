@@ -10,19 +10,20 @@ Assembled ONLY from three traceable sources:
 - CLI order fields (optional): ``consignee``, ``value_minor``.
 
 Validity is deterministic-only: ``DocumentData.model_validate`` (shape/types)
-+ ``missing_required`` (completeness against ``pbe_field_schemas.required``)
-are the only gates — the LLM is NEVER the validator and no model validates the
-document.  ``destination_country`` is deliberately a plain string here: the
-ISO2 reality check lives in ``validate_shipment`` (CLI) and completeness in
-``missing_required`` (renderer) — a non-ISO2 value fails ``missing_required``
-with ``consignee_details`` reported missing.
++ ``missing_required`` (completeness against ``pbe_field_schemas.required``) +
+``validate_document_rules`` (the official PBE/CN22 filling rules of
+pbe-iii-iv-fields.md §7) are the only gates — the LLM is NEVER the validator
+and no model validates the document.  ``destination_country`` is deliberately a
+plain string here: the ISO2 reality check lives in ``validate_shipment`` (CLI)
+and completeness in ``missing_required`` (renderer) — a non-ISO2 value fails
+``missing_required`` with ``consignee_details`` reported missing.
 """
 
 from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.schemas.shipment import Shipment
 from app.services.db_tools import (
@@ -69,6 +70,34 @@ class DocumentData(BaseModel):
     consignee: str | None = None  # optional CLI order field
     value_minor: int | None = None  # optional CLI order field
 
+    # todo-14 filling-rule inputs (pbe-iii-iv-fields.md §7).  All optional —
+    # the rules skip a check whose input is absent.  ``net_weight_g`` and
+    # ``fob_minor`` get deterministic defaults (see ``_apply_defaults``) so a
+    # document that only knows one figure is never rejected for lacking the
+    # other.  ``unit_value_minor`` / ``piece_gross_g`` are per-piece values for
+    # the Σ sub-piece rules; ``iec`` / ``gstin`` are the KYC/DGFT identifiers.
+    net_weight_g: int | None = None
+    fob_minor: int | None = None
+    unit_value_minor: int | None = None
+    piece_gross_g: int | None = None
+    iec: str | None = None
+    gstin: str | None = None
+
+    @model_validator(mode="after")
+    def _apply_defaults(self) -> DocumentData:
+        """Deterministic defaults so a single known figure is never rejected.
+
+        - ``net_weight_g`` defaults to ``weight_grams`` when only one weight is
+          known (gross == net ⇒ gross ≤ 110% of net always holds).
+        - ``fob_minor`` defaults to the declared cost value (``value_minor``)
+          when only one value is known (FOB == invoice ⇒ FOB ≤ invoice holds).
+        """
+        if self.net_weight_g is None:
+            self.net_weight_g = self.weight_grams
+        if self.fob_minor is None and self.value_minor is not None:
+            self.fob_minor = self.value_minor
+        return self
+
 
 def to_shipment(data: DocumentData) -> Shipment:
     """Project a DocumentData back onto the Shipment contract.
@@ -92,6 +121,8 @@ def build_document_data(
     *,
     consignee: str | None = None,
     value_minor: int | None = None,
+    iec: str | None = None,
+    gstin: str | None = None,
 ) -> DocumentData:
     """Assemble a DocumentData from a VALIDATED Shipment + DB lookups.
 
@@ -123,6 +154,8 @@ def build_document_data(
         ),
         consignee=consignee,
         value_minor=value_minor,
+        iec=iec,
+        gstin=gstin,
     )
 
 
