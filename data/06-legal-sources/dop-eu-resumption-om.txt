@@ -1,0 +1,436 @@
+Resumption of International Postal Services to European Union (EU) Countries and Introduction of Postal Delivery Duty Paid (PDDP) Service
+]-->
+Home
+About
+Contact Us
+Privacy Policy
+Home
+PO WebLink
+_FinacleURLs
+__Production/Live Server
+__MIS Finacle URL
+__IPPB Finacle URL
+_McCamish URL
+_SAP Direct URL
+_PO Employee Portal
+DOP Finacle
+SB Orders
+CSI
+_Clarification
+_CBS
+Download PO Softs
+EMP CORNER
+DPMS
+Home
+Foreign Articles
+Resumption of International Postal Services to European Union (EU) Countries and Introduction of Postal Delivery Duty Paid (PDDP) Service
+PoTools
+July 17, 2026
+0
+Resumption of International Postal Services to European Union (EU) Countries and Introduction of Postal Delivery Duty Paid (PDDP) Service
+Office Memorandum No. DA-22/2/2026-IR-DOP
+Government of India – Ministry of Communications
+Department of Posts (IR & GB Division)
+Dak Bhawan, Sansad Marg, New Delhi – 110001
+📌 Overview
+The Department of Posts has announced the
+resumption of international postal services to European Union (EU) countries with effect from 14 July 2026
+, following the implementation of the revised EU Customs Framework effective from 01 July 2026. To facilitate smooth customs clearance, India Post has introduced a new
+Postal Delivery Duty Paid (PDDP)
+service.
+🔄 Revised EU Customs Framework
+The European Union has abolished the
+EUR 150 customs duty exemption threshold
+for commercial imports from 01 July 2026.
+Key Changes:
+All commercial consignments imported into EU countries are now subject to:
+Customs duties
+Taxes
+Handling fees
+Surcharges
+Other destination-country regulatory requirements
+Exemptions:
+Documents
+Bona fide gifts (personal consignments) up to
+EUR 45
+These remain exempt from customs duties and taxes, subject to applicable conditions.
+📦 Introduction of Postal Delivery Duty Paid (PDDP)
+To comply with the new EU customs regulations, India Post has launched
+Postal Delivery Duty Paid (PDDP)
+.
+Under PDDP:
+Customs duties
+Import taxes
+Handling charges
+Surcharges
+will be collected
+from the sender at the time of booking
+and remitted to the destination postal administration/customs authorities through the prescribed settlement mechanism.
+✅ Services Resumed from 14 July 2026
+The following services have been restored:
+1. IOSS Commercial Shipments
+Available for all EU countries
+except
+:
+Germany
+Denmark
+Austria
+Sweden
+2. Non-IOSS Commercial Shipments
+Available to EU countries.
+3. Personal (Non-Commercial) Consignments
+Including:
+Gifts
+Documents
+subject to applicable EU customs regulations.
+⚠ Countries Still Under Suspension
+IOSS commercial shipments to the following countries remain suspended:
+Germany
+Denmark
+Austria
+Sweden
+These countries require approved third-party customs representation services. India Post is in the process of selecting and onboarding such service providers and will issue separate instructions later.
+🚚 DDP and DAP Delivery Options
+A. Delivery Duty Paid (DDP)
+Under DDP:
+Duties and taxes are collected from the sender.
+Addressee receives the shipment without additional payment at delivery.
+B. Delivery at Place (DAP)
+Under DAP:
+Duties, taxes and destination handling charges are collected from the recipient before delivery.
+India Post Recommendation
+Where both options are available, customers should choose
+DDP
+because it:
+✔ Enables faster customs clearance
+✔ Avoids destination handling charges under DAP
+✔ Provides transparency in total landed cost
+Important
+DDP service is
+not available
+for:
+Documents
+Personal gift consignments
+destined to EU countries.
+📋 Enclosures Issued with the Memorandum
+The Department has issued:
+Standard Operating Procedure (SOP)
+Customer Customs Authorization Form (Annexure-A)
+Country-wise DDP/DAP Availability and Service Conditions (Annexure-B)
+Addendums for:
+BNPL/Advance customers
+Aggregators
+e-Platforms
+e-Marketplaces
+🏤 Responsibilities of Booking Offices
+Before accepting any EU-bound shipment, offices must ensure:
+Customs Information
+Description of goods
+HS Code
+Weight
+Country of Origin
+Declared Value
+Addressee Information
+Complete address
+Postal code
+Mobile number
+Email address
+Documentation
+Proper CN22/CN23 declarations
+Required labels
+Financial Requirements
+Collection of applicable duties
+Taxes
+Handling fees
+Surcharges
+Compliance
+Customer undertaking and customs authorization
+Postal Bill of Export (for export sale consignments)
+Supporting documents
+✍ Mandatory Customer Authorization
+Customer authorization for customs representation is now a
+mandatory requirement
+for commercial consignments to EU countries.
+No commercial shipment can be accepted without the prescribed authorization as specified in the SOP.
+📑 Instructions for Heads of Circles
+Heads of Circles must ensure:
+Contractual Customers
+Execution of prescribed addendum to BNPL/Advance agreements.
+Aggregators & E-Commerce Platforms
+Execution of prescribed addendums with aggregators/e-platforms/e-marketplaces.
+DDP Shipments
+Acceptance only after receipt of prescribed addendum.
+Non-Contractual Customers
+Collection of Customer Customs Authorization Form (Annexure-A) at notified booking locations.
+⚠ Customer Liability
+Customers remain responsible for:
+Correct customs declarations
+Proper valuation
+Accurate HS classification
+Correct description of contents
+Additional duties, taxes, penalties, handling charges or liabilities imposed due to:
+Under-valuation
+Misdeclaration
+Non-compliance
+shall be recoverable from the customer through approved recovery mechanisms.
+📢 Awareness Campaign
+All Circles have been instructed to conduct awareness and outreach activities among:
+Exporters
+MSMEs
+E-commerce sellers
+ODOP producers
+Contractual customers
+Other stakeholders
+to educate them about:
+Revised EU customs requirements
+Availability of DDP services through India Post.
+🎯 Key Takeaways
+Topic
+Details
+Service Resumption
+14 July 2026
+New EU Rule
+Removal of EUR 150 customs duty exemption
+New India Post Service
+Postal Delivery Duty Paid (PDDP)
+DDP Benefit
+Sender pays duties upfront
+Exemptions
+Documents and gifts up to EUR 45
+Suspended Countries (IOSS)
+Germany, Denmark, Austria, Sweden
+Mandatory Requirement
+Customer Customs Authorization
+Target Users
+Exporters, MSMEs, e-commerce sellers
+Issued by:
+Himanshu Chaudhary
+Assistant Director General (IR)
+Updates:
+Follow us on
+WhatsApp
+,
+Telegram
+Channel,
+Twitter
+and
+Facebook
+for all latest updates
+Tags
+Foreign Articles
+Foreign Mail
+Share
+You Might Like
+View all
+Post a Comment
+Post a Comment
+Previous Post
+Next Post
+Most Visited
+Download DSS(Door Step Service) Android App APT 2.0 - APK download link
+Download Latest Version of DSS(BYOD application) v1.0.20 SOP Overview: DSS Android App (APT 2.0 – July 2, 2025)  1. Introduction  Aimed at ...
+Download DEST latest version 2024
+Download PRACTICE TOOL FOR PA/SA DEST EXAMINATION(1000 key depressions) Download PRACTICE TOOL FOR MTS/POSTMAN DEST EXAMINATION Procedure to...
+Standard operating procedure to download the e-Receipt
+The e-receipt generation facility is already available in the India Post system. Customers and post offices can access and download e-receip...
+Post Office Savings to Bank Account through ECS Mandate Form || SB Order 09/2021
+Download ECS form - SB Order 9/2021
+Follow us on
+WhatsApp
+,
+Telegram
+Channel,
+Twitter
+and
+Facebook
+for all latest updates
+Search Content of www.potools.blogspot.com @
+Convert PDF to Images
+Save Images as ZIP
+AAO Syllabus
+8th CPC
+ESS Direct Links in APT 2.0
+APT2.0
+GeM
+PoTools WhatsApp Channel
+Archive
+Archive
+August (42)
+July (198)
+June (176)
+May (94)
+April (129)
+March (143)
+February (103)
+January (185)
+December (192)
+November (128)
+October (158)
+September (159)
+August (149)
+July (150)
+June (118)
+May (115)
+April (156)
+March (145)
+February (159)
+January (179)
+December (278)
+November (189)
+October (200)
+September (143)
+August (112)
+July (202)
+June (216)
+May (237)
+April (133)
+March (44)
+February (19)
+January (22)
+December (80)
+November (192)
+October (168)
+September (141)
+August (130)
+July (178)
+June (137)
+May (129)
+April (168)
+March (138)
+February (116)
+January (149)
+December (163)
+November (110)
+October (112)
+September (160)
+August (150)
+July (130)
+June (136)
+May (130)
+April (117)
+March (115)
+February (139)
+January (173)
+December (114)
+November (114)
+October (143)
+September (181)
+August (242)
+July (295)
+June (233)
+May (182)
+April (193)
+March (172)
+February (154)
+January (178)
+December (210)
+November (176)
+October (185)
+September (215)
+August (227)
+July (320)
+June (257)
+May (372)
+April (363)
+March (434)
+February (263)
+January (219)
+December (233)
+November (222)
+October (204)
+September (171)
+August (213)
+July (232)
+June (218)
+May (240)
+April (239)
+March (235)
+February (253)
+January (271)
+December (243)
+November (147)
+October (205)
+September (222)
+August (358)
+July (302)
+June (297)
+May (237)
+April (279)
+March (326)
+February (221)
+January (256)
+December (289)
+November (241)
+October (262)
+September (253)
+August (290)
+July (302)
+June (250)
+May (476)
+April (569)
+March (516)
+February (383)
+January (348)
+December (402)
+November (452)
+October (439)
+September (334)
+August (473)
+July (660)
+June (559)
+May (454)
+April (385)
+March (353)
+February (361)
+January (485)
+December (410)
+November (285)
+October (231)
+September (130)
+August (224)
+July (154)
+June (94)
+May (76)
+April (82)
+March (77)
+February (59)
+January (89)
+December (100)
+November (87)
+October (92)
+September (118)
+August (116)
+July (121)
+June (29)
+May (24)
+April (73)
+March (51)
+February (29)
+January (54)
+August (3)
+July (2)
+August (1)
+May (2)
+April (4)
+March (1)
+Download DSS(Door Step Service) Android App APT 2.0 - APK download link
+August 26, 2025
+Download DEST latest version 2024
+August 07, 2024
+Standard operating procedure to download the e-Receipt
+December 01, 2025
+Post Office Savings to Bank Account through ECS Mandate Form || SB Order 09/2021
+May 20, 2021
+Download DEST Latest Version – Practice Tool for Postal Department Examinations
+July 17, 2026
+Author Details
+PoTools Blog offers extensive information on the Postal Department and resources for postal personnel. Visit regularly to keep postal knowledge current.
+Breaking News
+Download DSS(Door Step Service) Android App APT 2.0 - APK download link
+August 26, 2025
+URL for FRMU
+October 08, 2024
+Download DEST latest version 2024
+August 07, 2024
+{getWidget} $results={3} $label={recent} $type={list1}
+[getWidget results='3' label='comments' type='list']

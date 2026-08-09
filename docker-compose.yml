@@ -1,0 +1,57 @@
+# =============================================================================
+# SIH-DNK Mockup — Docker Compose (Development DB)
+# =============================================================================
+# Host port 5433 is used because 5432 is live-occupied by internapply-postgres.
+# Postgres is bound to 127.0.0.1 ONLY (never exposed to 0.0.0.0).
+# =============================================================================
+
+name: sih-dnk-mockup
+
+volumes:
+  sih_dnk_pgdata:
+
+networks:
+  dbnet:
+
+services:
+  # ---------------------------------------------------------------------------
+  # Service 1: PostgreSQL 16
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: sih-dnk-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_DB: sih_dnk
+      POSTGRES_USER: sih_dnk
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?error}
+    volumes:
+      - sih_dnk_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sih_dnk -d sih_dnk"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - dbnet
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - max_connections=50
+      - -c
+      - wal_buffers=8MB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - default_statistics_target=100

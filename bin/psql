@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# sudo-free psql shim: dispatches to postgres:16-alpine's psql over the project docker network.
+# $DATABASE_URL (host localhost:5433) does NOT resolve inside a container, so we translate.
+set -euo pipefail
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+set -a; . "$PROJECT_DIR/.env"; set +a
+# strip the URL arg (postgresql+psycopg://... etc.) — connection info comes from flags below
+args=()
+for a in "$@"; do
+  case "$a" in
+    postgresql+psycopg://*|postgresql://*|postgres://*) ;; # skip URL
+    *) args+=("$a") ;;
+  esac
+done
+exec docker run --rm --network sih-dnk-mockup_dbnet \
+  -e PGPASSWORD="$DB_PASSWORD" \
+  postgres:16-alpine \
+  psql -h db -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB" "${args[@]}"

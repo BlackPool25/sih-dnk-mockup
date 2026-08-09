@@ -1,0 +1,100 @@
+                                                     Circular No. 01 /2026-Customs
+
+                              F. No.476/3/201&LC
+                         qltaftr*Dlt/Govern ment of I ndia
+                          ft-rrizraq/M inistry ot Fi nance
+                       {ur€fu{FilDepartment of Revenue
+                         il*q s$r€e{orG$rrgoetd
+                    Central Board of lndirect Taxes & Customs
+
+                              Hall 16049, Kartavya Bhawan 0'l , New Delhi-1 10001
+                                                        ftqifi: 15 January, 2026
++sr{,
+        Pr. Chief Commissioners/ Chief Commissioners (Customs or CGST)
+        Pr. Directors General/ Directors General, all under CBIC
+        Pr. Commissioners/ Commissioners of Gustoms
+        Pr. Additional Directors General/ AdditionalDirectors General, all under
+cBtc
+
+Madam/Sir,
+
+
+Subiect: Extending export benetits for exports made through Postal mode'
+amendment to Circular No. 25 lo22'Customs dated Gr.l 2.2022 *eg.
+
+        Relerence is invited to Circular No. 2512022-Customs dated 09.12.2022'
+regarding the electronic processing of commercial postal exports through the PBE
+Automated System to lacilitate trade. Owing to the earlier lack ol integration
+between the PBE Automated system and lcES, exporters were unable to avail
+export benefits under the said system. lt is intormed that the required integration
+has now been established, thereby enabling seamless processing and the
+electronic provision ol export benefits, in furtherance of ease of doing business.
+
+2.     ln this regard, the Postal Export (Electronic Declaration and Processing)
+Amendment Regulations, 2026 (hereinafter referred to as "the Regulations") have
+been notilied by the central Board of lndirect Taxes and customs (cBlc) vide
+Notification No. 0712026 dated 15.01 .2026. These regulations are meant to
+facilitate the processing ol postal exports by automating the entire procedure and
+connecting the DNK portal of Department of Posts with lcES for automation of
+export benefits.
+
+3.      To give effect to above, following amendments have been made in the
+Circular 2512022-Cusloms dated 9th December, 2022-
+     t. ln lirst para of Point (i) of paragraph 4 of the aforesaid Circular, the link
+        "https://dnk.cept.gov.in/customers.web." shall be substituted by the link
+       "hilps://app.indiapost.gov.in/customer-selfservice/login"
+     2. ln the second para of Point (i) of paragraph 4 of the aforesaid Circular, the
+        link "https://ips.cept.gov.in/customs.web/login.aspx." shall be substituted by
+        the link " https://app.indiapost. gov.in/ips/home"
+     3. Point (vi) of paragraph 4 of the aforesaid Circular shall be substituted with:
+
+"vi. Erport lncentive Claim
+  a. All exporters who intend to claim export incentives viz. Drawback, RoDTEP
+     and RoSCTL, electronically through postal route, must get registered on
+       ICEGATE. Such exporlers must add their bank account details on ICEGATE
+       portal corresponding to the DNK site.
+  b. Exporter claiming drawback, electronically, will file the PBE lll or lV on the
+     DNK portal. The PBE lorms (lll and lV) now include additional tables to
+       provide information related to duty drawback or any olher exporl scheme
+       chosen by the exporter. These tables also include additional lields to indicate
+       the additional details about parcels lor postal exports. To claim drawback in
+       electronic mode, the exporter must follow the procedure outlined in Rule 13
+       and 14 of the Customs and Central Excise Dulies Drawback Rules, 2017, as
+       amended.
+  c. Procedure for claiming drawback, non-electronically, will remain same as per
+       Rule 12 ol lhe Customs and Central Excise Duties Drawback Rules, 2017, as
+       amended.
+  d. Claiming benefits ol RoDTEP and RoSCTL are also now enabled tor
+       exporters using the postal route, in electronic mode. Notitication No. 24i2023-
+       Customs (N.T.) dated 01.04.2023 for RoDTEP, as amended, and Notilication
+       No.25l2023-Customs (N.T.) dated 01.04.2023 lor RoSCTL, as
+       amended, may be followed for the same.
+  e. Further, for each Postal Bill of Expo( where the claim is made electronically,
+     the supporting documents must be uploaded to the E-SanchiVlCEGATE
+       portal."
+
+
+3.       For the benefit of all concerned, the modality will be elaborated in an
+Advisory to be issued by DG Systems.
+
+
+4.      To enable the above process, suitable amendments in the lorm PBE-lll and
+PBE-IV have been made vide Notification no. O7l2026-Customs (NT) dated
+15.01.2026.
+
+
+5.       All concerned Pr. Commissioners/Commissioners of Customs having
+jurisdiction over FPOs are required to issue suitable Public Notice further
+explaining the modality and logistics to concerned stakeholders.
+
+
+6.     Difiiculties, if any, in the implementation of this Circular may be brought to
+the notice ol the Board.
+
+7.    Hindi version follows.
+                                                                      Yours
+
+                                                                      tlr,*
+                                                                       Varun S
+                                                                   O.S.D.(Customs V)
+

@@ -1,0 +1,10 @@
+.env
+.env.bak
+.env.test
+.venv/
+__pycache__/
+*.pyc
+seed/
+.omo/
+docs-out/
+.pytest_cache/

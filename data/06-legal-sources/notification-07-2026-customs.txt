@@ -1,0 +1,293 @@
+            ITO BE PUBLISTIED IN THE GAZETTE OF INDIA, EXTRAORDINARY, PART-II'
+                                  SECTION 3, SUB-SECTION(i)l
+
+                                    GOVERNMENT OF INDIA
+                                     MINISTRY OF FINANCE
+                                   DEPARTMENT OF REVENUE
+                        (CENTRAL BOARD OF INDIRECT TAXES AND CUSTOMS)
+
+
+                                NOTIFICATION No. 07/2026-Customs (N.T.)
+
+                                                                                     New Delhi, l5 January, 2026
+
+
+
+G.S.R. .. ....(E).- In exercise of the powers conferred by section l5 7 read with section 84 of the Customs Act, 1962
+(52 of 1962). the Central Board of Indirect Taxes and Customs hereby makes the following regulations to amend
+the Postal Export (Electronic Declaration and Processing) Regulations, 2022, namely:-
+
+l.        Short title and commencement. - (l) These regulations may be called the Postal Export (Electronic
+Declaration and Processing) Amendment Regulations, 2026.
+(2) They shall come into force on the date oftheir publication in the Official Gazette.
+
+
+2. tn the Postal Export (Electronic Declaration and Processing) Regulations, 2022, for the existing forms, the
+following forms shall be substituted, namely:-
+                                                                                                                  Form PBE-ll I
+                                                                                                            Postal Bill of Export - III
+                                                                                                             (see regulation 5(lXi))
+                                                                                                    (For poslal exports lhrough E-Commerce)
+                                                                                                          To bc subnrilled electronically)
+Bill of               Foreign        Name of             Address            It-.c.      State           CSI'IN or as             AD code (lf                                        Details of authorized agent
+Export No.            Post           Exporter.           of                             Code            applicable.              Applicable).
+and date.             Office                             Exporter                                                                                          Customs Broker License No.                     Name and address.
+                      code.
+
+
+
+
+                                                                                                                          Details of parcel.
+
+SI.          Consignee details.                                      Product details.                                          Details of Parcel.                                   E-commerce particulars.
+No
+
+                                                                      --r
+             Name          Country of Descrip                 C1'H                      Quantity.                   lnvoice No.                Weight.            GSTIN of          URL(Name) ol- Payment                    SKU           Postal
+                and        destination         t ion.                                                                 and date.                                           E-           website.                 transacli    No.         Tracking
+            Address                                                         Unit(pieces,            Number.                            Gross       Net.           commerce                                       ON ID.                  Number.
+                                                                            liters, kgs.,                                                                          operator.
+                                                                            meters, Pairs
+ __l                                                                        etc.)
+      I               2               3
+                                                   l                 5                          6              7                  lt           9           t0                                         t2               t3        1.1            l5
+
+Assessable value under section l4                       Details of Tax Invoice or commercial                                                          Details of Duty/Tax.                                                            'lotal.
+      ofthe customs Act, 1962.                            invoice (whichever applicable).
+FO        Currenc      Exchang       Amoun              H.S               lnvoice details.              Valu                 Customs duties.                              GST details.
+B.          v             e rate.        tin       code                                                  e.
+                                      INR.                        Invoice            SI. No of                     Export duty.               Cess.             rGSr'(if            Compensation           LUT/bond         Dutie       Cess.
+                                                                  no. and            itcm in                                                                 applicable).              cess    (lf         details(lf       s.
+                                                                  date.              invoice.                                                                                        applicable).          applicable
+                                                                                                                                                                                                           ).
+                                                                                                                   Rate    Amoun       Rate    Amount      Rate       Amoun         Ratc   Amoun
+                                                                                                                           t                                          t                    t
+
+
+
+                                                                                                              I t---I-l
+ t6              t7             l8         t9            20                  2t                           23
+
+
+                                                                                                                                                                                                                          I I
+                                                                                                                    24          25       26           27        2tt            29     30             3l               32         33             34
+
+                                                              l                   L                 l
+Additional details of parcel
+(Additional information for duty drawback/any other expott scheme. if claimed bv the exporter)'
+
+
+                                                RITC code/lTCtlS        DBK serial    Drawback         IGST payment status     End use of       Scheme            Add Freight    Nature of
+[-,*oi*                tem Serial No. in
+                                                code                    No.           quantity.        (YesNO).                item.            code.             (B/r'nN).      contract
+                       nvoice.
+                                                                                                                                                                                 (CIF/CF/CUFO
+
+l*                                                                                                                                                                              l B).
+                  35                       36                      37            38               t9                      40
+                                                                                                                             -1-
+                                                                                                                                            4
+                                                                                                                                                t_         42
+                                                                                                                                                                           il                 A
+                                                                                                                                                                                                  --t
+                                                                                       Declarations                                                                             Yes,t,lo as
+                                                                                                                                                                                applicable
+
+      I l/We declare that we inte nd to zero rate our exports under section l6 of lntegrated Goods and Services Tax Act' 2017
+      ,)
+                  I/We declare that the goods are exempted under Central Goods and Services Tax Act/State Goods and Services'l'ax Act/Union
+                                                                                                                                                     Territory Goods and
+                  Services Tax,/lntegrated Goods and Services Tax Act. 201 7
+                                                                                                                                                                Rules'
+                  I/We declare that l/we intend to claim Drawback under Sec. 75 of Customs Act. 1962 and Customs and Central Excise Duties Drawhack
+              I
+
+      3
+                  2011.-
+                                                                                                                                                been availed for any ofthe
+     a)           I/We declare that no input tax credit ofthe central goods and Services Tax or ofthe integrated Goods and Serv ices Tax has
+                  inputs or input sewices used in the manufacture ofthe export goods.
+
+     b)           I/We declare that no refund of Integrated Goods and Service Tax paid on export goods shall be claimed.
+                                                                                                                        good, has not been       carried forward in terms
+          )       l/We declare that CENVAT credit on the inputs or input services used in the manulacture ofth"
+                                                                                                                "*po.t.
+                  of the Central Goods and Service Tax Act, 201 7
+                  l/We certi5, that l/We have complied with the conditions laid down in the said Rules and the conditions subject to which Drawback
+                                                                                                                                                          Rates are
+   (d )
+                  applicable.
+
+      4 ] UWe declare that l/we intend to claim RoDTEP (Remission of Duties and Taxes on Exported Products)'-
+                                                                                                                                                RoDTEP scheme. and
+     il           I/We undertake to abide by the provisions. including conditions, restrictions, exclusions and time-limits as provided under
+                  relevant notifications, regulations, etc
+                                                                                                                                                                  under any
+     l-l )        Any clairn made in this postal Bill of Export is not with respect to any duti€s or taxes or levies which are exempted or r€mitted or credited
+                  other meclranism outside RoDTEP.
+
+     t.ll yW" una"nrf. to pr"."*" and make available relevant documents relating to the exported goods for the purposes ofaudit in the manner and lor the
+                  time period prescribed in tlre Customs Audit Regulations. 2018
+  5    l/We declare that l/we intend to clairn RoSCTL (Rebate ofState and Central Taxes and Levies),-
+
+(a) I/We undertake to abide by the provisions, including conditions, restrictions, exclusions and time-limits as provided under RoSCTL scheme, and
+       relevant notifi cations, regulations, etc
+
+(b)    Any claim made in this Postal Bill of Export is not with respect to any duties or ta,xes or levies which are exempted or rem itted or credited under any
+       other mechanism outside RoSCTL.
+
+(c )   l/We undertake to preserve and make available relevant documents relating to the exported goods for the purposes ofaudit in the manner and for the
+       time period prescribed in the Customs Audit Regulations, 20 | 8.
+
+  6    I/We undertake to abide by the provisions ofForeign Exchange Management Act, 1999, as amended from time to time, including realisation or
+       repatriation of foreign exchange to or from lndia.
+
+It is hereby declared that the content of this Postal Bill of Export are true and correct.
+
+                                                                        Data for Postal Bill of Export submitted electronically on Date and Time by the Exporter or Authorised Agent
+
+Examination order and report
+
+                                                                                                  Let llxport Order: This is a system generated document and No signalure is required
+                                                                                                       Form PBE -lV
+                                                                                                 Postal Bill of f,xport - IV
+                                                                                                  (see regulation 5(1)(ii))
+                                                                                                 (For olher poslal erporls)
+                                                                                              ( To he submi   ul
+Bill of                 Foreign Post Office         Nanrc ol              Address of              IEC   State         GSTIN or as                  AD code. (lf                     Details of authorised agent.
+Export No. and          code.                       Exporter.             Exporter.                     Code.         applicable.                  Applicable)
+                                                                                                                                                                            Customs Broker                   Name and
+date.
+                                                                                                                                                                            License No.                      address.
+
+
+
+
+                                                                                                         Details of parcel.
+           L
+  SI             Consignee details.                                   Product details.                                       Details of Parcel.            Postal       Assessable value under section l4 ofthe
+No.                                                                                                                                                        Tracking     Customs Act, 1962.
+                                                                                                                                                           number.
+
+                Name and        Country         Description.     c1'                        Quantity.                lnvoicc No              Weight                      ITOB.      Currenc          Exchange         Amount
+                Address.            of                           H.                                                       and date.                                                      v.            Rate.          in lNR.
+                                                                           Unit (pieces, liters,        Number                             Gross Net.
+                                destinatio
+                                    n.                                     kgs., meters, Pair
+                                                                           etc.).
+
+       I                   2                3                4        5                             (           7                     ti       9      t0                       t2              t3                t4             l5
+
+
+
+
+  Details of Tax Invoice or commercial invoice(whichwer                                                                                       Details of Dutv/Tax
+                        applicable).
+
+   H.S
+  code
+                Invoice no. and
+                                Invoice details
+
+                                         SI. No of item in
+                                                                          Valu
+                                                                           e.
+                                                                                                 Customs duties.
+
+                                                                                        Export duty.                 Cess.                    rGSr(if
+                                                                                                                                                        GST details.
+                                                                                                                                                             -f
+                                                                                                                                                                    Compensation              I-UT/bond details
+                                                                                                                                                                                                                      fL
+                                                                                                                                                                                                                      Dut       Ce
+                datc.                    invoice.                                                                                           applicable).               cess   (lf             (lf applicable).        v.        ss.
+                                                                                                                                                                     applicable).
+
+                                                                                     Rate        Amount       Rate         Arnoun Rate             Amount       Rate          Amount
+                                                                                                                           t
+
+           l6                     t7                             t8             t9          20          2l           22          23           24           25          26           21                           28        29   30
+Additional details of parcel
+(Additional information for duty drawbacldany other Export scheme. ifopted by exporter)-:
+
+lnvoice                   tem Serial No. in   RITC code/ITCHS    DBK serial      Drawback            I GST payment status   End use of        Scheme        Add Freight         Nature of
+No.                   I   tlvolce.            code.              No.             quantity.           ( YesA,{O).            item.             code.         (B/IYLN)            contracl
+                                                                                                                                                                                (CIF/CF/C
+                                                                                                                                                                                r/FoB).
+
+
+                                         4                                                                                                                                 I
+                                                                                                                                                                            I
+
+                3l                                          33             34                   35                     36                37            38
+                                                                                                                                                            t__      39                 4   ,l
+
+
+
+         T
+                                                                                Declarations.
+
+
+    ll I/We declare that we intend to zero rate our exports under section l6 of lntegrated Goods and Services Tax {ct.2017
+                                                                                                                                                                          Yes/No as
+                                                                                                                                                                          applicable.
+                                                                                                                                                                                            l
+-            I/We declare that the goods a." exerrpted under Central Goods and Services Tax Act/State Goods and Services Tax Act/Union Territory Goods and
+             Services Tax/lntegrated Goods and Services Tax Act.
+
+    3        I/We declare that l/we intend to claim Drawback under Sec. 75 of Customs Act, 1962 and Customs and Central Excise Duties Drawback Rules,
+             2017.-
+
+ (") I/We declare that no input tax credit ofthe central goods and Services Tax or ofthe integrated Coods and Services Tax has been availed for any ofthe
+             inputs or input services used in the manufacture ofthe export goods.
+
+ (b) I/We declare that no refund of Integrated Goods and Service Tax paid on export goods shall be claimed.
+
+ (", l/We declare that CENVAT credit on the inpuis or input services used in the manufacture of the exports goods has nol been car.i.d fo*u,a in r.-,
+             of the Central Coods and Service Tax Act, 201 7.
+ (d) l/We certiry that IiWe have complied with the conditions laid down in the said Rules and the conditions subject to which Drawback Rates are
+             applicable.
+    .+       I/We declare that l/we intend to claim RoDTEP (Remission of Duties and Taxes on Exported Products),-
+
+    il ) I/We undertake to abide by the provisions, including conditions, restrictions, exclusions and time-limits as provided under RoDTEP scheme' and
+         relevanl notifi cations, regulations, etc.
+
+ (b) Any claim made in this Postal Bill of Export isnotwith respect to any dutiesortaxesor levieswhich are exemp ted or remitted or credited under any
+             other mechanism outside RoDTEP.
+
+ (C   ) t/We undertake to preserve and make available relevant documents relating to the exported goods for the purposes ofaudit in the manner and for the
+             time period prescribed in thc Customs Audit Regulations, 201 8.
+     5   I/We declare that l/we intend to claim RoSCTL (Rebate ofstate and Central Taxes and Levies),-
+
+    ( il ) I/We undertake to abide by the provisions, including conditions, restrictions, exclusions and time-limits as provided under RoSCTL scheme, and
+           relevant notifi cations, regulations, etc.
+
+    (b) Any claim made in this Postal Bill of Export is not with respect to any duties or taxes or levies which are exempted or remifted or credited under any
+        other mechanism outside RoSCTL.
+
+    (c) l/We undertake to preserve and make available relevant documents relating to the exported goods for the purposes ofaudit in the manner and for the
+        time period prescribed in lhe Customs Audit Regulations, 20 | 8.
+
+     6   I/We undertake to abide by the provisions of Foreign Exchange Management Act, 1999, as amended from timetotime, including realisation or
+         repatriation offoreign exchange to or from India.
+
+    It is hereby declared that the content ofthis Postal Bill of Export are true and correct.
+
+                                                                     Data for Postal Bill of Export submitted electronically on Date and Time by the Exporter or Authorised Agent
+
+    Examination order and report
+
+                                                                                                Let Export Order: This is a system generated document and No signature is required
+
+
+
+
+                                                                                                                                                                   [F. No. 47613
+
+
+                                                                                                                                                                           (lndrajit Panda)
+                                                                                                                                                                          Under Secretary
+
+
+vide number G.S.R. 874.(E), dated the lOth December, 2022.
+

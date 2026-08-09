@@ -1,0 +1,1030 @@
+          Step-by-step process of DNK Customer Portal Ver 1.3
+
+
+                   A. PROCEDURE FOR CUSTOMERS
+
+
+The DNK Customer Portal is accessible using any browser from the
+following URL:
+               https://dnk.cept.gov.in/customers.web/
+Recommended browsers are:
+     Google Chrome
+     Mozilla Firefox
+     Microsoft Edge
+
+
+
+1. REGISTRATION:
+DNK Customer Portal will be limited to registered users. First-time
+users can do self-registration by following the below steps:
+ i.    Use any of the Browser viz., Google Chrome, Mozilla Firefox,
+       Microsoft Edge, etc.
+ii.    Type the URL: https://dnk.cept.gov.in/customers.web/
+iii.   The Login page will load by default.
+
+
+
+
+                             Figure-1: Login page
+ iv.    Click on – ‘Don’t have an account? Register Now
+
+
+
+
+                        Figure-2: Registration screen
+  v.    The Register page will load.
+
+ vi.    Complete the registration by providing valid inputs for user ID (as
+        per choice), e-mail ID, Mobile No, Password and re-enter
+        password for confirmation.
+          a. User ID: String of 8-15 characters in lower case
+          b. E-mail ID: Any valid e-mail ID consisting of 15-50 characters
+          c. Mobile No: Any valid mobile number with max. of 10 numeric
+             digits
+          d. Password: Alpha-numeric string of 8-15 characters
+             consisting of one Uppercase alphabet, one lowercase
+             alphabet, one numeric digit and any one special character viz.,
+             @, #, $, %, ^, &, *
+vii.    Read the Terms & Conditions and ‘Accept’ them
+viii.   Click on Register, which will trigger an OTP to the Mobile No.
+        provided
+ ix.    Enter the OTP and validate.
+  x.    Subsequent to successful validation, the registration process is
+        complete and user can access the Customer portal by clicking on
+        login
+ xi.    A confirmation SMS about the successful registration is also
+        triggered to the Mobile Number provided.
+2. LOGIN:
+    To log in to Customer Portal, follow the below steps:
+   i.   Use any of the Browser viz., Google Chrome, Mozilla Firefox,
+        Microsoft Edge, etc.
+  ii.   Type the URL : https://dnk.cept.gov.in/customers.web/
+ iii.   The Login page will load by default.
+
+
+
+
+                     Figure-3: Login screen for DNK Customer Portal
+
+ iv.    Customer shall select to login either by User name or by mobile.
+  v.    Input the Username & Password or registered mobile number
+ vi.    Click on ‘Get OTP’ button
+vii.    System shall send OTP to registered mobile number.
+viii.   Enter OTP
+ ix.    Click - LOG IN
+
+3. CONTENTS:
+   There are two menus available to the customer viz., Menu (operations
+   menu) & User menu and a bell icon for Customs query, if any.
+
+3.1 User-Menu options
+   This menu has three options viz., Manage profile, Change password
+   and Logout.
+        Figure-4: User- menu Options for DNK Customer
+
+3.1.1 Manage Profile
+
+Profile management page is loaded, by default, during first-time login
+i.e., after successful registration. In case the customer wants to
+access this page subsequently, then they need to click on the ‘Go to
+Profile’ button or by selecting ‘Manage Profile’ option available under
+‘Welcome {user name}’ menu as shown in Fig-(4) above. This menu
+allows the Registered customer to save master details as detailed in
+the next sections.
+
+3.1.1.1 Business details:
+
+The business details of the customer like IEC, AD Code, GSTIN, LUT
+etc. are captured here.
+
+
+
+
+        Figure-5: Business Details screen for DNK Customer
+In addition to above, the details of DoP contracts are also displayed
+in this page, subject to prior-mapping of the same.
+
+Details of the various fields along with their data-types,
+mandatory/non-mandatory requirements are as below:
+  o Customer Type: Commercial, is the only option available &
+     enabled by default.
+  o IEC Code: 10 characters (Alphanumeric)               Mandatory
+  o AD Code: 14 characters (Alphanumeric)                Optional
+  o GSTIN: 15 characters (Alphanumeric)                  Mandatory
+  o LUT/Bond details: Up to 50 characters (Alphanumeric)
+         LUT            Provided by GST Department            Optional
+         Bond           Provided by concerned Bank            Optional
+  o Contract Details: Details for existing DoP contracts which are
+    already mapped with DNK customer are displayed here.
+    Customer can also fetch details for balance available against
+    the respective contract(s).
+
+     Once article type is selected in the consignment details page,
+     the details of existing contract(s) viz., customer ID and contract
+     ID shall be displayed automatically at the time of each booking.
+     If no contract is mapped, then the payment mode is shown as
+     cash and the standard Customer ID for Retail is displayed.
+
+
+     Subsequently, the payment will be deducted from the respective
+     contract at the time of induction of articles in Point of Sale (PoS) at
+     PO/DNK Centres.
+
+Note:
+1. The details for Customer ID & Contract ID for existing / registered
+   customers of DoP are being configured from back-end presently.
+   Concerned DoP unit viz., DNK/IBC/FPO/DO/RO/CO, as such may
+   please inform the details of DNK Customer to CEPT team
+   (UITeam.cept@indiapost.gov.in).
+2. For mapping of Contract details by CEPT, the following
+   information is required along with screen shots for Business Profile
+   & SAP Customer Balance report
+   (i)   DNK User name
+   (ii) CSI Customer ID
+   (iii) CSI Contract ID
+   (iv) Article Type (EMS/ITPS/Foreign Parcel/Foreign letters) for
+         which the contract is created .
+   (v) Booking office facility ID
+   (vi) Contract begin & End date
+   (vii) Contract Type – (BNPL/Advance) along with balance
+         available for advance
+
+Validation of IEC:
+
+Validation of IEC code with the information available in DGFT systems is
+introduced and the IEC registration details viz., name, address, city,
+pincode, PAN etc are displayed in case of successful validation. These
+details are then updated as default profile address in the DNK portal.
+
+Note: Validation of IEC registered mobile number obtained from DGFT
+system is also being made (work in progress) by triggering OTP. In case
+the status check (suspended, blacklisted, cancelled, etc) or validation of
+IEC registered mobile number fails, then the DNK booking options will
+not be enabled until the IEC status is updated in DGFT system.
+
+
+
+
+         Figure-6: Validation of IEC and address
+2.1.1.2 Basic Profile:
+
+Basic Profile like Name, Company Name, Address, City, Pin code,
+etc. captured from DGFT systems are displayed here. In case the
+customer address does not match with the DGFT system details, they
+may update their address in IEC through DGFT portal.
+
+
+
+
+                Figure-7: Basic Profile options for DNK Customer
+
+Contact no. & email ID captured separately during Registration
+process are also shown here. Further, provision is being made
+available to add alternate Contact no. & email ID to receive the alerts,
+notifications, etc separately. This can be different from the Registered
+Contact No. & e-Mail ID.
+
+3.1.1.3 Address book:
+
+Address Book option allows the customer to save details of both
+Sender’s address (viz., Branch-wise, Location-wise, etc.) and
+Recipient’s address (Country-wise, company-wise, etc) using a
+reference for each address. These references can then be used by the
+customer to auto-populate the address details at the time of booking of
+articles.
+        Figure-8: Address Book options for DNK Customer
+
+3.1.1.4 KYC:
+
+This menu item allows the Registered customer to upload the KYC
+documents relating to their business viz., IEC, AD Code, GSTIN,
+Others viz., Aadhar, etc
+
+
+
+
+        Figure – 9: Select KYC documents
+
+Click on drop down list - ‘Select KYC document’, select the type of KYC
+document like import export code (IEC), AD Code, GSTIN & Others.
+
+For uploading documents not available in dropdown list viz., letter of
+undertaking (LUT), Export Licence, Bond, Aadhar or any other KYC
+documents, the exporter may select the option “Others” and enter details
+of the document in the ‘description’ textbox.
+Figure-10: Upload of documents other than IEC, GSTIN & AD Code
+
+
+
+
+Figure-11: KYC document upload options for DNK Customer
+
+After selection of documents exporter needs to fill up the following:
+      o Document Number- Fill Import Export Code (IEC), Goods & Service
+         Tax identification Number (GSTIN), Authorized dealer Code (AD
+         Code), Letter of Undertaking Number (LUT), Aadhar Number etc.
+      o Document issued by – Designation of the issuing authority
+      o Date of Issue- Issue Date of the issue of the document. In case of
+    documents which do not contain Date of issue, other available dates
+    like Date of Expiry can be entered.
+  o Choose File – On Clicking choose file, system will ask file location
+
+     and allow to selection of file to upload. Then click on the icon   .
+
+     A confirmation message is shown after the document is uploaded
+     successfully and details of document uploaded will be also shown in
+     the list below.
+
+Note-1: The booking options will be enabled only after uploading of
+atleast one mandatory KYC document viz., IEC or GSTIN.
+
+Note-2: LUT number is allotted financial year wise. So, in the
+beginning of each financial year, customer has to update it in
+Business profile and upload the LUT document as KYC.
+
+3.1.2 Dashboard:
+
+Once the profile updation is complete, Dashboard will be the first
+page to be displayed after user login. A view of Dashboard
+information is as shown below:
+     Figure-12: Screenshot showing dash board page of DNK
+
+
+  The dashboard consists of information for:
+     Individual Consignment search
+
+
+
+
+    Figure-13: Screenshot showing individual consignment search dash
+board page of DNK
+
+      Selection for Month & Year for which data is displayed
+      Consignments analysis
+          PO Induction pending
+          In Transit
+          Under process with Customs
+          Cleared by Customs
+          Detained by Customs
+          Consignments dispatched outside India
+      Booking Analysis - Mail class wise
+      Booking Analysis - Top 5 countries
+      Detailed Report
+          With details of Consignments
+          Options for filtering details based on Consignment No,
+             PBE No, Mail Category, Booking Date, Date of Induction
+             at PO/IBC/DNK, Addressee/Country, Consignment Status
+          Editing the declaration data (until submission of
+             consignment to Customs)
+          Export options for CSV file
+         Downloading of File for uploading in GST portal
+
+
+
+
+         Track Consignment
+
+
+
+
+  Figure-14: Screenshot showing Tracking
+
+
+3.1.3 Logout:
+To logout or to login again, the customer may click on LOGOUT
+option available under ‘Welcome {user name}’ menu option.
+                  Figure-15: Logout option for DNK Customer
+
+3.2 Menu options(operations):
+
+  This Menu contains options for Registered Customer to do the Article
+  booking, upload documents, print CN 23/Harmonized Label / PBE
+  forms/Invoice/Address label, bulk upload and History.
+
+
+
+
+                  Figure-16: Menu options for DNK Customer
+
+  Options available to the DNK customer are:
+     Article Booking (Individual booking via Data entry)
+     Bulk upload (using Excel template)
+     Documents Upload
+     Forms Download
+     History
+
+3.2.1 Article booking (Via data entry):
+
+This menu allows the Registered Customer to manually enter the details
+relating to the article.
+3.2.1.1
+On clicking “Article booking “sub menu, Customer gets the below screen
+
+
+
+
+          Figure-17: Article Booking screen for DNK Customer
+
+  The initial Booking Screen provides options for Enquiry of Services,
+  their availability, information relating to Prohibitions & Restrictions,
+  Tariff Calculator (optional), etc.
+
+
+
+
+  Figure-18: Article Booking screen for DNK Customer
+
+  Exporter has to select the country name from drop down list and click
+  on the “Check” button. System displays the list of services available
+  as per below screen shot.
+Figure-19: Screen showing the availability of service after selection of
+country.
+
+If services are not available for a specific country, then system shows
+the below screen:
+
+
+
+
+Figure-20: Screen showing the non-availability of service after
+selection of country
+
+Once the user is confirmed about the availability of services, they can
+proceed with the booking by clicking on ‘Book Article’ button and
+capture the article details as shown below
+                                                     In case an exporter needs to send 5
+             3.2.1.2 Consignment Details
+                                                  books and 4 pencils , then the number of
+                                                  types of item in this consignment will be
+  Star
+                                                                      2
+denotes
+mandator
+ y field
+
+
+
+
+    On
+ clicking
+   this,
+ system
+will show
+    the
+descriptio
+ n about
+  input
+
+
+
+
+                               Figure-21: Consignment Details screen
+
+             Note:-
+             (i)  * sign shows the mandatory fields. Customer has to opt PBE-
+                  III/PBE-IV based on e-commerce/other export.
+
+             (ii)    On clicking tool tip    sign on each field, system shall indicate
+                     the description about the input.
+             (iii)   Customer ID & Contract ID of a contractual customer shall be
+                     reflected after mapping of the existing contract, which are also
+                     available in the “Business Details” page.
+             (iv)    IEC, GSTIN, AD Code shall be as per entry made by customer
+                     in “Business Details” page.
+
+             (v)     IOSS number shall be entered against ‘Sender’s Customs
+                     reference’ number. It is required if the export is being done to
+                     the countries of European Union.
+
+             (vi)    E-commerce means the order is received through e-market
+                     place. In this scenario, exporter has to choose PBE-III.
+             (vii) If the exporter get order by other mode (other than e-market
+        place), then he has to choose PBE-IV
+           Instruction for how to fill Consignments details
+
+1.   First Customer need to select products from drop down menu.
+
+
+
+
+Figure-22: Showing the name of available product for a selected
+country.
+
+2.   Select    Category     of    items    from    drop     down     menu.
+
+
+
+
+     Figure-20: Showing the Category of item.
+
+3. Number of Types items in a consignment- Let an exporter need to
+send 5 book and 4 pencils, then number of types of item in consignment
+will be 2
+
+
+4. Gross weight – Weight of Parcel with Packaging.
+5. Value - Total value of all items inside the consignments. Let an exporter
+need to send 5 book and 4 pencils, then total price of 5 books and 4 pencils
+has to be mentioned here.
+6. SDR Value – System is converting it automatically. Customer need not
+to enter anything.
+7. Instructions in case of non-delivery – Please select, abandoned,
+priority or Non priority. For return of letter/Parcel, you may be charged for
+returned fee. If you select abandoned, article will be not returned to you, in
+case of non-delivery.
+
+
+
+
+Figure-23: Showing the instruction, in case of non-delivery.
+
+8. Number of invoices /Licenses/Certificates -            Please provide
+number of invoices attached for the item inside the consignments. If a
+single invoice is prepared for all items inside a consignment, then put 1.
+If separate invoice for each type of item is issued, then put the exact
+number of invoices.
+
+9. License means manufacturing license- If you are manufacturer of
+the any item for which license is required, then in such cases you may
+export only after having the manufacturing license. If a
+package/Consignment/ Parcel contains manufactured items (viz drugs,
+tobacco etch), then upload such licenses on portal through “documents
+upload options” against the article id and mention here only the number
+of licenses. Check how many items in a consignment required licenses,
+fill this column accordingly.
+
+Certificates means,” No Objection Certificate “from the competent
+authority. For example, if you are sending drugs, you need NOC from
+Assistant Drugs Controller (ADC). Similarly, there are some items for
+which you need NOC. For export you need to upload NOC on the
+customer portal through “Document Upload option” against the article id.
+Suppose you have put spices, drugs & Tea in one consignment for
+export, you need 3 NOC, one from Spice Board of India, Second from
+ADC and Third from Tea Board of India. In this case you need to put
+number of certificates as 3 at the time of booking.
+Please Note that India Post is exchanging these data with India
+Customs and destination Customs electronically. However, the
+uploaded documents are visible only to Indian Customs. You need to
+attach physical copy of invoice, certificates and Licenses in such a way
+that it can be visible for the destination customs without opening of your
+consignments /Parcel.
+
+10. Select PBE – There are two types of export, one is through e-
+commerce and other is than e-commerce. Export through E-commerce
+means seller and buyers are connected through e-commerce platform
+and buyers are ordering through e -commerce website. In this case,
+Order Id, Payment ID is available to exporters on e market place. If the
+export is without involvement of e commerce platform, it is called export
+other than e commerce. Based on the type of export, Customs has
+prescribed forms for filing of Postal Bill of Export (PBE), as shown
+below:
+
+   PBE filing method         Export Type           PBE Form Type
+                             eCommerce                  PBE-I
+         Manual
+                        Other than eCommerce            PBE-II
+                             eCommerce                 PBE-III
+       Electronic
+                        Other than eCommerce           PBE-IV
+
+Since filling of PBE for exports through the DNK portal falls under
+electronic mode, the exporter needs to opt either PBE-III or PBE- IV
+based on export type viz., e-commerce /other than e-commerce.
+
+11. DOP Customer ID – In Department of Posts (DoP) , customer may
+enter into contract for availing Advance payment facility /Book now pay
+later (BNPL) facility. Such customers are known as contractual
+customer, BNPL facility is available only for Express Mail Service
+(EMS), while advance payment facility is available for all products i.e.
+foreign letters, foreign parcel, EMS & International Tracked Packet
+Service (ITPS). For every contractual customer, DoP creates one
+customer ID. Under this customer ID, product wise contract ID is
+created.
+
+If a contractual customer is registering on customer portal, then such
+customer ID and contract ID is updated by CEPT for backend. Once
+updated, system will start adjustment of postage from advance deposit
+amount or started listed under BNPL.
+
+The default customer ID (3000048090) is displayed by DNK portal. For
+all non-contractual customer, this default customer ID shall be
+displayed.
+
+Sender’s Customs Reference Number – This is IOSS Number. It is
+required/mandatory when something are exported to European Union.
+
+13. Self-Filling- Exporter has to opt “Yes”
+
+
+
+
+Figure-24: Showing the option for self-filing.
+
+3.2.1.3 Details of Sender / Recipient -The NEXT screen allows the
+user to enter details of addresses for the Sender & Recipient as shown
+below:
+
+
+
+
+             Figure-25: Capturing Sender & Recipient details
+
+Note-1: The Address Book Reference (both for Sender & Recipient)
+enables the user to select and auto-populate the details.
+Note-2: Sender details means consigner/exporter details.
+Note-3: Receiver details means consignee/addressee/recipient’s details
+Note-4: If Customer put 3 to 4 character of the recipient’s city, system
+shall show probable post code.
+Note-5: In address 1, the name & Number of Apartment/ Building/
+House, Name of premises / Locality shall be mentioned. In address 2 ,
+the Name/Number of Road/Street should be mentioned.
+          Post Code – Post code should be mentioned correctly. One can also
+          search postcode on below link
+          https://worldpostalcode.com/
+
+
+          3.2.1.4 Piece Details –
+
+
+          After clicking next button, customer has to enter the details of each type
+          of item inside the package.
+
+
+ Please
+specify
+  the
+ item,
+ Don’t
+mentio
+n vague
+   as
+clothes
+
+
+
+
+                            Figure-26: Capturing Sub-Piece details
+
+          The Piece Details screen allows the user to enter details of the multiple
+          sub-pieces contained inside the article. This data is also important w.r.t
+          Postal Bill of Export (PBE) requirements. The CTH & HS Code is
+          replicated. Invoice number is replicated in Parcel details & Tax invoice
+          column. The currency as notified by CBIC can be selected from drop
+          down menu. The conversion of value in INR is automated based on
+          exchange rate. After entering details of each type of item customer has
+to click “Add Pieces”.
+
+Note:-
+(i) While entering the value of sub pieces, it should be ensured that the
+sum of the value of sub pieces should not more than the value of
+Parcel.
+(ii) While entering the value of sub pieces, it should be ensured that the
+sum of the weight of sub pieces should not more than the weight of
+Parcel.
+(iii) The gross weight of any item should not be more than 10% of the
+Net weight.
+(iv) FOB value should not be more than the invoice value.
+
+                   Possible errors in filling piece details
+    Details of error/issue          Action to be taken
+    Weight of Sub pieces does The sum of the gross weight of all
+    not match                       sub pieces should be not be more
+                                    than the weight of the parcel/Article
+    Value of Sub pieces does The sum of the value of all sub
+    not match                       pieces should not be more than the
+                                    total value of the parcel/Article
+    Invalid post Code               Check the format and length of
+                                    post code
+    Description does not match Check and enter proper HS code
+    with HS Code/CTH
+    ITCH code not applicable        Click OK and Proceed
+    for restricted policy
+    DGFT registration data not      Check and upload the IEC
+    available                       document and then proceed.
+
+3.2.1.5 Provision to check HS code by product description-
+                Figure-27: Search option for HS Code
+
+There is a search option against HS code. Clicking on this option,
+system allows to enter any four character of the description and click
+search button.
+
+
+
+
+     Figure-28: System shall display number of results found
+
+On clicking the arrow ‘select description “System shall show the list of
+product. After selection of product, system provide HS Code.
+Figure-29: System shall display name of Products.
+
+3.2.1.6 After entering details of each type of pieces of a Package,
+customer clicks Next button. The NEXT screen allows the user to select
+the relevant Declarations related to the Export.
+
+
+
+
+          Figure-30: Capturing Declarations
+
+On Submission of data and its successful validation, a pop-up is
+displayed with details of the Article ID & PBE Number.
+
+
+
+
+          Figure-31: Printing Customs Declaration Form (CN 22/23)
+3.2.2 Bulk Upload (using excel template):
+
+Bulk Upload option enables the user to fast-track the booking process for
+multiple articles using an excel template, a sample of which is made
+available as a link in this screen. User may download the format of
+excel Sheet.
+
+The Excel Template file is divided into 2 sheets, viz.,
+    i. Information Sheet: This sheet gives information about the data
+       requirements.
+   ii. Article Details Sheet: This sheet should be filled up with actual
+       details of article and its Sub-Pieces.
+
+
+
+
+Figure-32: Download Excel Sheet Format & Validating the Excel
+template
+      Figure-33: Successful Bulk Upload and printing CN 23 Forms
+
+The user can save the details of articles. Also, the CN 23/Harmonized
+Labels can also be printed after successful booking.
+
+3.2.3 Document Upload:
+
+This menu allows the Registered Customer to upload documents
+relating to the bookings made by them viz., Licenses, Certificates,
+Invoices, etc. Customer may upload System generated invoice.
+
+
+
+
+        Figure-34: Uploading of Documents relating to Consignments
+
+In case a requirement comes up subsequently to upload further
+documents as per the queries raised by Customs, then this option also
+allows the user to upload the relevant documents.
+
+
+3.2.4 Forms Download:
+This menu helps the user to download the various forms viz Address label,
+Harmonized label/ CN 22/CN 23 forms, Invoice based on entered data and
+approved PBE. After booking, Customer may download Address label,
+Harmonized label/ CN 22/CN 23 forms and Invoice based on entered data.
+Once the Customs clears the article/export items in Customs portal and
+article dispatched from OE to destination, the Registered Customer will
+be able to download the approved PBE relating to the boked article
+using this menu option.
+
+
+
+
+                  Figure-35: Printing of forms relating to articles
+
+  Note:-
+  1. The user should also note that this option allows print of relevant
+  forms only for the article which have actually been booked by them.
+
+  2. The PBE form is allowed for print only after it has been cleared by
+  the Customs authorities and the article has been successfully sent out
+  of the country.
+
+
+
+
+Figure-36: Printing of PBE form (Let export order) is not allowed prior to
+Customs Clearance. Customer may print USPS Harmonized label /CN
+22/CN 23, address slip & invoice.
+Figure-37: Printing of PBE form after customs clearance & dispatch of
+consignment
+
+Note – In case customs clearance is pending in customs portal or
+dispatch from OE is pending, System shall not allow to print PBE. Error
+will show as “PBE not yet generated, kindly try after sometime”
+
+3.2.5 History:
+The customer can access the details and status of articles booked through
+this option. The booking, tracking, article detail and customs details can be
+viewed for each article. Tracking details and Customs details will be
+available only for those articles, which are inducted in the post office.
+Article details contains name and address of the sender and addressee,
+weight, value etc.
+
+
+
+
+          Figure-38: Entering number of articles to fetch details
+
+The number of articles is to be entered to fetch the details.
+ Figure-39 System display the details of articles (article number & date)
+
+There are three icon against each article.    icon shows tracking,
+
+icon shows article details and   icon shows Customs details of the
+article.
+
+
+
+
+   Figure-40: System display the Tracking (Date, Time, Location and
+                               Events)
+
+
+
+
+Figure-41 System display the Article details (Sender name & address,
+Receiver name & address, and piece details)
+Figure-42: System display the Customs details (Article ID and Customs
+remarks
+
+3.3 Bell Icon- Customs query system
+
+       If any document/information is required by the Customs, it will be
+notified in Customer portal through the bell icon. On clicking the notification,
+the message will be visible. The link to upload the additional document and
+space for mentioning the information will be reflected.
+
+
+
+
+            Figure-43: Replying to Customs query through portal
+
+3.4 Provision of Timer
+
+     The provision of timer is made which enforces logout in case the
+customer is unable to attend the portal for a longer time.
+
+
+
+
+                Figure-44    Provision of Timer
+                          How to Bulk Upload
+
+Click menu option and system shows option like Article booking, Bulk
+Upload, document upload, Forms download, History
+
+
+
+
+            Figure-45: Menu option shows bulk upload option
+
+1.   Click Bulk Upload
+
+
+
+
+              Figure-46: Option to download Excel Format
+
+Note-1: Exporter can download the excel sheet (format) by clicking
+“download the templates”. The excel format has 2 sheets. The first sheet
+contains the information sheet. Details of required codes are available in
+the first sheet. Where second sheet for filling details. Exporter has to fill
+the information in second sheet.
+
+Note-2: The ID and the sender ref field should be filled with a unique
+number and has to be same for all the sub-pieces for a particular article.
+
+
+
+
+In the above example, three articles need to be booked in DNK portal using
+a bulk upload provision. The first article contains only one item. The second
+and Third article contains two and three items respectively.
+The details of items in an article must be entered in separate rows with the
+same id and reference ID. Hence, the details of the two items kept in the
+second article are entered with the same id and reference Id. Likewise, the
+details of the three items kept in the third article are entered in three
+separate rows with a unique id and sender ref.
+totalval decl1 decl2 decl3 hscode prd_desc            prd_qty_unit
+                                                            countprd_gross_wt
+                                                                        prd_wgt_net
+                                                                              origincountry
+                                                                                    invoiceno
+                                                                                           prd_inv_date
+                                                                                                    ecomm
+                                                                                                        ecomm_url ecomm_pay_tranid
+                                                                                                                    ecomm_sku_no
+                                                                                                                        tax_inv_date
+                                                                                                                                 tax_inv_sno
+                                                                                                                                     tax_inv_val
+  10000 Yes   No   Yes   12345678 plastic container   PIECES   10   14000 14000 IN   a1     23-03-2023   1 www.AZ.com 1 1246 23-03-2023   1   10000
+  15000 Yes   No   Yes   87654321 mixer               PIECES    1    4000 4000 IN     12345 23-03-2023   1 www.AZ.com 1 2234 23-03-2023   1    7000
+  15000 Yes   No   Yes   87654321 grinder             PIECES    1   10000 10000 IN    12345 23-03-2023   1 www.AZ.com 1 2234 23-03-2023   2    8000
+   9000 Yes   No   Yes   23456789 cotton tshirts      PIECES   15   10000 10000 IN   az2456 23-03-2023   1 www.AZ.com 1 8888 23-03-2023   1    3000
+   9000 Yes   No   Yes   23456789 cotton socks        PIECES    5    5000 5000 IN    az2456 23-03-2023   1 www.AZ.com 1 8888 23-03-2023   2    4000
+   9000 Yes   No   Yes   23456789 synthetic sarees    PIECES    8    4000 4000 IN    az2456 23-03-2023   1 www.AZ.com 1 8888 23-03-2023   3    2000
+
+
+
+Note-3: After feeding the data in excel, customer has to click choose file.
+(A       sample      filled  excel     sheet      is     available      on
+https://docs.google.com/spreadsheets/d/1DXKBcv70_TlbJtQXCUC2uUX9E
+jHllSetm-0ucd7uJSE/edit?usp=sharing )Once file is chosen, Customer has
+to click “validate”.
+
+System will show the information as below-
+ Figure-47: After choosing excel file and clicking validate option, system
+                     will show the details as above
+
+Note-4 After checking all details customer need to tick (select) check box
+and click upload excel file. System will generate article ID against each
+article.
+
+
+
+
+    Figure 48 – Showing article id of each article of excel sheet.
+
+Note-5: Customer may download CN 22/CN 23 of each item.
+Note-6: Now customer has to upload invoice, Licenses, Certificates or any
+other required documents against each item.
+
+Note-7: There is no limit of number of items that may upload through one
+excel file.
+
+Note-8: Customer may select different services for the different items
+under one excel sheet.
+
+Note-9: 2-digit ISO code for all Countries are mentioned as under-
+
+S.No Code     Name                  S.No   Code Name
+1    AC       ASCENSION             129    LA   Lao          People's
+              ISLAND                            Democratic Republic
+2     AD      Andorra               130    LB   Lebanon
+3     AE      United      Arab      131    LC   Saint Lucia
+              Emirates
+4     AF      Afghanistan           132    LI     Liechtenstein
+5     AG      Antigua      and      133    LK     Sri Lanka
+              Barbuda
+6     AI      Anguilla              134    LR     Liberia
+7     AL      Albania               135    LS     Lesotho
+8     AM      Armenia               136    LT     Lithuania
+9     AN      NETHERLANDS           137    LU     Luxembourg
+              ANTILLES
+10    AO      Angola                138    LV     Latvia
+11    AQ      Antarctica            139    LY     Libya
+12    AR      Argentina             140    MA     Morocco
+13    AS      American Samoa        141    MC     Monaco
+14    AT      Austria               142    MD     Moldova (the Republic
+                                                  of)
+15    AU      Australia             143    ME     Montenegro
+16    AW      Aruba                 144    MF     Saint Martin (French
+                                                  part)
+17    AX      Aland Islands       145      MG     Madagascar
+18    AZ      Azerbaijan          146      MH     Marshall Islands (the)
+19    BA      Bosnia          and 147      MK     North Macedonia
+              Herzegovina
+20    BB      Barbados              148    ML     Mali
+21    BD      Bangladesh            149    MM     Myanmar
+22    BE      Belgium               150    MN     Mongolia
+23    BF      Burkina Faso          151    MO     Macao
+24   BG   Bulgaria                152   MP   Northern          Mariana
+                                             Islands (the)
+25   BH   Bahrain                 153   MQ   Martinique
+26   BI   Burundi                 154   MR   Mauritania
+27   BJ   Benin                   155   MS   Montserrat
+28   BL   Saint Barthelemy        156   MT   Malta
+29   BM   Bermuda                 157   MU   Mauritius
+30   BN   Brunei Darussalam       158   MV   Maldives
+31   BO   Bolivia                 159   MW   Malawi
+32   BQ   Bonaire,         Sint   160   MX   Mexico
+          Eustatius and Saba
+33   BR   Brazil                  161   MY   Malaysia
+34   BS   Bahamas (the)           162   MZ   Mozambique
+35   BT   Bhutan                  163   NA   Namibia
+36   BV   Bouvet Island           164   NC   New Caledonia
+37   BW   Botswana                165   NE   Niger (the)
+38   BY   Belarus                 166   NF   Norfolk Island
+39   BZ   Belize                  167   NG   Nigeria
+40   CA   Canada                  168   NI   Nicaragua
+41   CC   Cocos       (Keeling)   169   NL   Netherlands (the)
+          Islands (the)
+42   CD   Congo            (the   170   NO   Norway
+          Democratic
+          Republic of the)
+43   CF   Central       African   171   NP   Nepal
+          Republic (the)
+44   CG   Congo (the)             172   NR   Nauru
+45   CH   Switzerland             173   NU   Niue
+46   CI   Cote d'Ivoire           174   NZ   New Zealand
+47   CK   Cook Islands (the)      175   OM   Oman
+48   CL   Chile                   176   PA   Panama
+49   CM   Cameroon                177   PE   Peru
+50   CN   China                   178   PF   French Polynesia
+51   CO   Colombia                179   PG   Papua New Guinea
+52   CR   Costa Rica              180   PH   Philippines (the)
+53   CS   SERBIA              &   181   PK   Pakistan
+          MONTENEGRO
+54   CU   Cuba                    182   PL   Poland
+55   CV   Cabo Verde              183   PM   Saint    Pierre      and
+                                             Miquelon
+56   CW   Curacao                 184   PN   Pitcairn
+57   CX   Christmas Island        185   PR   Puerto Rico
+58   CY   Cyprus                 186   PS   Palestine, State of
+59   CZ   Czechia                187   PT   Portugal
+60   DE   Germany                188   PW   Palau
+61   DJ   Djibouti               189   PY   Paraguay
+62   DK   Denmark                190   QA   Qatar
+63   DM   Dominica               191   QM   BOSNIA REP SRPSKA
+64   DO   Dominican              192   QN   BOSNIA
+          Republic (the)
+65   DZ   Algeria                193   RE   Reunion
+66   EC   Ecuador                194   RO   Romania
+67   EE   Estonia                195   RS   Serbia
+68   EG   Egypt                  196   RU   Russian      Federation
+                                            (the)
+69   EH   Western Sahara*        197   RW   Rwanda
+70   ER   Eritrea                198   SA   Saudi Arabia
+71   ES   Spain                  199   SB   Solomon Islands
+72   ET   Ethiopia               200   SC   Seychelles
+73   FI   Finland                201   SD   Sudan (the)
+74   FJ   Fiji                   202   SE   Sweden
+75   FK   Falkland     Islands   203   SG   Singapore
+          (the) [Malvinas]
+76   FM   Micronesia             204   SH   Saint          Helena,
+          (Federated States                 Ascension and Tristan
+          of)                               da Cunha
+77   FO   Faroe Islands (the)    205   SI   Slovenia
+78   FR   France                 206   SJ   Svalbard    and    Jan
+                                            Mayen
+79   GA   Gabon                  207   SK   Slovakia
+80   GB   United Kingdom of      208   SL   Sierra Leone
+          Great Britain and
+          Northern Irela
+81   GD   Grenada                209   SM   San Marino
+82   GE   Georgia                210   SN   Senegal
+83   GF   French Guiana          211   SO   Somalia
+84   GG   Guernsey               212   SR   Suriname
+85   GH   Ghana                  213   SS   South Sudan
+86   GI   Gibraltar              214   ST   Sao Tome and Principe
+87   GL   Greenland              215   SV   El Salvador
+88   GM   Gambia (the)           216   SX   Sint Maarten (Dutch
+                                            part)
+89   GN   Guinea                 217   SY   Syrian Arab Republic
+                                            (the)
+90    GP   Guadeloupe              218   SZ   Eswatini
+91    GQ   Equatorial Guinea       219   TA   TRISTAN DA CUNHA
+92    GR   Greece                  220   TC   Turks     and Caicos
+                                              Islands (the)
+93    GS   South Georgia and 221         TD   Chad
+           the          South
+           Sandwich Islands
+94    GT   Guatemala          222        TF   French          Southern
+                                              Territories (the)
+95    GU   Guam                    223   TG   Togo
+96    GW   Guinea-Bissau           224   TH   Thailand
+97    GY   Guyana                  225   TJ   Tajikistan
+98    HK   Hong Kong               226   TK   Tokelau
+99    HM   Heard Island and        227   TL   Timor-Leste
+           McDonald Islands
+100   HN   Honduras                228   TM   Turkmenistan
+101   HR   Croatia                 229   TN   Tunisia
+102   HT   Haiti                   230   TO   Tonga
+103   HU   Hungary                 231   TR   Turkey
+104   ID   Indonesia               232   TT   Trinidad and Tobago
+105   IE   Ireland                 233   TV   Tuvalu
+106   IL   Israel                  234   TW   Taiwan (Province of
+                                              China)
+107   IM   Isle of Man             235   TZ   Tanzania, the United
+                                              Republic of
+108   IN   India                   236   UA   Ukraine
+109   IO   British         Indian 237    UG   Uganda
+           Ocean         Territory
+           (the)
+110   IQ   Iraq                    238   UM   United States Minor
+                                              Outlying Islands (the)
+111   IR   Iran         (Islamic   239   US   United      States       of
+           Republic of)                       America (the)
+112   IS   Iceland                 240   UY   Uruguay
+113   IT   Italy                   241   UZ   Uzbekistan
+114   JE   Jersey                  242   VA   Holy See (the)
+115   JM   Jamaica                 243   VC   Saint Vincent and the
+                                              Grenadines
+116   JO   Jordan                  244   VE   Venezuela (Bolivarian
+                                              Republic of)
+117   JP   Japan                   245   VG   Virgin Islands (British)
+118   KE   Kenya                   246   VI   Virgin Islands (U.S.)
+119   KG   Kyrgyzstan             247   VN   Viet Nam
+120   KH   Cambodia               248   VU   Vanuatu
+121   KI   Kiribati               249   WF   Wallis and Futuna
+122   KM   Comoros (the)          250   WS   Samoa
+123   KN   Saint Kitts and        251   XZ   KOSOVO -temporary-
+           Nevis
+124   KP   Korea           (the   252   YE   Yemen
+           Democratic
+           People's Republic
+           of)
+125   KR   Korea (the Republic    253   YT   Mayotte
+           of)
+126   KW   Kuwait                 254   ZA   South Africa
+127   KY   Cayman      Islands    255   ZM   Zambia
+           (the)
+128   KZ   Kazakhstan             256   ZW   Zimbabwe
+
