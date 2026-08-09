@@ -14,10 +14,14 @@ Subcommands (build order):
                    six config tables, in one blocking run
 
 The four todo-7 subcommands may be combined in ONE invocation; they share a
-single transaction whose first statement is a combined TRUNCATE of the six
-config tables (Postgres rejects truncating a referenced table unless every
-referencing table is in the same statement — hs_codes FKs to
-product_categories).  ``lanes`` is deliberately excluded: todo 6 owns it.
+single transaction whose first statement is a dynamic TRUNCATE covering
+exactly the tables the selected subcommands re-seed (Postgres rejects
+truncating a referenced table unless every referencing table is in the same
+statement — hs_codes FKs to product_categories, so ``--categories`` truncates
+product_categories + hs_codes + country_rates together, while ``--states`` /
+``--flags`` / ``--pbe`` truncate only their own table).  Each subcommand is
+therefore safe to run ALONE.  ``lanes`` is deliberately excluded: todo 6
+owns it.
 
 Every rate is a config flag with a source URL + level + verified timestamp,
 never a bare number (corpus honesty rule FR-001).  Money is stored in
@@ -246,18 +250,40 @@ def import_lanes() -> tuple[int, int]:
 
 # --- todo 7: categories / states / flags / pbe ----------------------------------
 #
-# One transaction: TRUNCATE the six config tables together (single statement —
-# hs_codes FKs to product_categories, so truncating one alone is rejected),
-# then insert.  Re-runs never duplicate.  ``lanes`` is not touched.
+# One transaction: a dynamic TRUNCATE of exactly the tables the selected
+# subcommands re-seed (single statement — hs_codes FKs to product_categories,
+# so ``--categories`` truncates product_categories + hs_codes + country_rates
+# together, while ``--states``/``--flags``/``--pbe`` truncate only their own
+# table), then insert.  Re-runs never duplicate.  ``lanes`` is not touched.
 
 CATEGORY_DIR = DATA_DIR / "03-product-categories"
 STATE_TAX_FILE = DATA_DIR / "01-countries" / "USA" / "state-sales-tax-table.md"
 PBE_FIELDS_FILE = DATA_DIR / "02-dnk-documents" / "forms-pbe" / "pbe-iii-iv-fields.md"
 
-CONFIG_TRUNCATE = text(
-    "TRUNCATE product_categories, hs_codes, country_rates, state_sales_tax, "
-    "config_flags, pbe_field_schemas RESTART IDENTITY"
-)
+# Subcommand -> the tables it re-seeds.  A subcommand's WHOLE set is truncated
+# together in ONE statement: hs_codes FKs to product_categories, so Postgres
+# rejects truncating either alone.  state_sales_tax / config_flags /
+# pbe_field_schemas have no inbound FKs and may be truncated alone.
+CONFIG_TABLES: dict[str, tuple[str, ...]] = {
+    "categories": ("product_categories", "hs_codes", "country_rates"),
+    "states": ("state_sales_tax",),
+    "flags": ("config_flags",),
+    "pbe": ("pbe_field_schemas",),
+}
+
+
+def _config_truncate(selected: set[str]) -> text:
+    """One dynamic TRUNCATE of the union of tables the selected subcommands
+    re-seed (single statement, RESTART IDENTITY — idempotent re-runs)."""
+    tables: list[str] = []
+    for sub in ("categories", "states", "flags", "pbe"):
+        if sub in selected:
+            tables.extend(CONFIG_TABLES[sub])
+    unique: list[str] = []
+    for t in tables:
+        if t not in unique:
+            unique.append(t)
+    return text(f"TRUNCATE {', '.join(unique)} RESTART IDENTITY")
 
 SNAPSHOT_DATE = date(2026, 8, 8)
 
@@ -1137,9 +1163,18 @@ def _import_pbe(session: object) -> tuple[int, int]:
 
 
 def import_configs(*, categories: bool, states: bool, flags: bool, pbe: bool) -> str:
-    """Seed the six todo-7 config tables in ONE transaction — idempotent."""
+    """Seed the selected todo-7 config tables in ONE transaction — idempotent.
+
+    Only the tables the selected subcommands re-seed are truncated (dynamic
+    single-statement TRUNCATE), so e.g. ``--pbe`` alone re-seeds only
+    pbe_field_schemas and leaves the other five config tables untouched.
+    """
+    selected = {name for name, on in (
+        ("categories", categories), ("states", states), ("flags", flags), ("pbe", pbe),
+    ) if on}
     with SessionLocal.begin() as session:
-        session.execute(CONFIG_TRUNCATE)
+        if selected:
+            session.execute(_config_truncate(selected))
         lines: list[str] = []
         if categories:
             n_cat, n_hs, n_rates = _import_categories(session)
