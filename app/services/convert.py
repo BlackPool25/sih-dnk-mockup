@@ -10,7 +10,8 @@ Subcommands (build order):
     --states       state sales tax               (todo 7)
     --flags        config flags                  (todo 7)
     --pbe          PBE field schemas             (todo 7)
-    --all          serial re-seed of every table (todo 12) — RESERVED, do not use
+    --all          serial re-seed of EVERY table (todo 12): lanes, then the
+                   six config tables, in one blocking run
 
 The four todo-7 subcommands may be combined in ONE invocation; they share a
 single transaction whose first statement is a combined TRUNCATE of the six
@@ -1044,15 +1045,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--all",
         action="store_true",
-        help="serial re-seed of every table (RESERVED for todo 12 — do not use)",
+        help="serial re-seed of every table: lanes (todo 6), then the six "
+        "config tables (todo 7) — idempotent, runs ALONE",
     )
     args = parser.parse_args(argv)
 
-    if args.all:
-        print("--all is reserved for todo 12; nothing imported")
-        return 0
-
     todo7 = [flag for flag in ("categories", "states", "flags", "pbe") if getattr(args, flag)]
+
+    if args.all:
+        if args.lanes or todo7:
+            parser.error("--all must run alone (it re-seeds every table serially)")
+        try:
+            itps, ems = import_lanes()
+            print(f"imported {itps} ITPS + {ems} EMS = {itps + ems} lanes")
+            print(import_configs(categories=True, states=True, flags=True, pbe=True))
+        except UnmappedCountryError as exc:
+            print(f"error: ISO2 gate failed: {exc}", file=sys.stderr)
+            return 1
+        except (RuntimeError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     if args.lanes:
         if todo7:
