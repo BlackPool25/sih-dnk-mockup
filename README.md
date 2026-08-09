@@ -202,11 +202,10 @@ uv run python -m app.services.docs render \
     --category jute-products --qty 2 --weight-g 800 \
     --country US --form PBE_III --preview --yes
 
-# Prompt for optional order details before rendering (quoted segments
-# join into the flag name: --ask-"optional")
+# Prompt for optional order details before rendering
 uv run python -m app.services.docs render \
     --category small-brass-metalware --qty 3 --weight-g 250 \
-    --country AE --form INVOICE --ask-"optional"
+    --country AE --form INVOICE --ask-optional
 # Optional order details (press Enter to omit — renders as '—'):
 # Consignee name/address [empty]: ...
 # Declared value (INR minor units) [empty]: ...
