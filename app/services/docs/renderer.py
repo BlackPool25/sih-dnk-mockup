@@ -52,8 +52,8 @@ _TEMPLATE_FILE: dict[str, str] = {
 }
 
 _DOC_TITLES: dict[str, str] = {
-    "PBE_III": "Bill of Export — PBE-III",
-    "PBE_IV": "Bill of Export — PBE-IV",
+    "PBE_III": "Postal Bill of Export - III",
+    "PBE_IV": "Postal Bill of Export - IV",
     "CN22": "Customs Declaration CN22",
     "CN23": "Customs Declaration CN23",
     "INVOICE": "Commercial Invoice",
@@ -108,18 +108,24 @@ def _field_value(data: DocumentData, field_key: str) -> str:
 
     Every mapped value traces back to a validated Shipment key, a db_tools
     lookup, or a CLI order field.  Fields outside the contract (iec,
-    invoice_no_date, decl.*, ecomm_*, …) have no data source and are rendered
-    as "—" — the form is honest about what it does not know.
+    exporter_name, invoice_no_date, decl.*, ecomm_*, duty/tax rates, …) have
+    no data source and are rendered as "—" — the form is honest about what it
+    does not know.
     """
     if field_key == "consignee_details":
         parts = [data.consignee] if data.consignee else []
         parts.append(data.destination_country)
         return " / ".join(parts)
+    if field_key == "destination_country":
+        return data.destination_country
     if field_key == "product_description":
         return data.category_name
     if field_key == "cth":
         hs = _primary_hs(data)
         return hs["hs6"][:4] if hs else "—"
+    if field_key == "hs_code":
+        hs = _primary_hs(data)
+        return hs["hs6"] if hs else "—"
     if field_key == "ritc_itc_hs":
         hs = _primary_hs(data)
         return (hs["itc_hs_8"] or hs["hs6"]) if hs else "—"
@@ -127,8 +133,12 @@ def _field_value(data: DocumentData, field_key: str) -> str:
         return f"{data.quantity} Nos"
     if field_key in ("gross_weight", "net_weight"):
         return f"{data.weight_grams} g"
-    if field_key == "assessable_value":
+    if field_key == "si_no":
+        return "1"  # single-item consignment — line 1
+    if field_key in ("assessable_value", "amount_inr", "fob_value"):
         return _money(data.value_minor)
+    if field_key == "currency":
+        return "INR"  # value_minor is the declared value in INR minor units
     return "—"
 
 
@@ -195,6 +205,7 @@ def _sections(data: DocumentData, fields: list[dict]) -> list[dict]:
         value = _field_value(data, field["field_key"])
         sections[-1]["rows"].append(
             {
+                "field_key": field["field_key"],
                 "label": field["label"],
                 "value": value,
                 "required": field["required"],
@@ -202,6 +213,53 @@ def _sections(data: DocumentData, fields: list[dict]) -> list[dict]:
             }
         )
     return sections
+
+
+def _by_key(sections: list[dict]) -> dict[str, dict]:
+    """Flat field_key -> row lookup for the columnar PBE templates."""
+    by_key: dict[str, dict] = {}
+    for section in sections:
+        for row in section["rows"]:
+            by_key[row["field_key"]] = row
+    return by_key
+
+
+def _cn_context(data: DocumentData) -> dict:
+    """UPU CN22/CN23 block data — sender/consignee/contents + SDR note.
+
+    Sender is the exporter, whose details are NOT in the mockup order data —
+    rendered "—" (the exporter supplies them at the counter).  The SDR note
+    follows document-stack.md §10: CN22 for items up to 300 SDR, CN23 for
+    items over 300 SDR; the DNK portal auto-computes the SDR value.
+    """
+    hs = _primary_hs(data)
+    note = (
+        "CN23 — this detailed customs declaration is required when the value "
+        "of the contents exceeds 300 SDR (Special Drawing Rights) and is "
+        "usually accompanied by the commercial invoice. The SDR value is "
+        "computed automatically by the DNK portal (India Post) — the exporter "
+        "need not enter it."
+        if data.form_type == "CN23"
+        else "CN22 — this customs declaration is used for items with a value "
+        "of up to 300 SDR (Special Drawing Rights). If the value exceeds "
+        "300 SDR, the CN23 form must be used instead. The SDR value is "
+        "computed automatically by the DNK portal (India Post) — the exporter "
+        "need not enter it."
+    )
+    return {
+        "sender": "—",
+        "sender_ref": "—",  # Sender's Customs reference (IOSS for the EU) — DNK SOP
+        "consignee": data.consignee or "—",
+        "destination": data.destination_country,
+        "description": hs["description"] if hs else "—",
+        "hs": hs["hs6"] if hs else "—",
+        "qty": f"{data.quantity} Nos",
+        "weight": f"{data.weight_grams} g",
+        "value": _money(data.value_minor),
+        "non_delivery": "—",  # abandoned / return / non-priority — DNK SOP
+        "num_invoices": "—",  # number of invoices/licenses/certificates — DNK SOP
+        "sdr_note": note,
+    }
 
 
 def _raise_missing(missing: list[str], fields: list[dict]) -> NoReturn:
@@ -247,11 +305,14 @@ def build_html(document_data: DocumentData, doc_type: str) -> str:
             f"doc_type {doc_type!r} does not match DocumentData.form_type "
             f"{data.form_type!r}"
         )
+    sections = _sections(data, _load_form_fields(doc_type))
     ctx: dict = {
         "doc_title": _DOC_TITLES[doc_type],
         "css": _CSS,
         "rows": _summary_rows(data),
-        "sections": _sections(data, _load_form_fields(doc_type)),
+        "sections": sections,
+        "by_key": _by_key(sections),
+        "cn": _cn_context(data) if doc_type in ("CN22", "CN23") else {},
     }
     return _JINJA.get_template(_TEMPLATE_FILE[doc_type]).render(**ctx)
 

@@ -4,21 +4,209 @@
 <meta charset="utf-8">
 <title>{{ doc_title }}</title>
 <style>{{ css | safe }}</style>
+<style>
+  table.hdr th, table.hdr td, table.parcel th, table.parcel td,
+  table.av th, table.av td, table.duty th, table.duty td,
+  table.addl th, table.addl td, table.decl th, table.decl td { width: auto; }
+  table.hdr { font-size: 8pt; }
+  table.parcel, table.av, table.duty, table.addl { font-size: 7pt; }
+  .note { font-size: 8.5pt; color: #444; margin: 2pt 0 8pt; }
+  .formhead { font-size: 8.5pt; color: #333; margin: 0 0 2pt; }
+  .decl-label { width: 82%; }
+  .decl-box { width: 18%; text-align: center; white-space: nowrap; font-size: 8pt; }
+  .boxed { border: 0.5pt solid #888; padding: 4pt 6pt; }
+</style>
 </head>
 <body>
 <h1>{{ doc_title }}</h1>
-<p class="subtitle">Bill of Export for e-commerce exports under CBIC regulations &mdash; fields per pbe_field_schemas</p>
-{% for section in sections %}
-<h2>{{ section.name }}</h2>
-<table>
-{% for row in section.rows %}
+<p class="formhead">Form PBE-III &mdash; Postal Bill of Export - III (see regulation 5(1)(i)) &mdash; For postal exports through E-Commerce &mdash; To be submitted electronically</p>
+
+<!-- Header — the official 9-field header block -->
+<h2>Header</h2>
+<table class="hdr">
   <tr>
-    <th>{{ row.label }}{% if row.required %} *{% endif %}</th>
-    <td{% if row.missing %} class="missing"{% endif %}>{{ row.value }}</td>
+    <th>Bill of Export No. and date</th>
+    <td>{{ by_key['boe_no'].value }}</td>
+    <th>Foreign Post Office code</th>
+    <td>{{ by_key['fpo_code'].value }}</td>
+    <th>Name of Exporter</th>
+    <td>{{ by_key['exporter_name'].value }}</td>
   </tr>
-{% endfor %}
+  <tr>
+    <th>Address of Exporter</th>
+    <td colspan="3">{{ by_key['exporter_address'].value }}</td>
+    <th>IEC</th>
+    <td>{{ by_key['iec'].value }}</td>
+  </tr>
+  <tr>
+    <th>State Code</th>
+    <td>{{ by_key['state_code'].value }}</td>
+    <th>GSTIN or as applicable</th>
+    <td>{{ by_key['gstin_or_as_applicable'].value }}</td>
+    <th>AD code (if Applicable)</th>
+    <td>{{ by_key['ad_code'].value }}</td>
+  </tr>
 </table>
+<table class="hdr">
+  <tr>
+    <th>Details of authorized agent &mdash; Customs Broker License No.</th>
+    <td>{{ by_key['customs_broker_license_no'].value }}</td>
+    <th>Details of authorized agent &mdash; Name and address</th>
+    <td>{{ by_key['agent_name_address'].value }}</td>
+  </tr>
+</table>
+
+<!-- Details of parcel -->
+<h2>Details of parcel</h2>
+<table class="parcel">
+  <tr>
+    <th rowspan="2">SI. No</th>
+    <th colspan="2">Consignee details</th>
+    <th colspan="3">Product details</th>
+    <th colspan="3">Details of Parcel</th>
+    <th colspan="5">E-commerce particulars</th>
+  </tr>
+  <tr>
+    <th>Name and Address</th>
+    <th>Country of destination</th>
+    <th>Description</th>
+    <th>CTH</th>
+    <th>Quantity / Unit (pieces, liters, kgs., meters, Pairs etc.)</th>
+    <th>Invoice No. and date</th>
+    <th>Weight &mdash; Gross</th>
+    <th>Weight &mdash; Net</th>
+    <th>GSTIN of E-commerce operator</th>
+    <th>URL (Name) of website</th>
+    <th>Payment transaction ID</th>
+    <th>SKU No.</th>
+    <th>Postal Tracking Number</th>
+  </tr>
+  <tr>
+    <td>{{ by_key['si_no'].value }}</td>
+    <td>{{ by_key['consignee_details'].value }}</td>
+    <td>{{ by_key['destination_country'].value }}</td>
+    <td>{{ by_key['product_description'].value }}</td>
+    <td>{{ by_key['cth'].value }}</td>
+    <td>{{ by_key['quantity_unit'].value }}</td>
+    <td>{{ by_key['invoice_no_date'].value }}</td>
+    <td>{{ by_key['gross_weight'].value }}</td>
+    <td>{{ by_key['net_weight'].value }}</td>
+    <td>{{ by_key['ecomm_operator_gstin'].value }}</td>
+    <td>{{ by_key['ecomm_url'].value }}</td>
+    <td>{{ by_key['ecomm_payment_txn_id'].value }}</td>
+    <td>{{ by_key['ecomm_sku_no'].value }}</td>
+    <td>{{ by_key['ecomm_postal_tracking'].value }}</td>
+  </tr>
+</table>
+
+<!-- Assessable value under section 14 -->
+<h2>Assessable value under section 14 of the Customs Act, 1962</h2>
+<p class="note">Details of Tax Invoice or commercial invoice (whichever applicable)</p>
+<table class="av">
+  <tr>
+    <th>FOB</th>
+    <th>Currency</th>
+    <th>Exchange rate</th>
+    <th>Amount in INR</th>
+    <th>H.S code</th>
+    <th>Invoice no. and date</th>
+    <th>SI. No of item in invoice</th>
+    <th>Value</th>
+  </tr>
+  <tr>
+    <td>{{ by_key['fob_value'].value }}</td>
+    <td>{{ by_key['currency'].value }}</td>
+    <td>{{ by_key['exchange_rate'].value }}</td>
+    <td>{{ by_key['amount_inr'].value }}</td>
+    <td>{{ by_key['hs_code'].value }}</td>
+    <td>{{ by_key['tax_invoice_no_date'].value }}</td>
+    <td>{{ by_key['si_no_item'].value }}</td>
+    <td>{{ by_key['assessable_value'].value }}</td>
+  </tr>
+</table>
+
+<!-- Details of Duty/Tax -->
+<h2>Details of Duty/Tax</h2>
+<table class="duty">
+  <tr>
+    <th colspan="2">Customs duties &mdash; Export duty</th>
+    <th colspan="2">Customs duties &mdash; Cess</th>
+    <th colspan="2">Customs duties &mdash; IGST (if applicable)</th>
+    <th colspan="2">Customs duties &mdash; Compensation cess (if applicable)</th>
+    <th rowspan="2">LUT/bond details (if applicable)</th>
+    <th colspan="2">GST details</th>
+    <th rowspan="2">Total</th>
+  </tr>
+  <tr>
+    <th>Rate</th><th>Amount</th>
+    <th>Rate</th><th>Amount</th>
+    <th>Rate</th><th>Amount</th>
+    <th>Rate</th><th>Amount</th>
+    <th>Duties</th><th>Cess</th>
+  </tr>
+  <tr>
+    <td>{{ by_key['export_duty_rate'].value }}</td>
+    <td>{{ by_key['export_duty_amount'].value }}</td>
+    <td>{{ by_key['cess_rate'].value }}</td>
+    <td>{{ by_key['cess_amount'].value }}</td>
+    <td>{{ by_key['igst_rate'].value }}</td>
+    <td>{{ by_key['igst_amount'].value }}</td>
+    <td>{{ by_key['comp_cess_rate'].value }}</td>
+    <td>{{ by_key['comp_cess_amount'].value }}</td>
+    <td>{{ by_key['lut_bond'].value }}</td>
+    <td>{{ by_key['gst_duties'].value }}</td>
+    <td>{{ by_key['gst_cess'].value }}</td>
+    <td>{{ by_key['total_duty_tax'].value }}</td>
+  </tr>
+</table>
+
+<!-- Additional details of parcel -->
+<h2>Additional details of parcel</h2>
+<p class="note">(Additional information for duty drawback / any other export scheme, if claimed by the exporter)</p>
+<table class="addl">
+  <tr>
+    <th>Invoice No.</th>
+    <th>Item Serial No. in Invoice</th>
+    <th>RITC code/ITC-HS code</th>
+    <th>DBK serial No.</th>
+    <th>Drawback quantity</th>
+    <th>IGST payment status (Yes/No)</th>
+    <th>End use of item</th>
+    <th>Scheme code</th>
+    <th>Add Freight (₹/Y/N)</th>
+    <th>Nature of contract (CIF/CF/C&F/FOB)</th>
+  </tr>
+  <tr>
+    <td>{{ by_key['invoice_no'].value }}</td>
+    <td>{{ by_key['item_serial_no'].value }}</td>
+    <td>{{ by_key['ritc_itc_hs'].value }}</td>
+    <td>{{ by_key['dbk_serial_no'].value }}</td>
+    <td>{{ by_key['drawback_quantity'].value }}</td>
+    <td>{{ by_key['igst_payment_status'].value }}</td>
+    <td>{{ by_key['end_use'].value }}</td>
+    <td>{{ by_key['scheme_code'].value }}</td>
+    <td>{{ by_key['add_freight'].value }}</td>
+    <td>{{ by_key['nature_of_contract'].value }}</td>
+  </tr>
+</table>
+
+<!-- Declarations — verbatim legal wording, Yes/No as applicable -->
+<h2>Declarations</h2>
+<p class="note">Yes / No as applicable</p>
+{% for section in sections if section.name == 'Declarations' %}
+  {% for row in section.rows %}
+    <table class="decl">
+      <tr>
+        <td class="decl-label">{{ row.label }}</td>
+        <td class="decl-box">[ ] Yes&nbsp;&nbsp;[ ] No&nbsp;&nbsp;[ ] NA</td>
+      </tr>
+    </table>
+  {% endfor %}
 {% endfor %}
-<p class="footer">Generated by the sih-dnk mockup document pipeline. Values are DB-verified or user-supplied; "*" marks required fields per pbe_field_schemas.</p>
+<p class="note boxed">It is hereby declared that the content of this Postal Bill of Export are true and correct.</p>
+<p class="formhead">Data for Postal Bill of Export submitted electronically on Date and Time by the Exporter or Authorised Agent</p>
+<h2>Examination order and report</h2>
+<p class="note boxed">Let Export Order: This is a system generated document and No signature is required.</p>
+<p class="footer">Generated by the sih-dnk mockup document pipeline. Values are DB-verified or user-supplied; "—" marks a field the pipeline does not know (filled by the exporter at submission).</p>
 </body>
 </html>

@@ -294,12 +294,16 @@ def test_preview_contains_hi_kn_confirm_labels():
 
 
 def test_form_html_is_english_only():
-    """The rendered form HTML contains NO Devanagari/Kannada text, and does
-    carry English content (form title + a pbe_field_schemas label)."""
+    """The rendered form HTML contains NO Devanagari/Kannada text, and carries
+    the OFFICIAL Notification 07/2026-Customs column labels verbatim."""
     html = build_html(_complete_data(), "PBE_IV")
     assert not _DEVANAGARI_OR_KANNADA.search(html)
     assert "PBE" in html
-    assert "Customs" in html  # from the CTH label in pbe_field_schemas
+    # OFFICIAL FORMAT: Notification 07/2026-Customs column labels verbatim.
+    assert "Assessable value" in html
+    assert "RITC code/ITC-HS code" in html
+    assert "Nature of contract (CIF/CF/C&F/FOB)" in html
+    assert "Customs" in html  # e.g. "Customs Broker License No." / "Customs Act, 1962"
 
 
 @pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext missing")
@@ -312,7 +316,8 @@ def test_form_pdf_is_english_only(tmp_path, clean_documents):
     assert not _DEVANAGARI_OR_KANNADA.search(text)
     assert doc.doc_type == "PBE_IV"
     assert re.search(r"630[24]", text)  # HS code from the DB is present
-    assert re.search(r"PBE|Customs|cushion", text, re.IGNORECASE)
+    assert re.search(r"Assessable value", text)  # official column header verbatim
+    assert re.search(r"Drawback", text)  # official declaration wording verbatim
 
 
 # --- immutable versioning ----------------------------------------------------
