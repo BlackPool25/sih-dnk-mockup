@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sih-dnk-storage"
+version = "0.1.0"
+description = "SIH-DNK shared storage layer — async SQLAlchemy engine, session factory, Redis client"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy>=2.0.30,<2.1",
+    "psycopg[binary]>=3.1,<4",
+    "python-dotenv>=1.0",
+    "redis>=5.0,<6",
+    "cryptography>=42.0",
+    "pydantic>=2.7,<3",
+]
+
+# Flat layout — the project root IS the package directory, so hatchling
+# can't auto-detect by project name. Declare the files explicitly.
+[tool.hatch.build.targets.wheel]
+only-include = ["__init__.py", "config.py", "crypto.py", "db.py", "redis.py", "tests"]
