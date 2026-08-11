@@ -4,7 +4,7 @@
 .venv/
 __pycache__/
 *.pyc
-/seed/
+/validation-engine/seed/
 .omo/
 docs-out/
 .pytest_cache/
