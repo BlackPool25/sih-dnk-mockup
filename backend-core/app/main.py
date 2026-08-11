@@ -4,11 +4,12 @@ Exposes a /health endpoint and includes the auth router with JWT middleware.
 """
 from __future__ import annotations
 
+import auth.middleware as auth_mw
+from auth.routes import router as auth_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-import auth.middleware as auth_mw
-from auth.routes import router as auth_router
+from app.routers.profile import router as profile_router
 
 # Extend public auth paths so the /health endpoint is accessible without a token.
 auth_mw.PUBLIC_AUTH_PATHS = auth_mw.PUBLIC_AUTH_PATHS | {"/health"}
@@ -33,6 +34,8 @@ app.add_middleware(auth_mw.JWTAuthMiddleware)
 
 # Auth routes (login, register, refresh, logout, password-reset, me)
 app.include_router(auth_router)
+
+app.include_router(profile_router)
 
 
 @app.get("/health")
