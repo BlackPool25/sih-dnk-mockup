@@ -5,9 +5,8 @@ from __future__ import annotations
 import hashlib
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from app.main import app
+from httpx import ASGITransport, AsyncClient
 
 SELLER_PROFILE_PAYLOAD: dict[str, str] = {
     "firm_name": "Test Exports Ltd",

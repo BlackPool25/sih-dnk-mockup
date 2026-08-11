@@ -12,8 +12,6 @@ Covers:
 from __future__ import annotations
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from app.main import app
 from app.services.doc_generator import (
     SDR_MINOR_PER_UNIT,
@@ -23,6 +21,7 @@ from app.services.doc_generator import (
     generate_pbe,
     generate_pl,
 )
+from httpx import ASGITransport, AsyncClient
 
 # ---------------------------------------------------------------------------
 # Test data

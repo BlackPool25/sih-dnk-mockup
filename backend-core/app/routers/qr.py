@@ -16,17 +16,17 @@ from pathlib import Path
 
 import jwt
 import qrcode
-from auth.deps import get_current_user, require_role
-from auth.services.jwt import decode_token, is_revoked, revoke_token
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
+
+from app.models.doc_pack import DocPack
+from app.models.order import Order, OrderStatus
+from auth.deps import get_current_user, require_role
+from auth.services.jwt import decode_token, is_revoked, revoke_token
 from storage.config import settings
 from storage.crypto import DecryptionError, decrypt_field
 from storage.db import get_session
 from storage.redis import get_redis
-
-from app.models.doc_pack import DocPack
-from app.models.order import Order, OrderStatus
 
 # ---------------------------------------------------------------------------
 # Router

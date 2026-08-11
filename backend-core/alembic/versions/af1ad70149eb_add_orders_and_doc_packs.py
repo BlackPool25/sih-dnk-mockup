@@ -12,18 +12,16 @@ approved / rejected / cancelled).
 """
 
 from collections.abc import Sequence
-from typing import Union
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
-
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "af1ad70149eb"
-down_revision: Union[str, Sequence[str], None] = "2ae521447228"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "2ae521447228"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # ── Old order_status enum values (for downgrade) ─────────────────────────────
 _OLD_ORDER_STATUS_VALUES = [

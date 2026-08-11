@@ -118,7 +118,8 @@ def _make_session_factory(store: InMemoryStore):
                 elif left_name == "revoked":
                     rv = _extract_right_val(right)
                     if rv is not None:
-                        from sqlalchemy.sql.expression import False_ as SA_False, True_ as SA_True
+                        from sqlalchemy.sql.expression import False_ as SA_False
+                        from sqlalchemy.sql.expression import True_ as SA_True
                         if isinstance(rv, SA_False):
                             revoked_val = False
                         elif isinstance(rv, SA_True):
@@ -167,7 +168,16 @@ def _make_session_factory(store: InMemoryStore):
         finally:
             pass
 
-    return _session_ctx
+    def _session_factory() -> Any:
+        """Return a fresh session context manager.
+
+        App routes use the double-call pattern ``get_session()()``, so the
+        patched ``get_session`` must return a callable that produces the
+        context manager when invoked.
+        """
+        return _session_ctx
+
+    return _session_factory
 
 
 @pytest.fixture

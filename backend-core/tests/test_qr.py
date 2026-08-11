@@ -22,10 +22,9 @@ from unittest.mock import AsyncMock
 
 import jwt
 import pytest
+from app.main import app
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
-
-from app.main import app
 
 # ---------------------------------------------------------------------------
 # Test data (shared with test_doc_generation.py)

@@ -12,9 +12,6 @@ import jwt as pyjwt
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
-from storage.config import settings
-from storage.db import get_session
-from storage.redis import get_redis
 
 from auth.deps import get_current_user
 from auth.models import RefreshToken, User, UserRole
@@ -25,6 +22,9 @@ from auth.services.jwt import (
     revoke_token,
 )
 from auth.services.password import hash_password, verify_password
+from storage.config import settings
+from storage.db import get_session
+from storage.redis import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,7 @@ async def _issue_token_pair(
     exp = payload["exp"]
     expires_at = datetime.fromtimestamp(exp, tz=UTC)
 
-    async with get_session() as session:
+    async with get_session()() as session:
         rt = RefreshToken(
             user_id=user.id,
             token_hash=_token_hash(refresh),
@@ -155,7 +155,7 @@ async def _issue_token_pair(
 
 
 async def _revoke_refresh_in_db(jti: str) -> None:
-    async with get_session() as session:
+    async with get_session()() as session:
         result = await session.execute(
             select(RefreshToken).where(RefreshToken.jti == jti)
         )
@@ -168,7 +168,7 @@ async def _revoke_refresh_in_db(jti: str) -> None:
 async def _revoke_all_refresh_tokens_for_user(user_id: str) -> None:
     from uuid import UUID
 
-    async with get_session() as session:
+    async with get_session()() as session:
         result = await session.execute(
             select(RefreshToken).where(
                 RefreshToken.user_id == UUID(user_id),
@@ -192,7 +192,7 @@ async def register(body: RegisterRequest) -> dict[str, object]:
             status_code=400, detail="Forbidden role: use 'seller' or 'buyer'"
         )
 
-    async with get_session() as session:
+    async with get_session()() as session:
         existing = await session.execute(select(User).where(User.email == body.email))
         if existing.scalar_one_or_none() is not None:
             raise HTTPException(status_code=409, detail="Email already registered")
@@ -216,7 +216,7 @@ async def register(body: RegisterRequest) -> dict[str, object]:
 
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest) -> dict[str, object]:
-    async with get_session() as session:
+    async with get_session()() as session:
         result = await session.execute(select(User).where(User.email == body.email))
         user = result.scalar_one_or_none()
 
@@ -261,7 +261,7 @@ async def refresh(body: RefreshRequest) -> dict[str, object]:
         )
 
     # Look up DB row — must exist, not revoked, not expired
-    async with get_session() as session:
+    async with get_session()() as session:
         result = await session.execute(
             select(RefreshToken).where(RefreshToken.jti == jti)
         )
@@ -286,7 +286,7 @@ async def refresh(body: RefreshRequest) -> dict[str, object]:
     user_id_str = str(payload["sub"])
     from uuid import UUID
 
-    async with get_session() as session:
+    async with get_session()() as session:
         result = await session.execute(select(User).where(User.id == UUID(user_id_str)))
         user = result.scalar_one_or_none()
         if user is None:
@@ -331,7 +331,7 @@ async def logout(
 
 @router.post("/password-reset-request", response_model=MessageResponse)
 async def password_reset_request(body: PasswordResetRequest) -> dict[str, str]:
-    async with get_session() as session:
+    async with get_session()() as session:
         result = await session.execute(select(User).where(User.email == body.email))
         user = result.scalar_one_or_none()
 
@@ -371,7 +371,7 @@ async def password_reset(body: PasswordResetBody) -> dict[str, str]:
 
     from uuid import UUID
 
-    async with get_session() as session:
+    async with get_session()() as session:
         result = await session.execute(select(User).where(User.id == UUID(user_id_str)))
         user = result.scalar_one_or_none()
         if user is None:

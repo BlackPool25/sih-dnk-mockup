@@ -13,9 +13,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 import httpx
-from auth.deps import get_current_user
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+
+from auth.deps import get_current_user
 from storage.config import settings
 
 # ---------------------------------------------------------------------------

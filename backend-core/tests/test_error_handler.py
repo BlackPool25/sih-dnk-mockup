@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
+from app.middleware.error_handler import register_error_handlers
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
-
-from app.middleware.error_handler import register_error_handlers
-
 
 # ---------------------------------------------------------------------------
 # Test app factory

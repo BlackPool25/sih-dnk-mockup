@@ -3,10 +3,9 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
+from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
-
-from alembic import context
 
 # Make the auth package importable so `models` resolves regardless of cwd.
 AUTH_DIR = Path(__file__).resolve().parent.parent
@@ -29,7 +28,7 @@ config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
 # Add auth's model MetaData object for 'autogenerate' support.
 # Must be auth.models.Base, NOT validation-engine's Base.
-from auth.models import Base  # noqa: E402
+from auth.models import Base
 
 target_metadata = Base.metadata
 

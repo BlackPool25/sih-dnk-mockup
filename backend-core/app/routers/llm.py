@@ -11,10 +11,10 @@ from __future__ import annotations
 import json
 import uuid
 
-from auth.deps import get_current_user, require_role
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.schemas.llm import ChatRequest, ChatResponse, SessionResponse
+from auth.deps import get_current_user, require_role
 
 # Route prefix is /api/llm (see main.py registration)
 router = APIRouter(prefix="/api/llm", tags=["llm"])

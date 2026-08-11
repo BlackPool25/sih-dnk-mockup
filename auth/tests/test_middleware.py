@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import sys
 import time
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import jwt as pyjwt  # PyJWT — for generating real test tokens
@@ -138,7 +138,7 @@ def app() -> FastAPI:
     @application.get("/user-info")
     async def user_info(request: Request) -> dict[str, str]:
         """Return the injected user dict so tests can verify it."""
-        return request.state.user  # type: ignore[no-any-return]
+        return cast(dict[str, str], request.state.user)
 
     @application.get("/seller-only", dependencies=[Depends(require_role("seller"))])
     async def seller_only() -> dict[str, str]:

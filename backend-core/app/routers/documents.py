@@ -11,16 +11,16 @@ import base64
 import hashlib
 import uuid
 
-from auth.deps import get_current_user, require_role
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import select
-from storage.config import settings
-from storage.crypto import DecryptionError, decrypt_field, encrypt_field
-from storage.db import get_session
 
 from app.models.profile import SellerProfile
 from app.models.profile_document import DocumentType, ProfileDocument
+from auth.deps import get_current_user, require_role
+from storage.config import settings
+from storage.crypto import DecryptionError, decrypt_field, encrypt_field
+from storage.db import get_session
 
 # ---------------------------------------------------------------------------
 # Router

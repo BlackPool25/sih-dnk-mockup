@@ -6,11 +6,9 @@ password-reset, and /me — happy paths and failure modes.
 
 from __future__ import annotations
 
-import hashlib
 import secrets
 import time
 import uuid
-from datetime import UTC, datetime
 
 import jwt as pyjwt
 import pytest
@@ -362,7 +360,6 @@ class TestPasswordReset:
         keys = await store.fake_redis.keys("pwreset:*")
         assert len(keys) > 0
         token_hash_key = keys[0].decode() if isinstance(keys[0], bytes) else keys[0]
-        token_hash_suffix = token_hash_key.split(":", 1)[1]
 
         # We need the raw token. The raw token is stored in redis but we
         # need to compute what raw token produces this hash. Since we can't

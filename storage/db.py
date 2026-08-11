@@ -34,7 +34,7 @@ def get_session() -> async_sessionmaker[AsyncSession]:
 
     Usage::
 
-        async with get_session() as session:
+        async with get_session()() as session:
             result = await session.execute(select(...))
     """
     engine = get_engine()

@@ -6,15 +6,15 @@ import asyncio
 import uuid
 
 import pytest
+from app.main import app
+from httpx import ASGITransport, AsyncClient
+
 from auth.models import User, UserRole
 from auth.services.jwt import create_access_token
 from auth.services.password import hash_password
-from httpx import ASGITransport, AsyncClient
 from storage.config import settings
 from storage.db import get_session
 from storage.redis import get_redis
-
-from app.main import app
 
 # ---------------------------------------------------------------------------
 # Helpers

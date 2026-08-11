@@ -13,11 +13,11 @@ import os
 def test_import_auth_package():
     """All auth sub-packages should be importable."""
     import auth
-    import auth.models
-    import auth.services
-    import auth.routes
-    import auth.middleware
     import auth.cli
+    import auth.middleware
+    import auth.models
+    import auth.routes
+    import auth.services
 
     assert auth is not None
 

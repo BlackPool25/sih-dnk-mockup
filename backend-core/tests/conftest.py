@@ -14,11 +14,12 @@ import pytest_asyncio
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 sys.path.insert(0, _PROJECT_ROOT)
 
+from sqlalchemy import Column, Table, select
+from sqlalchemy.dialects.postgresql import UUID
+
 from auth.models import User, UserRole
 from auth.services.jwt import create_access_token
 from auth.services.password import hash_password
-from sqlalchemy import Column, Table, select
-from sqlalchemy.dialects.postgresql import UUID
 from storage.config import Settings
 from storage.db import get_session
 

@@ -9,10 +9,8 @@ from __future__ import annotations
 
 import uuid
 
-from auth.deps import get_current_user, require_role
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
-from storage.db import get_session
 
 from app.models.profile import SellerProfile
 from app.schemas.profile import (
@@ -25,6 +23,8 @@ from app.services.profile_crypto import (
     decrypt_profile_fields,
     encrypt_profile_fields,
 )
+from auth.deps import get_current_user, require_role
+from storage.db import get_session
 
 # ---------------------------------------------------------------------------
 # Router

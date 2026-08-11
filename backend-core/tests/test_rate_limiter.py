@@ -7,9 +7,8 @@ from collections.abc import Iterator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from httpx import ASGITransport, AsyncClient
-
 from app.main import app
+from httpx import ASGITransport, AsyncClient
 
 _RATE_LIMIT_MOD = "app.middleware.rate_limiter"
 

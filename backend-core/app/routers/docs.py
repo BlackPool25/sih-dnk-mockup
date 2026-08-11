@@ -8,12 +8,8 @@ from __future__ import annotations
 
 import uuid
 
-from auth.deps import get_current_user, require_role
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
-from storage.config import settings
-from storage.crypto import DecryptionError, decrypt_field
-from storage.db import get_session
 
 from app.models.doc_pack import DocPack
 from app.models.order import Order, OrderStatus
@@ -23,6 +19,10 @@ from app.services.doc_generator import (
     generate_pbe,
     generate_pl,
 )
+from auth.deps import get_current_user, require_role
+from storage.config import settings
+from storage.crypto import DecryptionError, decrypt_field
+from storage.db import get_session
 
 # ---------------------------------------------------------------------------
 # Router

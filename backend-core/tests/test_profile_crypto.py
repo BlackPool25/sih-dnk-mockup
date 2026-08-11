@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import pytest
-from storage.config import Settings
-from storage.crypto import DecryptionError
-
 from app.services.profile_crypto import (
     ENCRYPTED_FIELDS,
     decrypt_profile_fields,
     encrypt_profile_fields,
 )
+
+from storage.config import Settings
+from storage.crypto import DecryptionError
 
 # ---------------------------------------------------------------------------
 # Constants

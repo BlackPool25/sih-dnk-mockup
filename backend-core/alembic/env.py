@@ -14,11 +14,10 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
+from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import Table, engine_from_config, pool
 from sqlalchemy.dialects.postgresql import UUID
-
-from alembic import context
 
 # Make the monorepo root importable so ``from app.models import Base`` resolves.
 BACKEND_CORE_DIR = Path(__file__).resolve().parent.parent

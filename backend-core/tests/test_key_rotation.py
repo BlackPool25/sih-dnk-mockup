@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-
 from app.cli.__main__ import (
     _looks_encrypted,
     _re_encrypt,
@@ -250,7 +248,9 @@ def test_cli_identical_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.asyncio
 async def test_dry_run_reports_counts(monkeypatch: pytest.MonkeyPatch) -> None:
     """Dry-run iterates all rows and reports counts without writing."""
-    from app.cli.__main__ import _async_main, _rotate_profiles, _rotate_documents, _rotate_orders
+    from app.cli.__main__ import (
+        _async_main,
+    )
 
     monkeypatch.setenv("ENCRYPTION_MASTER_KEY", OLD_KEY_HEX)
     monkeypatch.setenv("NEW_ENCRYPTION_MASTER_KEY", NEW_KEY_HEX)

@@ -10,11 +10,8 @@ from __future__ import annotations
 import json
 import uuid
 
-from auth.deps import get_current_user, require_role
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
-from storage.crypto import DecryptionError, decrypt_field, encrypt_field
-from storage.db import get_session
 
 from app.models.order import Order, OrderStatus
 from app.models.profile import SellerProfile
@@ -23,6 +20,9 @@ from app.schemas.order import (
     OrderListResponse,
     OrderResponse,
 )
+from auth.deps import get_current_user, require_role
+from storage.crypto import DecryptionError, decrypt_field, encrypt_field
+from storage.db import get_session
 
 # ---------------------------------------------------------------------------
 # Router

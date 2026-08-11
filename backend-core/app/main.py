@@ -4,11 +4,10 @@ Exposes a /health endpoint and includes the auth router with JWT middleware.
 """
 from __future__ import annotations
 
-import auth.middleware as auth_mw
-from auth.routes import router as auth_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+import auth.middleware as auth_mw
 from app.middleware.error_handler import register_error_handlers
 from app.middleware.rate_limiter import RateLimitMiddleware
 from app.routers.docs import router as docs_router
@@ -18,6 +17,7 @@ from app.routers.orders import router as orders_router
 from app.routers.profile import router as profile_router
 from app.routers.proxy import router as proxy_router
 from app.routers.qr import router as qr_router
+from auth.routes import router as auth_router
 
 # Extend public auth paths so the /health endpoint is accessible without a token.
 auth_mw.PUBLIC_AUTH_PATHS = auth_mw.PUBLIC_AUTH_PATHS | {"/health"}

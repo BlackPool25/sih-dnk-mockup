@@ -43,7 +43,7 @@ class TestGetSession:
         try:
             sessionmaker = get_session()
             assert sessionmaker is not None
-            assert hasattr(sessionmaker, "__call__")
+            assert callable(sessionmaker)
         finally:
             del os.environ["DATABASE_URL"]
 

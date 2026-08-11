@@ -386,5 +386,6 @@ class TestEdgeCases:
     def test_settings_is_frozen_after_creation(self) -> None:
         """Settings instances are immutable."""
         s = Settings(**_valid_kwargs())
+        field_name = "JWT_ALGORITHM"
         with pytest.raises(ValidationError):
-            s.JWT_ALGORITHM = "HS512"  # type: ignore[misc]
+            setattr(s, field_name, "HS512")

@@ -155,18 +155,15 @@ class Settings(BaseModel):
     # Derived properties (rate limits as (int, int) tuples)
     # --------------------------------------------------------------------------
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
+    @computed_field
     def RATE_LIMIT_LOGIN_TUPLE(self) -> tuple[int, int]:
         return _parse_rate_limit(self.RATE_LIMIT_LOGIN)
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
+    @computed_field
     def RATE_LIMIT_REGISTER_TUPLE(self) -> tuple[int, int]:
         return _parse_rate_limit(self.RATE_LIMIT_REGISTER)
 
-    @computed_field  # type: ignore[prop-decorator]
-    @property
+    @computed_field
     def RATE_LIMIT_DEFAULT_TUPLE(self) -> tuple[int, int]:
         return _parse_rate_limit(self.RATE_LIMIT_DEFAULT)
 

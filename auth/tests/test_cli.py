@@ -52,7 +52,7 @@ def test_seed_sahayak_first_run(capsys: pytest.CaptureFixture[str]) -> None:
 
     with patch(
         "auth.cli.__main__.get_session",
-        return_value=AsyncMock(
+        return_value=lambda: AsyncMock(
             __aenter__=AsyncMock(return_value=mock_session),
             __aexit__=AsyncMock(return_value=None),
         ),
@@ -72,7 +72,7 @@ def test_seed_sahayak_first_run_user_fields() -> None:
 
     with patch(
         "auth.cli.__main__.get_session",
-        return_value=AsyncMock(
+        return_value=lambda: AsyncMock(
             __aenter__=AsyncMock(return_value=mock_session),
             __aexit__=AsyncMock(return_value=None),
         ),
@@ -99,7 +99,7 @@ def test_seed_sahayak_already_exists(capsys: pytest.CaptureFixture[str]) -> None
 
     with patch(
         "auth.cli.__main__.get_session",
-        return_value=AsyncMock(
+        return_value=lambda: AsyncMock(
             __aenter__=AsyncMock(return_value=mock_session),
             __aexit__=AsyncMock(return_value=None),
         ),

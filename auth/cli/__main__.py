@@ -41,7 +41,7 @@ async def _seed_sahayak() -> None:
     if not password:
         _fail("SAHAYAK_PASSWORD is not set — check your .env file or environment")
 
-    async with get_session() as session:
+    async with get_session()() as session:
         # Check for existing Sahayak user (idempotency guard).
         result = await session.execute(
             select(User).where(User.email == email),
