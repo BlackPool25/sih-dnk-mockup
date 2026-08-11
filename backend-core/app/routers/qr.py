@@ -1,11 +1,15 @@
-"""QR code generation routes — create scannable QR codes for document access.
+"""QR code generation and document access routes.
 
 POST /orders/{order_id}/generate-qr — generate a QR code PNG encoding a
 short-lived JWT URL that grants access to the order's documents.
+
+GET /orders/{order_id}/docs?token=X — public document access endpoint
+used via QR codes (requires doc_access JWT + valid user Authorization).
 """
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,13 +17,15 @@ from pathlib import Path
 import jwt
 import qrcode
 from auth.deps import get_current_user, require_role
-from auth.services.jwt import is_revoked, revoke_token
-from fastapi import APIRouter, Depends, HTTPException, Request
+from auth.services.jwt import decode_token, is_revoked, revoke_token
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from storage.config import settings
+from storage.crypto import DecryptionError, decrypt_field
 from storage.db import get_session
 from storage.redis import get_redis
 
+from app.models.doc_pack import DocPack
 from app.models.order import Order, OrderStatus
 
 # ---------------------------------------------------------------------------
@@ -156,3 +162,198 @@ async def generate_qr(
         "token_expiry": expiry.isoformat(),
         "qr_image_path": str(image_path),
     }
+
+
+# ---------------------------------------------------------------------------
+# Helpers — doc access decryption
+# ---------------------------------------------------------------------------
+
+_SNAPSHOT_ENCRYPTED_MAP: dict[str, str] = {
+    "pan_encrypted": "pan",
+    "bank_account_encrypted": "bank_account",
+    "ad_code_encrypted": "ad_code",
+    "gstin_encrypted": "gstin",
+}
+
+
+def _looks_encrypted(value: object) -> bool:
+    """Return True when *value* is a dict carrying ``ciphertext_b64``."""
+    return isinstance(value, dict) and "ciphertext_b64" in value
+
+
+def _decrypt_snapshot_field(
+    snapshot: dict,
+    encrypted_key: str,
+    plain_key: str,
+    seller_uuid: str,
+    master_key: bytes,
+) -> str | None:
+    """Decrypt one encrypted field from the profile snapshot.
+
+    Returns None if the field is missing, not encrypted, or decryption fails.
+    """
+    enc_value = snapshot.get(encrypted_key)
+    if not _looks_encrypted(enc_value):
+        return None
+    try:
+        return decrypt_field(enc_value, seller_uuid, master_key)
+    except DecryptionError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# GET /orders/{order_id}/docs — Document access
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/docs",
+    dependencies=[Depends(get_current_user)],
+)
+async def get_qr_docs(
+    request: Request,
+    order_id: str,
+    token: str = Query(default=None),
+) -> dict[str, object]:
+    """Access order documents via QR-code doc_access token.
+
+    Requires:
+    - ``token`` query param: a valid doc_access JWT (purpose="doc_access")
+    - ``Authorization`` header: user must be the order seller or a sahayak
+
+    Returns decrypted PAN, bank account, AD code, IEC, GSTIN, and all
+    DocPack documents.
+    """
+    # 1. Extract token from query param — 401 if missing -----------------------
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing document access token")
+
+    # 2. Decode doc_access JWT — 401 if invalid/expired ------------------------
+    try:
+        payload = decode_token(token, settings.JWT_SECRET_KEY, settings.JWT_ALGORITHM)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401, detail="Document access token has expired"
+        ) from None
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=401, detail="Invalid document access token"
+        ) from None
+
+    # 3. Check purpose — 401 if wrong ------------------------------------------
+    if payload.get("purpose") != "doc_access":
+        raise HTTPException(status_code=401, detail="Invalid document access token")
+
+    jti: str | None = payload.get("jti")
+    if not jti or not isinstance(jti, str):
+        raise HTTPException(status_code=401, detail="Invalid document access token")
+
+    # 4. Check is_revoked in Redis blacklist — 401 if revoked ------------------
+    redis_client = get_redis()
+    if await is_revoked(jti, redis_client):
+        raise HTTPException(
+            status_code=401, detail="Document access token has been revoked"
+        )
+
+    # 5. Match order_id from URL to token.sub — 403 if mismatch ----------------
+    if payload.get("sub") != order_id:
+        raise HTTPException(status_code=403, detail="Token does not match order")
+
+    # 6. Authorization check — seller owner or sahayak -------------------------
+    user: dict[str, str] = request.state.user
+    user_id = user["user_id"]
+    role = user["role"]
+
+    # 7. Fetch order -----------------------------------------------------------
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid order ID") from None
+
+    async with get_session()() as session:
+        result = await session.execute(select(Order).where(Order.id == oid))
+        order = result.scalar_one_or_none()
+
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # 8. Enforce seller-owner or sahayak access --------------------------------
+    if role != "sahayak" and not (
+        role == "seller" and str(order.seller_id) == user_id
+    ):
+        raise HTTPException(status_code=403, detail="Access denied to this order")
+
+    # 9. Decrypt profile snapshot + encrypted order fields ---------------------
+    # Lazily resolve settings so test monkeypatches apply (module-level import
+    # captures the pre-patch object).
+    from storage.config import settings as _s
+
+    master_key = bytes.fromhex(_s.ENCRYPTION_MASTER_KEY)
+    seller_uuid = str(order.seller_id)
+
+    # Decrypt the outer snapshot blob to get the inner profile JSON
+    snapshot_json = decrypt_field(
+        order.profile_snapshot_encrypted, seller_uuid, master_key
+    )
+    snapshot = json.loads(snapshot_json)
+
+    # Decrypt individual encrypted sub-fields inside the snapshot
+    decrypted: dict[str, str | None] = {}
+    for encrypted_key, plain_key in _SNAPSHOT_ENCRYPTED_MAP.items():
+        decrypted[plain_key] = _decrypt_snapshot_field(
+            snapshot, encrypted_key, plain_key, seller_uuid, master_key
+        )
+
+    # Override with order-level encrypted fields (higher priority)
+    try:
+        decrypted["ad_code"] = decrypt_field(
+            order.ad_code_encrypted, seller_uuid, master_key
+        )
+    except DecryptionError:
+        pass
+    try:
+        decrypted["bank_account"] = decrypt_field(
+            order.bank_account_encrypted, seller_uuid, master_key
+        )
+    except DecryptionError:
+        pass
+
+    # 10. Fetch DocPack --------------------------------------------------------
+    doc_pack = None
+    if order.doc_pack_id is not None:
+        async with get_session()() as session:
+            doc_pack = await session.get(DocPack, order.doc_pack_id)
+
+    # 11. Build response -------------------------------------------------------
+    response: dict[str, object] = {
+        "order_id": str(order.id),
+        "status": order.status.value,
+        "pan": decrypted.get("pan"),
+        "bank_account": decrypted.get("bank_account"),
+        "ad_code": decrypted.get("ad_code"),
+        "iec": order.iec,
+        "gstin": decrypted.get("gstin"),
+        "exporter_name": order.exporter_name,
+        "exporter_address": order.exporter_address,
+        "bank_name": order.bank_name,
+        "ifsc": order.ifsc,
+        "destination_country": order.destination_country,
+        "value_minor": order.value_minor,
+        "currency": order.currency,
+        "consignee": order.consignee,
+        "line_items": order.line_items,
+    }
+
+    if doc_pack is not None:
+        response["doc_pack"] = {
+            "commercial_invoice": doc_pack.ci_json,
+            "packing_list": doc_pack.pl_json,
+            "cn22_cn23": doc_pack.cn_json,
+            "pbe": doc_pack.pbe_json,
+            "rendered_pdf_path": doc_pack.rendered_pdf_path,
+            "qr_image_path": doc_pack.qr_image_path,
+        }
+    else:
+        response["doc_pack"] = None
+
+    return response

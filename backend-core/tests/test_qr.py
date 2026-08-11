@@ -1,18 +1,29 @@
-"""Tests for QR code generation — token creation, revocation, and access control.
+"""Tests for QR code generation and document access.
 
 Covers:
 - POST /orders/{order_id}/generate-qr → 201 with QR URL, valid JWT
 - Old token revoked when QR is regenerated
 - 400 when docs haven't been generated yet
 - 403 when a non-owner seller tries to generate
+
+- GET /orders/{order_id}/docs?token=X → 200 with decrypted PAN for sahayak
+- GET /orders/{order_id}/docs?token=X → 200 for owning seller
+- GET /orders/{order_id}/docs?token=X → 403 for wrong seller
+- GET /orders/{order_id}/docs?token=X → 401 without auth header
+- GET /orders/{order_id}/docs?token=X → 401 for expired token
+- GET /orders/{order_id}/docs?token=X → 401 "revoked" for regenerated token
 """
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
+import jwt
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from app.main import app
 
@@ -288,3 +299,264 @@ async def test_qr_unauthorized(
         )
 
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Helpers — doc access tests
+# ---------------------------------------------------------------------------
+
+
+async def _generate_qr(
+    client: AsyncClient, token: str, order_id: str
+) -> tuple[str, str]:
+    """Generate a QR and return (doc_access_token, doc_access_jti)."""
+    resp = await client.post(
+        f"/orders/{order_id}/generate-qr",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, f"QR generation failed: {resp.text}"
+    data = resp.json()
+    return data["token"], data["token_jti"]
+
+
+async def _create_second_seller(
+    second_email: str,
+) -> dict[str, str]:
+    """Create a second seller user and return their auth dict."""
+    from auth.models import User, UserRole
+    from auth.services.jwt import create_access_token
+    from auth.services.password import hash_password
+    from storage.config import settings as test_settings
+    from storage.db import get_session
+
+    async with get_session()() as session:
+        user = User(
+            email=second_email,
+            password_hash=hash_password("testpass"),
+            role=UserRole("seller"),
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    user_id = str(user.id)
+    token = create_access_token(
+        {"sub": user_id, "role": "seller", "email": second_email},
+        test_settings.JWT_SECRET_KEY,
+        test_settings.JWT_ALGORITHM,
+        60,
+    )
+    return {"user_id": user_id, "email": second_email, "role": "seller", "token": token}
+
+
+# ---------------------------------------------------------------------------
+# Doc access tests — GET /orders/{order_id}/docs?token=X
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_sahayak_access_qr(
+    test_seller: dict[str, str],
+    test_sahayak: dict[str, str],
+    _mock_redis_for_qr: AsyncMock,
+) -> None:
+    """Sahayak with valid doc_access token → 200, PAN decrypted."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        order_id = await _create_order(client, test_seller["token"], ORDER_PAYLOAD)
+        await _generate_docs(client, test_seller["token"], order_id)
+        qr_token, _jti = await _generate_qr(client, test_seller["token"], order_id)
+
+        resp = await client.get(
+            f"/orders/{order_id}/docs",
+            params={"token": qr_token},
+            headers={"Authorization": f"Bearer {test_sahayak['token']}"},
+        )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["pan"] == "ABCDE1234F"
+    assert data["order_id"] == order_id
+    assert data["status"] in ("qr_generated", "docs_generated")
+    assert data["bank_account"] is not None
+    assert data["ad_code"] is not None
+    assert data["iec"] is not None
+
+
+@pytest.mark.asyncio
+async def test_seller_access_qr(
+    test_seller: dict[str, str],
+    _mock_redis_for_qr: AsyncMock,
+) -> None:
+    """Seller with valid doc_access token → 200."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        order_id = await _create_order(client, test_seller["token"], ORDER_PAYLOAD)
+        await _generate_docs(client, test_seller["token"], order_id)
+        qr_token, _jti = await _generate_qr(client, test_seller["token"], order_id)
+
+        resp = await client.get(
+            f"/orders/{order_id}/docs",
+            params={"token": qr_token},
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["pan"] == "ABCDE1234F"
+    assert data["order_id"] == order_id
+
+
+@pytest.mark.asyncio
+async def test_wrong_seller_qr(
+    test_seller: dict[str, str],
+    _mock_redis_for_qr: AsyncMock,
+) -> None:
+    """Different seller with valid doc_access token → 403."""
+    second_email = f"wrong_seller_{uuid.uuid4().hex[:8]}@test.com"
+    second_seller = await _create_second_seller(second_email)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        order_id = await _create_order(client, test_seller["token"], ORDER_PAYLOAD)
+        await _generate_docs(client, test_seller["token"], order_id)
+        qr_token, _jti = await _generate_qr(client, test_seller["token"], order_id)
+
+        resp = await client.get(
+            f"/orders/{order_id}/docs",
+            params={"token": qr_token},
+            headers={"Authorization": f"Bearer {second_seller['token']}"},
+        )
+
+    assert resp.status_code == 403, resp.text
+
+    # Cleanup second seller
+    from auth.models import User
+    from storage.db import get_session
+
+    async with get_session()() as session:
+        result = await session.execute(
+            select(User).where(User.email == second_email)
+        )
+        u = result.scalar_one_or_none()
+        if u is not None:
+            await session.delete(u)
+            await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_no_auth_qr(
+    test_seller: dict[str, str],
+    _mock_redis_for_qr: AsyncMock,
+) -> None:
+    """No Authorization header → 401."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        order_id = await _create_order(client, test_seller["token"], ORDER_PAYLOAD)
+        await _generate_docs(client, test_seller["token"], order_id)
+        qr_token, _jti = await _generate_qr(client, test_seller["token"], order_id)
+
+        resp = await client.get(
+            f"/orders/{order_id}/docs",
+            params={"token": qr_token},
+        )
+
+    assert resp.status_code == 401, resp.text
+
+
+@pytest.mark.asyncio
+async def test_expired_token_qr(
+    test_seller: dict[str, str],
+    _mock_redis_for_qr: AsyncMock,
+) -> None:
+    """Expired doc_access JWT → 401."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        order_id = await _create_order(client, test_seller["token"], ORDER_PAYLOAD)
+        await _generate_docs(client, test_seller["token"], order_id)
+
+        # Generate a valid QR first to get the order_id
+        _qr_token, _jti = await _generate_qr(client, test_seller["token"], order_id)
+
+    # Create an expired JWT manually
+    from storage.config import settings as test_settings
+
+    now = datetime.now(UTC)
+    expired_payload = {
+        "sub": order_id,
+        "purpose": "doc_access",
+        "iat": now - timedelta(days=60),
+        "exp": now - timedelta(days=30),
+        "jti": str(uuid.uuid4()),
+    }
+    expired_token = jwt.encode(
+        expired_payload,
+        test_settings.JWT_SECRET_KEY,
+        algorithm=test_settings.JWT_ALGORITHM,
+    )
+
+    transport2 = ASGITransport(app=app)
+    async with AsyncClient(transport=transport2, base_url="http://test") as client2:
+        resp = await client2.get(
+            f"/orders/{order_id}/docs",
+            params={"token": expired_token},
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+
+    assert resp.status_code == 401, resp.text
+    assert "expired" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_revoked_token_qr(
+    test_seller: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regenerate QR → old token revoked → 401 'revoked'."""
+    # Track revoked JTIs so is_revoked can return True for the old one
+    revoked_jtis: set[str] = set()
+
+    async def _track_revoke(jti: str, exp: object, redis_client: object) -> None:
+        revoked_jtis.add(jti)
+
+    async def _check_revoked(jti: str, redis_client: object) -> bool:
+        return jti in revoked_jtis
+
+    monkeypatch.setattr("app.routers.qr.revoke_token", _track_revoke)
+    monkeypatch.setattr("app.routers.qr.is_revoked", _check_revoked)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        order_id = await _create_order(client, test_seller["token"], ORDER_PAYLOAD)
+        await _generate_docs(client, test_seller["token"], order_id)
+
+        # First QR generation
+        resp1 = await client.post(
+            f"/orders/{order_id}/generate-qr",
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+        assert resp1.status_code == 201, resp1.text
+        old_token = resp1.json()["token"]
+
+        # Second QR generation — revokes the old token
+        resp2 = await client.post(
+            f"/orders/{order_id}/generate-qr",
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+        assert resp2.status_code == 201, resp2.text
+
+        # Try accessing docs with the OLD (revoked) token
+        resp = await client.get(
+            f"/orders/{order_id}/docs",
+            params={"token": old_token},
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+
+    assert resp.status_code == 401, resp.text
+    assert "revoked" in resp.json()["detail"].lower()

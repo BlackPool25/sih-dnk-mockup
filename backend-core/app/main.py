@@ -9,10 +9,14 @@ from auth.routes import router as auth_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.middleware.error_handler import register_error_handlers
+from app.middleware.rate_limiter import RateLimitMiddleware
 from app.routers.docs import router as docs_router
 from app.routers.documents import router as documents_router
+from app.routers.llm import router as llm_router
 from app.routers.orders import router as orders_router
 from app.routers.profile import router as profile_router
+from app.routers.proxy import router as proxy_router
 from app.routers.qr import router as qr_router
 
 # Extend public auth paths so the /health endpoint is accessible without a token.
@@ -36,6 +40,9 @@ app.add_middleware(
 # JWT authentication — protects all non-public routes
 app.add_middleware(auth_mw.JWTAuthMiddleware)
 
+# Rate limiting — per-IP + per-endpoint sliding window (after auth)
+app.add_middleware(RateLimitMiddleware)
+
 # Auth routes (login, register, refresh, logout, password-reset, me)
 app.include_router(auth_router)
 
@@ -48,6 +55,13 @@ app.include_router(documents_router)
 app.include_router(docs_router)
 
 app.include_router(qr_router)
+
+app.include_router(llm_router)
+
+app.include_router(proxy_router)
+
+
+register_error_handlers(app)
 
 
 @app.get("/health")
