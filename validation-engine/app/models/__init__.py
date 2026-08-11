@@ -11,7 +11,9 @@ from app.models.documents import Document
 from app.models.filling_rules import FillingRule
 from app.models.hs_codes import HsCode
 from app.models.lanes import Lane
+from app.models.line_item import LineItem
 from app.models.lookups import Lookup
+from app.models.order import Order, OrderStatus, ValidationState
 from app.models.pbe_field_schemas import PbeFieldSchema
 from app.models.product_categories import ProductCategory
 from app.models.state_sales_tax import StateSalesTax
@@ -25,10 +27,14 @@ __all__ = [
     "FillingRule",
     "HsCode",
     "Lane",
+    "LineItem",
     "Lookup",
+    "Order",
+    "OrderStatus",
     "PbeFieldSchema",
     "ProductCategory",
     "ProvenanceMixin",
     "StateSalesTax",
     "Transcript",
+    "ValidationState",
 ]
