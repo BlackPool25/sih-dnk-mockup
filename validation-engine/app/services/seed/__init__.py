@@ -21,6 +21,7 @@ from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.parsers.iso2 import UnmappedCountryError
+from app.services.cache import cache
 from app.services.seed.categories import _import_categories
 from app.services.seed.flags import _import_flags
 from app.services.seed.lanes import import_lanes
@@ -98,6 +99,8 @@ def import_configs(
             lines.append(f"imported {n3 + n4} PBE field schemas (PBE_III {n3}, PBE_IV {n4})")
         if rules:
             lines.append(f"imported {_import_rules(session)} filling rules")
+    # Bump AFTER the transaction commits so every cached config read misses on any reseed.
+    cache.bump_config_version()
     return "\n".join(lines)
 
 

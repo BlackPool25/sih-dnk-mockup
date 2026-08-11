@@ -41,6 +41,7 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.models import PbeFieldSchema
 from app.schemas.shipment import Shipment
+from app.services.cache import cache
 from app.services.db_tools import (
     lookup_duty,
     lookup_hs_codes,
@@ -282,16 +283,22 @@ def build_document_data(
         )
     lane = quote_lane(shipment.destination_country, shipment.weight_grams)
     hs_codes = lookup_hs_codes(shipment.product_category)
-    with SessionLocal() as session:
-        rows = session.scalars(
-            select(PbeFieldSchema)
-            .where(PbeFieldSchema.form_type == form_type)
-            .order_by(PbeFieldSchema.id)
-        ).all()
-    field_schema: dict[str, dict] = {
-        r.field_key: {"value_type": r.value_type, "options": r.options, "label": r.label}
-        for r in rows
-    }
+    cache_key = f"field_schemas:{form_type}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        field_schema = cached
+    else:
+        with SessionLocal() as session:
+            rows = session.scalars(
+                select(PbeFieldSchema)
+                .where(PbeFieldSchema.form_type == form_type)
+                .order_by(PbeFieldSchema.id)
+            ).all()
+        field_schema = {
+            r.field_key: {"value_type": r.value_type, "options": r.options, "label": r.label}
+            for r in rows
+        }
+        cache.set(cache_key, field_schema)
 
     # Derived field values — every key is a pbe_field_schemas field_key.
     primary = hs_codes[0] if hs_codes else None

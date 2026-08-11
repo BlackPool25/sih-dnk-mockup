@@ -21,6 +21,7 @@ from sqlalchemy import func, select, update
 
 from app.db import SessionLocal
 from app.models import Document, FillingRule
+from app.services.cache import cache
 from app.schemas.shipment import Shipment
 from app.services.docs.__main__ import main as docs_cli_main
 from app.services.docs.document import build_document_data
@@ -128,6 +129,7 @@ def test_rules_db_driven_disable():
                 .where(FillingRule.rule_key == "gross_net_110")
                 .values(enabled=False)
             )
+        cache.delete("filling_rules:all")
         r = validate_document_rules(_data(net_weight_g=300))  # 400 > 330
         assert MSG_GROSS_110_NET not in r.errors
     finally:
@@ -137,6 +139,7 @@ def test_rules_db_driven_disable():
                 .where(FillingRule.rule_key == "gross_net_110")
                 .values(enabled=True)
             )
+        cache.delete("filling_rules:all")
 
 
 def test_rules_db_driven_params_and_messages():

@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import math
 from datetime import date, datetime
+from typing import Any
 
 from sqlalchemy import or_, select
 
@@ -42,6 +43,7 @@ from app.models import (
     ProductCategory,
     StateSalesTax,
 )
+from app.services.cache import cache
 
 # Row caps — enforced as LIMIT inside each query.
 SEARCH_CATEGORIES_LIMIT = 5
@@ -83,12 +85,34 @@ def _provenance(row) -> dict:
     }
 
 
+def _cache_read(key: str) -> Any | None:
+    """Read from cache with config-version guard. Returns None on miss/stale."""
+    raw = cache.get(key)
+    if raw is None:
+        return None
+    if isinstance(raw, dict) and "v" in raw:
+        if raw["v"] != cache.get_config_version():
+            cache.delete(key)
+            return None
+        return raw["data"]
+    return raw
+
+
+def _cache_write(key: str, data: Any) -> None:
+    """Write to cache with config-version stamp."""
+    cache.set(key, {"v": cache.get_config_version(), "data": data})
+
+
 def search_categories(query: str) -> list[dict]:
     """Find product categories whose slug or name contains the query text.
 
     Returns at most 5 rows (LIMIT in the query).  Each dict carries the
     category identity plus provenance.
     """
+    cache_key = f"search_categories:{query}"
+    cached = _cache_read(cache_key)
+    if cached is not None:
+        return cached
     like = f"%{query}%"
     with SessionLocal() as session:
         rows = session.scalars(
@@ -102,7 +126,7 @@ def search_categories(query: str) -> list[dict]:
             .order_by(ProductCategory.slug)
             .limit(SEARCH_CATEGORIES_LIMIT)
         ).all()
-    return [
+    result = [
         {
             "slug": row.slug,
             "name": row.name,
@@ -111,6 +135,8 @@ def search_categories(query: str) -> list[dict]:
         }
         for row in rows
     ]
+    _cache_write(cache_key, result)
+    return result
 
 
 def lookup_hs_codes(category: str | None = None, hs6: str | None = None) -> list[dict]:
@@ -120,6 +146,10 @@ def lookup_hs_codes(category: str | None = None, hs6: str | None = None) -> list
     Returns at most 10 rows (LIMIT in the query).  Each dict carries the
     code identity, its category slug, and provenance.
     """
+    cache_key = f"lookup_hs_codes:{category}:{hs6}"
+    cached = _cache_read(cache_key)
+    if cached is not None:
+        return cached
     with SessionLocal() as session:
         stmt = select(HsCode).join(
             ProductCategory, ProductCategory.id == HsCode.product_cat
@@ -139,7 +169,7 @@ def lookup_hs_codes(category: str | None = None, hs6: str | None = None) -> list
                 )
             )
         }
-    return [
+    result = [
         {
             "hs6": row.hs6,
             "itc_hs_8": row.itc_hs_8,
@@ -150,6 +180,8 @@ def lookup_hs_codes(category: str | None = None, hs6: str | None = None) -> list
         }
         for row in rows
     ]
+    _cache_write(cache_key, result)
+    return result
 
 
 def lookup_duty(country_iso2: str, hs6: str | None = None) -> list[dict]:
@@ -159,6 +191,10 @@ def lookup_duty(country_iso2: str, hs6: str | None = None) -> list[dict]:
     Returns at most 20 rows (LIMIT in the query).  An unknown or never-seen
     country returns [] — never an error (pinned behaviour).
     """
+    cache_key = f"lookup_duty:{country_iso2}:{hs6}"
+    cached = _cache_read(cache_key)
+    if cached is not None:
+        return cached
     with SessionLocal() as session:
         stmt = select(CountryRate).where(CountryRate.country_iso2 == country_iso2)
         if hs6 is not None:
@@ -168,7 +204,7 @@ def lookup_duty(country_iso2: str, hs6: str | None = None) -> list[dict]:
                 LOOKUP_DUTY_LIMIT
             )
         ).all()
-    return [
+    result = [
         {
             "country_iso2": row.country_iso2,
             "hs6": row.hs6,
@@ -182,6 +218,8 @@ def lookup_duty(country_iso2: str, hs6: str | None = None) -> list[dict]:
         }
         for row in rows
     ]
+    _cache_write(cache_key, result)
+    return result
 
 
 def quote_lane(country_iso2: str, weight_g: int, lane: str = "ITPS") -> dict:
@@ -200,6 +238,10 @@ def quote_lane(country_iso2: str, weight_g: int, lane: str = "ITPS") -> dict:
         LookupError: no (country, lane) row exists.
         ValueError:  weight_cap_g is set and weight_g exceeds it.
     """
+    cache_key = f"quote_lane:{country_iso2}:{weight_g}:{lane}"
+    cached = _cache_read(cache_key)
+    if cached is not None:
+        return cached
     with SessionLocal() as session:
         row = session.scalar(
             select(Lane).where(Lane.country_iso2 == country_iso2, Lane.lane == lane)
@@ -213,7 +255,7 @@ def quote_lane(country_iso2: str, weight_g: int, lane: str = "ITPS") -> dict:
         )
     over_first = max(0, weight_g - row.first_slab_g)
     extra_slabs = math.ceil(over_first / row.addl_slab_g)
-    return {
+    result = {
         "cost_minor": row.first_slab_rate_minor
         + extra_slabs * row.addl_slab_rate_minor,
         "weight_cap_g": row.weight_cap_g,
@@ -222,6 +264,8 @@ def quote_lane(country_iso2: str, weight_g: int, lane: str = "ITPS") -> dict:
         "transit_max_days": row.transit_max_days,
         **_provenance(row),
     }
+    _cache_write(cache_key, result)
+    return result
 
 
 def get_state_sales_tax(state_iso2: str) -> dict:
@@ -229,13 +273,17 @@ def get_state_sales_tax(state_iso2: str) -> dict:
 
     Raises KeyError for an unknown state_iso2 (pinned behaviour).
     """
+    cache_key = f"state_sales_tax:{state_iso2}"
+    cached = _cache_read(cache_key)
+    if cached is not None:
+        return cached
     with SessionLocal() as session:
         row = session.scalar(
             select(StateSalesTax).where(StateSalesTax.state_iso2 == state_iso2)
         )
     if row is None:
         raise KeyError(f"unknown state_iso2 {state_iso2!r}")
-    return {
+    result = {
         "state_iso2": row.state_iso2,
         "state_name": row.state_name,
         "state_rate_pct": float(row.state_rate_pct),
@@ -246,6 +294,8 @@ def get_state_sales_tax(state_iso2: str) -> dict:
         "notes": row.notes,
         **_provenance(row),
     }
+    _cache_write(cache_key, result)
+    return result
 
 
 def get_config_flag(key: str) -> dict:
@@ -253,15 +303,21 @@ def get_config_flag(key: str) -> dict:
 
     Raises KeyError for an unknown key (pinned behaviour).
     """
+    cache_key = f"config_flag:{key}"
+    cached = _cache_read(cache_key)
+    if cached is not None:
+        return cached
     with SessionLocal() as session:
         row = session.scalar(select(ConfigFlag).where(ConfigFlag.flag_key == key))
     if row is None:
         raise KeyError(f"unknown config flag {key!r}")
-    return {
+    result = {
         "flag_key": row.flag_key,
         "flag_value": row.flag_value,
         **_provenance(row),
     }
+    _cache_write(cache_key, result)
+    return result
 
 
 __all__ = [
