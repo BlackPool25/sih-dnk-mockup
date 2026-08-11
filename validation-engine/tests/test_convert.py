@@ -60,12 +60,12 @@ def test_states_alone_leaves_other_config_tables_untouched() -> None:
 
 
 def test_rules_seed_idempotent() -> None:
-    """import_configs(rules=True) twice — exactly 8 filling_rules rows both times."""
+    """import_configs(rules=True) twice — exactly 23 filling_rules rows both times."""
     for _ in range(2):
         import_configs(categories=False, states=False, flags=False, pbe=False, rules=True)
         with SessionLocal() as session:
             n = session.scalar(select(func.count()).select_from(FillingRule)) or 0
-        assert n == 8
+        assert n == 23
 
 
 def test_rules_alone_truncate_scope() -> None:
@@ -80,4 +80,4 @@ def test_rules_alone_truncate_scope() -> None:
         pbe_after = session.scalar(select(func.count()).select_from(PbeFieldSchema)) or 0
         flags_after = session.scalar(select(func.count()).select_from(ConfigFlag)) or 0
     assert pbe_after == pbe_before == 116
-    assert flags_after == flags_before == 86
+    assert flags_after == flags_before == 100
