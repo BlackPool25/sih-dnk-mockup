@@ -20,12 +20,17 @@ def utcnow() -> datetime:
 
 # Register models on Base.metadata — must follow Base definition to avoid
 # circular imports (models import Base from here, then we re-import them).
+from app.models.doc_pack import DocPack
+from app.models.order import Order, OrderStatus
 from app.models.profile import SellerProfile
 from app.models.profile_document import DocumentType, ProfileDocument
 
 __all__ = [
     "Base",
+    "DocPack",
     "DocumentType",
+    "Order",
+    "OrderStatus",
     "ProfileDocument",
     "SellerProfile",
     "utcnow",
