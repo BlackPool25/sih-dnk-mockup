@@ -1,0 +1,18 @@
+# Secrets / local state — never into image layers
+.env
+
+# Virtualenvs (root .venv is a symlink target OUTSIDE this build context —
+# COPY . . would fail on it if not excluded)
+.venv
+venv
+
+# Caches
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+
+# Generated / bulk artifacts (not part of the image)
+seed
+data
+docs-out

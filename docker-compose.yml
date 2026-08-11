@@ -1,8 +1,13 @@
 # =============================================================================
-# SIH-DNK Mockup — Docker Compose (Development DB)
+# SIH-DNK Mockup — Docker Compose (dev stack: Postgres 16 + Redis 7 + 5 services)
 # =============================================================================
 # Host port 5433 is used because 5432 is live-occupied by internapply-postgres.
-# Postgres is bound to 127.0.0.1 ONLY (never exposed to 0.0.0.0).
+# ALL host ports are bound to 127.0.0.1 ONLY (never exposed to 0.0.0.0).
+#
+# Locked artifacts (plan §Locked compose artifacts) — DO NOT CHANGE:
+#   name: sih-dnk-mockup | volume sih_dnk_pgdata | network dbnet
+#   container sih-dnk-postgres | host port 127.0.0.1:5433:5432
+# Port table (plan §Port allocation table, locked): see per-service comments.
 # =============================================================================
 
 name: sih-dnk-mockup
@@ -15,7 +20,7 @@ networks:
 
 services:
   # ---------------------------------------------------------------------------
-  # Service 1: PostgreSQL 16
+  # Service 1: PostgreSQL 16 (seeded volume sih_dnk_pgdata — do NOT touch)
   # ---------------------------------------------------------------------------
   db:
     image: postgres:16-alpine
@@ -55,3 +60,147 @@ services:
       - random_page_cost=1.1
       - -c
       - default_statistics_target=100
+
+  # ---------------------------------------------------------------------------
+  # Service 2: Redis 7 (alpine) — 127.0.0.1:6379
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: sih-dnk-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - dbnet
+
+  # ---------------------------------------------------------------------------
+  # Service 3: validation-engine — FastAPI dev server, 127.0.0.1:8001 -> 8000
+  # Build context ./validation-engine; monorepo root live-mounted at /app so
+  # edits never need a rebuild. Depends on db + redis being healthy.
+  # ---------------------------------------------------------------------------
+  validation-engine:
+    build:
+      context: ./validation-engine
+    image: sih-dnk-validation-engine
+    container_name: sih-dnk-validation-engine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?error}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # No app entrypoint yet (placeholder stays alive) — liveness = PID 1 alive.
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - dbnet
+
+  # ---------------------------------------------------------------------------
+  # Service 4: voice-pipeline (placeholder) — 127.0.0.1:8002 -> 8000
+  # ---------------------------------------------------------------------------
+  voice-pipeline:
+    build:
+      context: ./voice-pipeline
+    image: sih-dnk-voice-pipeline
+    container_name: sih-dnk-voice-pipeline
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8000"
+    volumes:
+      - ./voice-pipeline:/app
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - dbnet
+
+  # ---------------------------------------------------------------------------
+  # Service 5: pricing-engine (placeholder) — 127.0.0.1:8003 -> 8000
+  # ---------------------------------------------------------------------------
+  pricing-engine:
+    build:
+      context: ./pricing-engine
+    image: sih-dnk-pricing-engine
+    container_name: sih-dnk-pricing-engine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8003:8000"
+    volumes:
+      - ./pricing-engine:/app
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - dbnet
+
+  # ---------------------------------------------------------------------------
+  # Service 6: tracking-api (placeholder) — 127.0.0.1:8004 -> 8000
+  # ---------------------------------------------------------------------------
+  tracking-api:
+    build:
+      context: ./tracking-api
+    image: sih-dnk-tracking-api
+    container_name: sih-dnk-tracking-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8004:8000"
+    volumes:
+      - ./tracking-api:/app
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - dbnet
+
+  # ---------------------------------------------------------------------------
+  # Service 7: frontend (nginx:alpine placeholder) — 127.0.0.1:8005 -> 80
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+    image: sih-dnk-frontend
+    container_name: sih-dnk-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8005:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - dbnet
