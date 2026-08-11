@@ -50,14 +50,19 @@ _NEW_ORDER_STATUS_VALUES = [
 def upgrade() -> None:
     """Replace legacy orders table with backend-core Order/DocPack schema."""
 
-    # 1. Drop foreign key from legacy line_items → orders.
-    op.drop_constraint(
-        "line_items_order_id_fkey", "line_items", type_="foreignkey"
-    )
-    op.drop_table("line_items")
+    # 1. Drop legacy line_items FK and table (only if migration follows validation-engine).
+    #    On a fresh DB these won't exist, so use checkfirst/safe patterns.
+    conn = op.get_bind()
+    insp = sa.inspect(conn)
 
-    # 2. Drop the legacy orders table (depends on the old order_status enum).
-    op.drop_table("orders")
+    if "line_items" in insp.get_table_names():
+        with op.batch_alter_table("line_items") as batch_op:
+            batch_op.drop_constraint("line_items_order_id_fkey", type_="foreignkey")
+        op.drop_table("line_items")
+
+    # 2. Drop the legacy orders table if present.
+    if "orders" in insp.get_table_names():
+        op.drop_table("orders")
 
     # 3. Drop the old order_status enum so we can recreate it with new values.
     sa.Enum(name="order_status").drop(op.get_bind(), checkfirst=True)

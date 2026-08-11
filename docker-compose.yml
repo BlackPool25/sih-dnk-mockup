@@ -227,6 +227,8 @@ services:
       - ./.env
     environment:
       - PYTHONPATH=/opt/backend-core:/opt
+      - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379/0
       - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-this-is-a-dev-secret-key-at-least-32-chars}
       - SAHAYAK_EMAIL=sahayak@dnk.gov.in
