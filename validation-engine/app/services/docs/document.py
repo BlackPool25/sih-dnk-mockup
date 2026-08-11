@@ -261,6 +261,9 @@ def build_document_data(
     fob_minor: int | None = None,
     unit_value_minor: int | None = None,
     piece_gross_g: int | None = None,
+    exporter_name: str | None = None,
+    exporter_address: str | None = None,
+    state_code: str | None = None,
 ) -> DocumentData:
     """Assemble a DocumentData from a VALIDATED Shipment + DB lookups.
 
@@ -317,6 +320,12 @@ def build_document_data(
         derived["iec"] = iec
     if gstin is not None:
         derived["gstin_or_as_applicable"] = gstin
+    if exporter_name is not None:
+        derived["exporter_name"] = exporter_name
+    if exporter_address is not None:
+        derived["exporter_address"] = exporter_address
+    if state_code is not None:
+        derived["state_code"] = state_code
     if value_minor is not None:
         derived["assessable_value"] = value_minor
         derived["amount_inr"] = value_minor
@@ -328,6 +337,12 @@ def build_document_data(
         derived["si_no"] = "1"  # single-item consignment — line 1
 
     merged = {**derived, **(field_values or {})}  # provided always wins
+    sender_block = sender or SenderBlock(
+        name_address=(exporter_name + "\n" + exporter_address) if exporter_name else None,
+        sender_ref=iec,
+        non_delivery="return",
+        num_invoices="1",
+    )
     return DocumentData(
         category_slug=shipment.product_category,
         category_name=category["name"],
@@ -352,7 +367,7 @@ def build_document_data(
         gstin=gstin,
         field_values=merged,
         field_schema=field_schema,
-        sender=sender or SenderBlock(),
+        sender=sender_block,
     )
 
 

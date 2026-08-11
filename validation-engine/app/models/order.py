@@ -72,6 +72,9 @@ class Order(Base):
     bank_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ifsc: Mapped[str | None] = mapped_column(String(16), nullable=True)
     quote_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    exporter_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    exporter_address: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    state_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
 
     # ── versioning & JSONB ─────────────────────────────────────────
     version: Mapped[int] = mapped_column(

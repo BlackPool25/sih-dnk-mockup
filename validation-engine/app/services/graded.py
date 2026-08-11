@@ -197,6 +197,9 @@ def _pass_document_rules(order: Order) -> list[ErrorEntry]:
                 iec=order.iec,
                 gstin=order.gstin,
                 net_weight_g=order.net_weight_g,
+                exporter_name=order.exporter_name,
+                exporter_address=order.exporter_address,
+                state_code=order.state_code,
             )
         except LookupError as exc:
             entries.append(
@@ -315,6 +318,9 @@ def _pass_missing_required(order: Order) -> list[ErrorEntry]:
                 iec=order.iec,
                 gstin=order.gstin,
                 net_weight_g=order.net_weight_g,
+                exporter_name=order.exporter_name,
+                exporter_address=order.exporter_address,
+                state_code=order.state_code,
             )
         except Exception:  # noqa: BLE001
             return entries  # pass 2 already reported the failure
@@ -411,6 +417,35 @@ def _pass_basic_fields(order: Order) -> list[ErrorEntry]:
                     field="ifsc",
                     severity="error",
                     message=f"invalid IFSC format: {order.ifsc!r} (expect 4alpha+0+6alphanumeric)",
+                    action="fix_format",
+                )
+            )
+
+        # ── exporter identity validation ──────────────────────────
+        if order.iec is not None and not order.exporter_name:
+            entries.append(
+                ErrorEntry(
+                    field="exporter_name",
+                    severity="error",
+                    message="exporter_name is required when IEC is provided",
+                    action="provide_field",
+                )
+            )
+        if order.exporter_name is not None and not order.exporter_address:
+            entries.append(
+                ErrorEntry(
+                    field="exporter_address",
+                    severity="incomplete",
+                    message="exporter_address is required when exporter_name is provided",
+                    action="provide_field",
+                )
+            )
+        if order.state_code is not None and len(order.state_code) != 2:
+            entries.append(
+                ErrorEntry(
+                    field="state_code",
+                    severity="error",
+                    message=f"state_code must be exactly 2 characters, got {order.state_code!r}",
                     action="fix_format",
                 )
             )

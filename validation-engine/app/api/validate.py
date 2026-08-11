@@ -45,6 +45,9 @@ _ORDER_FIELDS: frozenset[str] = frozenset(
         "bank_name",
         "ifsc",
         "quote_id",
+        "exporter_name",
+        "exporter_address",
+        "state_code",
     }
 )
 

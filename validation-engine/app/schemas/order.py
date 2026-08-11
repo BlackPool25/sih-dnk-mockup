@@ -69,6 +69,9 @@ class OrderPayload(BaseModel):
     bank_name: str | None = None
     ifsc: str | None = None
     quote_id: str | None = None
+    exporter_name: str | None = None
+    exporter_address: str | None = None
+    state_code: str | None = None
     line_items: list[LineItemPayload] | None = None
 
 
