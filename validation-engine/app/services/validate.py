@@ -50,6 +50,7 @@ from app.schemas.shipment import (
     WEIGHT_UNSTATED,
     Shipment,
 )
+from app.services.cache import cache
 from app.services.db_tools import search_categories
 from app.services.docs.document import DocumentData
 
@@ -349,26 +350,45 @@ def validate_document_rules(document_data: DocumentData) -> DocumentRuleResult:
     data = DocumentData.model_validate(document_data)
     errors: list[str] = []
     warnings: list[str] = []
-    with SessionLocal() as session:
-        rules = session.scalars(
-            select(FillingRule)
-            .where(FillingRule.enabled.is_(True))
-            .order_by(FillingRule.id)
-        ).all()
+    # Lazy import — avoids circular import with country_rules module.
+    from app.services.country_rules import _EVALUATORS as _COUNTRY_EVALUATORS
+    evaluators = {**_COUNTRY_EVALUATORS, **_EVALUATORS}  # country rules first
+    cache_key = "filling_rules:all"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        rules = cached
+    else:
+        with SessionLocal() as session:
+            db_rules = session.scalars(
+                select(FillingRule)
+                .where(FillingRule.enabled.is_(True))
+                .order_by(FillingRule.id)
+            ).all()
+        rules = [
+            {
+                "rule_key": r.rule_key,
+                "applies_to": r.applies_to,
+                "params": r.params,
+                "severity": r.severity,
+                "message": r.message,
+            }
+            for r in db_rules
+        ]
+        cache.set(cache_key, rules)
     for rule in rules:
-        if rule.applies_to and data.form_type not in (rule.applies_to or {}).get(
+        if rule["applies_to"] and data.form_type not in (rule["applies_to"] or {}).get(
             "form_types", []
         ):
             continue
-        evaluator = _EVALUATORS.get(rule.rule_key)
+        evaluator = evaluators.get(rule["rule_key"])
         if evaluator is None:
             print(
-                f"warning: unknown filling rule {rule.rule_key!r} in DB",
+                f"warning: unknown filling rule {rule['rule_key']!r} in DB",
                 file=sys.stderr,
             )
             continue
-        if evaluator(data, rule.params or {}):
-            (warnings if rule.severity == "warning" else errors).append(rule.message)
+        if evaluator(data, rule["params"] or {}):
+            (warnings if rule["severity"] == "warning" else errors).append(rule["message"])
     return DocumentRuleResult(errors=errors, warnings=warnings)
 
 

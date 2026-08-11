@@ -79,13 +79,106 @@ RULES_SPECS: list[dict[str, object]] = [
         "params": {"restricted_hs6": ["5303", "4403"]},
         "message": "ITCH code not applicable for restricted policy",
     },
+    # --- country_ rules: hard blocks (severity=error) ---
+    {
+        "rule_key": "country_wood_ie_block",
+        "severity": "error",
+        "params": {"prohibited_destinations": ["IE"], "material": "wood"},
+        "message": "Wood/wicker products prohibited for Ireland",
+    },
+    {
+        "rule_key": "country_food_block",
+        "severity": "error",
+        "params": {"prohibited_categories": ["food"]},
+        "message": "Food items are prohibited for all destinations",
+    },
+    {
+        "rule_key": "country_plants_block",
+        "severity": "error",
+        "params": {"prohibited_categories": ["plants", "seeds"]},
+        "message": "Plants and seeds are prohibited for all destinations",
+    },
+    {
+        "rule_key": "country_lithium_block",
+        "severity": "error",
+        "params": {"prohibited_hs": ["8506", "8507"]},
+        "message": "Lithium batteries are prohibited for all destinations",
+    },
+    {
+        "rule_key": "country_liquids_threshold_block",
+        "severity": "error",
+        "params": {"threshold_ml": 100},
+        "message": "Liquids above threshold are blocked",
+    },
+    # --- country_ rules: soft warnings (severity=warning) ---
+    {
+        "rule_key": "country_ayurveda_cosmetics_warn",
+        "severity": "warning",
+        "params": {"requires_noc": True},
+        "message": "Ayurveda/cosmetics products require NOC",
+    },
+    {
+        "rule_key": "country_magnets_threshold_warn",
+        "severity": "warning",
+        "params": {"max_mg": 4.5},
+        "message": "Magnets near 4.5mG threshold need clearance",
+    },
+    {
+        "rule_key": "country_bicon_biosecurity_warn",
+        "severity": "warning",
+        "params": {"destinations": ["AU"], "materials": ["wood", "jute"]},
+        "message": "Australia biosecurity BICON check required for wood/jute",
+    },
+    {
+        "rule_key": "country_duty_applicability_flag",
+        "severity": "warning",
+        "params": {"us_de_minimis_suspended": True, "uk_threshold_minor": 13500},
+        "message": "Duty applicability flagged",
+    },
+    # --- country_ rules: per-destination hard blocks (6 additional) ---
+    {
+        "rule_key": "country_wood_de_block",
+        "severity": "error",
+        "params": {"prohibited_destinations": ["DE"], "material": "wood"},
+        "message": "Wood/wicker products prohibited for Germany",
+    },
+    {
+        "rule_key": "country_wood_fr_block",
+        "severity": "error",
+        "params": {"prohibited_destinations": ["FR"], "material": "wood"},
+        "message": "Wood/wicker products prohibited for France",
+    },
+    {
+        "rule_key": "country_food_au_block",
+        "severity": "error",
+        "params": {"prohibited_destinations": ["AU"], "category": "food"},
+        "message": "Food items prohibited for Australia",
+    },
+    {
+        "rule_key": "country_plants_nz_block",
+        "severity": "error",
+        "params": {"prohibited_destinations": ["NZ"], "category": "plants"},
+        "message": "Plants and seeds prohibited for New Zealand",
+    },
+    {
+        "rule_key": "country_leather_us_block",
+        "severity": "error",
+        "params": {"prohibited_destinations": ["US"], "category": "leather"},
+        "message": "Leather goods prohibited for USA (Lacey Act)",
+    },
+    {
+        "rule_key": "country_textiles_eu_block",
+        "severity": "error",
+        "params": {"prohibited_destinations": ["DE", "FR", "IT", "ES", "NL", "BE"], "category": "textiles"},
+        "message": "Textiles prohibited for EU destinations (REACH)",
+    },
 ]
 
 
 def _import_rules(session: object) -> int:
-    if len(RULES_SPECS) != 8:
+    if len(RULES_SPECS) < 22:
         raise RuntimeError(
-            f"filling-rules gate failed: {len(RULES_SPECS)} rules, expected 8"
+            f"filling-rules gate failed: {len(RULES_SPECS)} rules, expected >= 22"
         )
     for spec in RULES_SPECS:
         session.add(FillingRule(  # type: ignore[attr-defined]
