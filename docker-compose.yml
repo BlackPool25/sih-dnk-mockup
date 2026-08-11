@@ -204,3 +204,45 @@ services:
       start_period: 5s
     networks:
       - dbnet
+
+  # ---------------------------------------------------------------------------
+  # Service 8: backend-core (FastAPI) — 127.0.0.1:8006 -> 8000
+  # Build context ./backend-core; monorepo root live-mounted at /app so edits
+  # never need a rebuild. Depends on db + redis being healthy.
+  # ---------------------------------------------------------------------------
+  backend-core:
+    build:
+      context: ./backend-core
+    image: sih-dnk-backend-core
+    container_name: sih-dnk-backend-core
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8006:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./.env
+    environment:
+      - PYTHONPATH=/opt/backend-core:/opt
+      - ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-this-is-a-dev-secret-key-at-least-32-chars}
+      - SAHAYAK_EMAIL=sahayak@dnk.gov.in
+      - SAHAYAK_PASSWORD=sahayak-secret-123
+      - DEMO_SELLER_EMAIL=sunita@handicrafts.in
+      - DEMO_SELLER_PASSWORD=seller-secret-456
+      - DEMO_BUYER_EMAIL=weber@example.com
+      - DEMO_BUYER_PASSWORD=buyer-secret-789
+    volumes:
+      - .:/app
+    networks:
+      - dbnet
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
