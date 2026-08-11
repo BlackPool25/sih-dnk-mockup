@@ -2,7 +2,13 @@
 # sudo-free psql shim: dispatches to postgres:16-alpine's psql over the project docker network.
 # $DATABASE_URL (host localhost:5433) does NOT resolve inside a container, so we translate.
 set -euo pipefail
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Find the monorepo root (the dir holding docker-compose.yml) by walking up
+# from this script — bin/ now lives at <root>/validation-engine/bin/, and the
+# root .env is a symlink → validation-engine/.env for compose interpolation.
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+while [ ! -f "$PROJECT_DIR/docker-compose.yml" ] && [ "$PROJECT_DIR" != "/" ]; do
+  PROJECT_DIR="$(dirname "$PROJECT_DIR")"
+done
 set -a; . "$PROJECT_DIR/.env"; set +a
 # strip the URL arg (postgresql+psycopg://... etc.) — connection info comes from flags below
 args=()
