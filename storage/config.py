@@ -62,6 +62,7 @@ class Settings(BaseModel):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     DOC_ACCESS_TOKEN_EXPIRE_DAYS: int = 30
+    APP_BASE_URL: str = "http://localhost:8000"
 
     # -- Rate limits -----------------------------------------------------------
     RATE_LIMIT_LOGIN: str = Field(default="5,60")

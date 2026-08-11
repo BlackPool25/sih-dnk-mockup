@@ -13,6 +13,7 @@ from app.routers.docs import router as docs_router
 from app.routers.documents import router as documents_router
 from app.routers.orders import router as orders_router
 from app.routers.profile import router as profile_router
+from app.routers.qr import router as qr_router
 
 # Extend public auth paths so the /health endpoint is accessible without a token.
 auth_mw.PUBLIC_AUTH_PATHS = auth_mw.PUBLIC_AUTH_PATHS | {"/health"}
@@ -45,6 +46,8 @@ app.include_router(orders_router)
 app.include_router(documents_router)
 
 app.include_router(docs_router)
+
+app.include_router(qr_router)
 
 
 @app.get("/health")
