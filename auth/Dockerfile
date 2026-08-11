@@ -10,7 +10,7 @@ COPY pyproject.toml ./
 RUN uv sync --no-dev
 
 RUN mkdir -p /opt/auth
-COPY __init__.py ./
+COPY __init__.py deps.py ./
 COPY models/ models/
 COPY services/ services/
 COPY routes/ routes/
