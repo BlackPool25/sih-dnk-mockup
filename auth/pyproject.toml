@@ -17,7 +17,15 @@ dependencies = [
     "cryptography>=42.0",
     "python-dotenv>=1.0",
     "alembic>=1.13,<2",
+    "fastapi>=0.115,<1",
     "sih-dnk-storage",
+    "bcrypt>=4.0,<5",
+]
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8,<9",
+    "pytest-asyncio>=0.25,<1",
 ]
 
 [tool.uv.sources]
@@ -25,3 +33,10 @@ sih-dnk-storage = { path = "../storage" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["models", "services", "routes", "middleware", "cli"]
+
+[dependency-groups]
+dev = [
+    "fakeredis>=2.37.0",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=0.26.0",
+]
