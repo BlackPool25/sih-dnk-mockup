@@ -1,0 +1,10 @@
+[project]
+name = "voice-pipeline"
+version = "0.1.0"
+description = "SIH DNK voice-pipeline component — placeholder scaffold (voice team owns real implementation)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+]
