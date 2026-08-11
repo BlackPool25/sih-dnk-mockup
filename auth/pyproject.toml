@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sih-dnk-auth"
+version = "0.1.0"
+description = "SIH-DNK auth service — JWT tokens, password hashing, session management"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy>=2.0.30,<2.1",
+    "psycopg[binary]>=3.1,<4",
+    "pydantic>=2.7,<3",
+    "PyJWT>=2.9,<3",
+    "passlib[bcrypt]>=1.7,<2",
+    "redis>=5.0,<6",
+    "cryptography>=42.0",
+    "python-dotenv>=1.0",
+    "alembic>=1.13,<2",
+    "sih-dnk-storage",
+]
+
+[tool.uv.sources]
+sih-dnk-storage = { path = "../storage" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["models", "services", "routes", "middleware", "cli"]
