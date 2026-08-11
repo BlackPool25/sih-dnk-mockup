@@ -1,0 +1,24 @@
+# Shared Python base image for sih-dnk components.
+# WeasyPrint system dependencies (pango, harfbuzz, shared-mime-info, ffi) are
+# baked in because the validation-engine component renders PDFs.
+# Per-component images build on this via `FROM sih-dnk-python-base`.
+FROM python:3.12-slim
+
+# WeasyPrint runtime deps
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libharfbuzz0b \
+        shared-mime-info \
+        libffi8 \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv for dependency management (copies instead of symlinks — slim-friendly)
+RUN pip install --no-cache-dir uv
+ENV UV_LINK_MODE=copy
+
+WORKDIR /app
+
+# Components override CMD per service; keep the container alive by default.
+CMD ["sleep", "infinity"]
