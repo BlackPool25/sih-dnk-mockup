@@ -15,7 +15,7 @@ from auth.services.jwt import (
 )
 
 SECRET = "a" * 32  # meets storage.config 32-char minimum
-DATA = {"sub": "user-42", "role": "seller"}
+DATA = {"sub": "user-42", "role": "seller", "email": "user@test.com"}
 
 
 # ---------------------------------------------------------------------------

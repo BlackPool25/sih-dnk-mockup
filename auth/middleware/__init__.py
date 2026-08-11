@@ -18,11 +18,24 @@ from collections.abc import Awaitable, Callable
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
-
 from storage.config import settings
 from storage.redis import get_redis
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Public paths — no authentication required
+# ---------------------------------------------------------------------------
+
+PUBLIC_AUTH_PATHS: frozenset[str] = frozenset(
+    {
+        "/auth/login",
+        "/auth/register",
+        "/auth/refresh",
+        "/auth/password-reset-request",
+        "/auth/password-reset",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -65,12 +78,16 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         Returns a 401 ``JSONResponse`` when authentication fails;
         otherwise delegates to the next handler in the stack.
         """
+        # 0. Skip auth for public endpoints -----------------------------------------
+        if request.url.path in PUBLIC_AUTH_PATHS:
+            return await call_next(request)
+
         # 1. Extract Bearer token -------------------------------------------------
         auth_header = request.headers.get("Authorization")
         if not auth_header or not auth_header.startswith("Bearer "):
             return _auth_error(401, "Missing or malformed Authorization header")
 
-        token = auth_header[len("Bearer "):].strip()
+        token = auth_header[len("Bearer ") :].strip()
         if not token:
             return _auth_error(401, "Empty Bearer token")
 
@@ -111,8 +128,14 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         role = payload.get("role")
         email = payload.get("email")
 
-        if not isinstance(user_id, str) or not isinstance(role, str) or not isinstance(email, str):
-            return _auth_error(401, "Token payload missing required claims (sub, role, email)")
+        if (
+            not isinstance(user_id, str)
+            or not isinstance(role, str)
+            or not isinstance(email, str)
+        ):
+            return _auth_error(
+                401, "Token payload missing required claims (sub, role, email)"
+            )
 
         request.state.user = {
             "user_id": str(user_id),

@@ -31,7 +31,8 @@ def create_access_token(
     """Create a signed JWT access token.
 
     Args:
-        data: Must contain ``"sub"`` (user identifier) and ``"role"`` keys.
+        data: Must contain ``"sub"`` (user identifier), ``"role"``, and
+            ``"email"`` keys.
         secret_key: HS256 / RS256 / … signing key.
         algorithm: JWT signing algorithm (default ``HS256``).
         expires_delta_minutes: Token lifetime in minutes.
@@ -43,6 +44,7 @@ def create_access_token(
     payload: dict[str, Any] = {
         "sub": data["sub"],
         "role": data["role"],
+        "email": data["email"],
         "iat": now,
         "exp": now + timedelta(minutes=expires_delta_minutes),
         "jti": str(uuid.uuid4()),
@@ -58,7 +60,8 @@ def create_refresh_token(
     """Create a signed JWT refresh token with longer expiry.
 
     Args:
-        data: Must contain ``"sub"`` (user identifier) and ``"role"`` keys.
+        data: Must contain ``"sub"`` (user identifier), ``"role"``, and
+            ``"email"`` keys.
         secret_key: Signing key.
         expires_delta_days: Token lifetime in days.
 
@@ -69,6 +72,7 @@ def create_refresh_token(
     payload: dict[str, Any] = {
         "sub": data["sub"],
         "role": data["role"],
+        "email": data["email"],
         "iat": now,
         "exp": now + timedelta(days=expires_delta_days),
         "jti": str(uuid.uuid4()),
