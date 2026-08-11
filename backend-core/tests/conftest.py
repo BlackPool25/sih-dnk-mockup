@@ -136,6 +136,40 @@ async def test_seller() -> AsyncIterator[dict[str, str]]:
 
 
 @pytest_asyncio.fixture
+async def test_sahayak() -> AsyncIterator[dict[str, str]]:
+    email = f"test_sahayak_{uuid.uuid4().hex[:8]}@profiletest.com"
+
+    async with get_session()() as session:
+        user = User(
+            email=email,
+            password_hash=hash_password("testpass"),
+            role=UserRole("sahayak"),
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    user_id = str(user.id)
+    token = create_access_token(
+        {"sub": user_id, "role": "sahayak", "email": email},
+        TEST_SETTINGS.JWT_SECRET_KEY,
+        TEST_SETTINGS.JWT_ALGORITHM,
+        60,
+    )
+
+    yield {"user_id": user_id, "email": email, "role": "sahayak", "token": token}
+
+    async with get_session()() as session:
+        result = await session.execute(
+            select(User).where(User.id == uuid.UUID(user_id))
+        )
+        u = result.scalar_one_or_none()
+        if u is not None:
+            await session.delete(u)
+            await session.commit()
+
+
+@pytest_asyncio.fixture
 async def test_buyer() -> AsyncIterator[dict[str, str]]:
     email = f"test_buyer_{uuid.uuid4().hex[:8]}@profiletest.com"
 

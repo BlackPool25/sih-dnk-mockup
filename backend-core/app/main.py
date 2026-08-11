@@ -9,7 +9,9 @@ from auth.routes import router as auth_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers.docs import router as docs_router
 from app.routers.documents import router as documents_router
+from app.routers.orders import router as orders_router
 from app.routers.profile import router as profile_router
 
 # Extend public auth paths so the /health endpoint is accessible without a token.
@@ -38,7 +40,11 @@ app.include_router(auth_router)
 
 app.include_router(profile_router)
 
+app.include_router(orders_router)
+
 app.include_router(documents_router)
+
+app.include_router(docs_router)
 
 
 @app.get("/health")

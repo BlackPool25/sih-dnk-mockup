@@ -151,7 +151,6 @@ class Order(Base):
     # relationships
     doc_pack: Mapped[DocPack | None] = relationship(
         "DocPack",
-        back_populates="order",
         foreign_keys=[doc_pack_id],
     )
 

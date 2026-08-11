@@ -68,7 +68,7 @@ class DocPack(Base):
     # relationships
     order: Mapped[Order] = relationship(
         "Order",
-        back_populates="doc_pack",
+        foreign_keys=[order_id],
     )
 
     def __repr__(self) -> str:
