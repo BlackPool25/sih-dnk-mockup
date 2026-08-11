@@ -34,7 +34,12 @@ from app.db import SessionLocal
 from app.models import Document
 from app.schemas.shipment import Shipment
 from app.services.docs.__main__ import main as docs_cli_main
-from app.services.docs.document import build_document_data
+from app.services.docs.cli_fields import (
+    DEDICATED_FLAGS,
+    field_flag_name,
+    pbe_field_specs,
+)
+from app.services.docs.document import SenderBlock, build_document_data
 from app.services.docs.renderer import build_html, build_preview, render
 from app.services.validate import validate_shipment
 
@@ -64,12 +69,16 @@ def _complete_data():
 
     IEC + GSTIN are supplied so the todo-14 DGFT/KYC filling-rule gate passes;
     the same pair is passed via ``--iec``/``--gstin`` in the CLI tests.
+    Consignee + declared value are supplied so the wave-2 completeness gate
+    (ALL 7 required fields incl. assessable_value) also passes.
     """
     return build_document_data(
         _validated_shipment(),
         "PBE_IV",
         iec="IN1234567890",
         gstin="29ABCDE1234F1Z5",
+        value_minor=200000,
+        consignee="Jane Doe, 123 Main St",
     )
 
 
@@ -158,8 +167,18 @@ class _BoomWeasyPrint:
 
 def _incomplete_data():
     """A DocumentData whose required pbe_field_schemas fields are NOT all
-    satisfied: destination 'unknown' means consignee_details is missing."""
-    return _complete_data().model_copy(update={"destination_country": "unknown"})
+    satisfied: consignee_details is removed from field_values (so it resolves
+    to "—" and is reported missing by the wave-2 completeness gate)."""
+    complete = _complete_data()
+    return complete.model_copy(
+        update={
+            "destination_country": "unknown",
+            "consignee": None,
+            "field_values": {
+                k: v for k, v in complete.field_values.items() if k != "consignee_details"
+            },
+        }
+    )
 
 
 def test_render_incomplete_raises_before_weasyprint_writes_nothing(
@@ -207,6 +226,10 @@ def test_preview_without_yes_does_not_call_renderer(capsys, monkeypatch):
             "--form",
             "PBE_IV",
             "--preview",
+            "--iec", "IN1234567890",
+            "--gstin", "29ABCDE1234F1Z5",
+            "--value-minor", "200000",
+            "--consignee", "Jane Doe, 123 Main St",
         ]
     )
     assert rc == 1  # confirm required
@@ -237,6 +260,10 @@ def test_preview_with_yes_renders(tmp_path, capsys, clean_documents):
             "IN1234567890",
             "--gstin",
             "29ABCDE1234F1Z5",
+            "--value-minor",
+            "200000",
+            "--consignee",
+            "Jane Doe, 123 Main St",
             "--out",
             str(out),
         ]
@@ -274,9 +301,9 @@ def test_cli_unknown_country_zz_rejected(tmp_path, capsys):
     assert not out.exists()
 
 
-def test_cli_unknown_country_lists_missing_pbe_fields(capsys):
-    """Completeness gate: 'unknown' destination exits non-zero listing the
-    missing pbe_field_schemas fields (consignee_details)."""
+def test_cli_unknown_country_rejected_at_build(capsys):
+    """'unknown' destination passes validate_shipment (the sentinel) but the
+    build fails with the quote_lane LookupError — exit non-zero, no PDF."""
     with pytest.raises(SystemExit) as excinfo:
         docs_cli_main(
             [
@@ -294,9 +321,91 @@ def test_cli_unknown_country_lists_missing_pbe_fields(capsys):
             ]
         )
     assert excinfo.value.code != 0
-    err = capsys.readouterr().err
-    assert "consignee_details" in err
-    assert "required fields missing" in err
+    assert "lane for country 'unknown'" in capsys.readouterr().err
+
+
+# --- wave 4: DB-driven auto-generated CLI flags (F5 / R3) --------------------
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext missing")
+def test_cli_auto_flag_renders(tmp_path, clean_documents):
+    """Auto-generated flags reach the rendered form: exporter/state/decl/scheme."""
+    out = tmp_path / "auto.pdf"
+    rc = docs_cli_main(
+        [
+            "render",
+            "--category", "embroidered-home-textiles", "--qty", "8",
+            "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
+            "--iec", "IN1234567890", "--gstin", "29ABCDE1234F1Z5",
+            "--value-minor", "200000", "--consignee", "Jane Doe",
+            "--exporter-name", "Acme Exporters", "--state-code", "29",
+            "--decl-drawback", "Yes", "--scheme-code", "drawback",
+            "--out", str(out),
+        ]
+    )
+    assert rc == 0
+    text = subprocess.run(
+        ["pdftotext", str(out), "-"], check=True, capture_output=True, text=True
+    ).stdout
+    assert "Acme Exporters" in text
+    assert "29" in text
+    assert "[X] Yes" in text
+    assert "drawback" in text
+
+
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext missing")
+def test_cli_money_minor_units(tmp_path, clean_documents):
+    """Money auto-flags take INR minor units and render with the ₹ format."""
+    out = tmp_path / "money.pdf"
+    rc = docs_cli_main(
+        [
+            "render",
+            "--category", "embroidered-home-textiles", "--qty", "8",
+            "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
+            "--iec", "IN1234567890", "--gstin", "29ABCDE1234F1Z5",
+            "--value-minor", "200000", "--consignee", "Jane Doe",
+            "--export-duty-amount-minor", "50000",
+            "--out", str(out),
+        ]
+    )
+    assert rc == 0
+    text = subprocess.run(
+        ["pdftotext", str(out), "-"], check=True, capture_output=True, text=True
+    ).stdout
+    assert "₹500.00" in text
+
+
+def test_cli_net_weight_flag_reachable(tmp_path, capsys, clean_documents):
+    """F5: the gross≤110%-of-net rule is now reachable via --net-weight."""
+    out = tmp_path / "never.pdf"
+    with pytest.raises(SystemExit) as excinfo:
+        docs_cli_main(
+            [
+                "render",
+                "--category", "embroidered-home-textiles", "--qty", "8",
+                "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
+                "--iec", "IN1234567890", "--gstin", "29ABCDE1234F1Z5",
+                "--value-minor", "200000", "--consignee", "Jane Doe",
+                "--net-weight", "300",
+                "--out", str(out),
+            ]
+        )
+    assert excinfo.value.code != 0
+    assert "gross weight exceeds 110% of net weight" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_cli_auto_flags_no_collision():
+    """Auto flags never collide with the legacy or dedicated flag names."""
+    legacy = {
+        "--category", "--qty", "--weight-g", "--country", "--form", "--out",
+        "--preview", "--yes", "--ask-optional", "--consignee", "--value-minor",
+        "--iec", "--gstin",
+    }
+    auto = {field_flag_name(s) for s in pbe_field_specs()}
+    assert auto.isdisjoint(legacy | DEDICATED_FLAGS)
+    dests = [s["field_key"] for s in pbe_field_specs()]
+    assert len(dests) == len(set(dests))
 
 
 # --- USER REQUIREMENTS: English form, bilingual preview ---------------------
@@ -317,9 +426,51 @@ def test_form_html_is_english_only():
     assert "PBE" in html
     # OFFICIAL FORMAT: Notification 07/2026-Customs column labels verbatim.
     assert "Assessable value" in html
-    assert "RITC code/ITC-HS code" in html
+    assert "RITC code/ITC\u2011HS code" in html  # U+2011 non-breaking hyphen (R5)
     assert "Nature of contract (CIF/CF/C&F/FOB)" in html
     assert "Customs" in html  # e.g. "Customs Broker License No." / "Customs Act, 1962"
+
+
+def test_cn_sender_block_fillable():
+    """The CN22 sender block is fillable from SenderBlock — not hardcoded '—'."""
+    data = _complete_data().model_copy(
+        update={
+            "form_type": "CN22",
+            "sender": SenderBlock(
+                name_address="Acme Exports, Delhi",
+                sender_ref="IOSS0001",
+                non_delivery="return",
+                num_invoices="2",
+            ),
+        }
+    )
+    html = build_html(data, "CN22")
+    assert "Acme Exports, Delhi" in html
+    assert "IOSS0001" in html
+    assert "return" in html
+    assert ">2<" in html
+
+
+def test_declaration_box_marks_chosen_value():
+    """The Drawback declaration row marks its chosen option with X; the others
+    stay unchecked (the box shows the OPTION, not the '—' placeholder)."""
+    data = _complete_data().model_copy(
+        update={
+            "field_values": {
+                **_complete_data().field_values,
+                "decl.drawback": "Yes",
+            }
+        }
+    )
+    html = build_html(data, "PBE_IV")
+    m = re.search(
+        r"claim Drawback.*?<td class=\"decl-box\">(.*?)</td>", html, re.DOTALL
+    )
+    assert m is not None, "Drawback declaration row not found"
+    box = m.group(1).replace("&nbsp;", " ")
+    assert "[X] Yes" in box
+    assert "[ ] No" in box
+    assert "[X] No" not in box
 
 
 @pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext missing")
@@ -357,9 +508,18 @@ def test_rerender_increments_version_no_overwrite(tmp_path, clean_documents):
 
 
 def test_checksum_differs_with_different_content(tmp_path, clean_documents):
-    """--qty 9 renders a different checksum than the qty-8 document."""
+    """A qty-9 document renders a different checksum than the qty-8 one.
+
+    Since wave 1 the rendered quantity comes from field_values (the single
+    source), so a quantity change must update field_values too.
+    """
     qty8 = _complete_data()
-    qty9 = _complete_data().model_copy(update={"quantity": 9})
+    qty9 = qty8.model_copy(
+        update={
+            "quantity": 9,
+            "field_values": {**qty8.field_values, "quantity_unit": 9},
+        }
+    )
     doc8 = render(qty8, "PBE_IV", out_path=tmp_path / "q8.pdf")
     doc9 = render(qty9, "PBE_IV", out_path=tmp_path / "q9.pdf")
     assert doc8.checksum != doc9.checksum

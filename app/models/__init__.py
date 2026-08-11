@@ -8,6 +8,7 @@ from app.models.base import Base, ProvenanceMixin
 from app.models.config_flags import ConfigFlag
 from app.models.country_rates import CountryRate
 from app.models.documents import Document
+from app.models.filling_rules import FillingRule
 from app.models.hs_codes import HsCode
 from app.models.lanes import Lane
 from app.models.lookups import Lookup
@@ -18,15 +19,16 @@ from app.models.transcripts import Transcript
 
 __all__ = [
     "Base",
-    "ProvenanceMixin",
     "ConfigFlag",
     "CountryRate",
     "Document",
+    "FillingRule",
     "HsCode",
     "Lane",
     "Lookup",
     "PbeFieldSchema",
     "ProductCategory",
+    "ProvenanceMixin",
     "StateSalesTax",
     "Transcript",
 ]

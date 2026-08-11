@@ -30,11 +30,7 @@ from sqlalchemy import select
 from app.db import SessionLocal
 from app.models import Document, PbeFieldSchema
 from app.services.db_tools import get_config_flag
-from app.services.docs.document import (
-    FORM_TYPES,
-    DocumentData,
-    to_shipment,
-)
+from app.services.docs.document import FORM_TYPES, DocumentData
 from app.services.validate import missing_required, validate_document_rules
 
 DOCS_OUT = Path("docs-out")  # git-ignored (see .gitignore)
@@ -104,45 +100,6 @@ def _primary_hs(data: DocumentData) -> dict | None:
     return data.hs_codes[0] if data.hs_codes else None
 
 
-def _field_value(data: DocumentData, field_key: str) -> str:
-    """Map a pbe_field_schemas field_key onto the DocumentData — else "—".
-
-    Every mapped value traces back to a validated Shipment key, a db_tools
-    lookup, or a CLI order field.  Fields outside the contract (iec,
-    exporter_name, invoice_no_date, decl.*, ecomm_*, duty/tax rates, …) have
-    no data source and are rendered as "—" — the form is honest about what it
-    does not know.
-    """
-    if field_key == "consignee_details":
-        parts = [data.consignee] if data.consignee else []
-        parts.append(data.destination_country)
-        return " / ".join(parts)
-    if field_key == "destination_country":
-        return data.destination_country
-    if field_key == "product_description":
-        return data.category_name
-    if field_key == "cth":
-        hs = _primary_hs(data)
-        return hs["hs6"][:4] if hs else "—"
-    if field_key == "hs_code":
-        hs = _primary_hs(data)
-        return hs["hs6"] if hs else "—"
-    if field_key == "ritc_itc_hs":
-        hs = _primary_hs(data)
-        return (hs["itc_hs_8"] or hs["hs6"]) if hs else "—"
-    if field_key == "quantity_unit":
-        return f"{data.quantity} Nos"
-    if field_key in ("gross_weight", "net_weight"):
-        return f"{data.weight_grams} g"
-    if field_key == "si_no":
-        return "1"  # single-item consignment — line 1
-    if field_key in ("assessable_value", "amount_inr", "fob_value"):
-        return _money(data.value_minor)
-    if field_key == "currency":
-        return "INR"  # value_minor is the declared value in INR minor units
-    return "—"
-
-
 def _summary_rows(data: DocumentData) -> list[dict]:
     """Rows for the CN22/CN23/INVOICE/PACKING_LIST forms (no PBE schema rows).
 
@@ -203,7 +160,7 @@ def _sections(data: DocumentData, fields: list[dict]) -> list[dict]:
         name = field["section"] or "General"
         if not sections or sections[-1]["name"] != name:
             sections.append({"name": name, "rows": []})
-        value = _field_value(data, field["field_key"])
+        value = data.resolve_value(field["field_key"])
         sections[-1]["rows"].append(
             {
                 "field_key": field["field_key"],
@@ -289,10 +246,11 @@ def _resolve_cn_label(data: DocumentData, doc_type: str) -> tuple[str, DocumentD
 def _cn_context(data: DocumentData) -> dict:
     """UPU CN22/CN23 block data — sender/consignee/contents + SDR note.
 
-    Sender is the exporter, whose details are NOT in the mockup order data —
-    rendered "—" (the exporter supplies them at the counter).  The SDR note
-    follows document-stack.md §10: CN22 for items up to 300 SDR, CN23 for
-    items over 300 SDR; the DNK portal auto-computes the SDR value.
+    The sender block comes from ``data.sender`` (SellerBlock — the seller
+    supplies it via the CLI later); each field renders "—" when unset (the
+    exporter fills them at the counter).  The SDR note follows
+    document-stack.md §10: CN22 for items up to 300 SDR, CN23 for items over
+    300 SDR; the DNK portal auto-computes the SDR value.
     """
     hs = _primary_hs(data)
     note = (
@@ -310,8 +268,8 @@ def _cn_context(data: DocumentData) -> dict:
     )
     sdr = sdr_info(data.value_minor)
     return {
-        "sender": "—",
-        "sender_ref": "—",  # Sender's Customs reference (IOSS for the EU) — DNK SOP
+        "sender": data.sender.name_address or "—",
+        "sender_ref": data.sender.sender_ref or "—",
         "consignee": data.consignee or "—",
         "destination": data.destination_country,
         "description": hs["description"] if hs else "—",
@@ -319,8 +277,8 @@ def _cn_context(data: DocumentData) -> dict:
         "qty": f"{data.quantity} Nos",
         "weight": f"{data.weight_grams} g",
         "value": _money(data.value_minor),
-        "non_delivery": "—",  # abandoned / return / non-priority — DNK SOP
-        "num_invoices": "—",  # number of invoices/licenses/certificates — DNK SOP
+        "non_delivery": data.sender.non_delivery or "—",
+        "num_invoices": data.sender.num_invoices or "—",
         "sdr_value": _sdr_value(sdr["sdr_minor"]),
         "sdr_choice": sdr["cn_form"],
         "sdr_threshold": f"{sdr['max_sdr']} SDR",
@@ -368,7 +326,7 @@ def _raise_rules_error(errors: list[str]) -> NoReturn:
 def _gate_completeness(data: DocumentData, doc_type: str) -> None:
     """Deterministic completeness gate — the ONLY validity check besides the
     Pydantic shape check.  Raises before WeasyPrint is ever called."""
-    missing = missing_required(to_shipment(data), doc_type)
+    missing = missing_required(data, doc_type)
     if missing:
         _raise_missing(missing, _load_form_fields(doc_type))
 

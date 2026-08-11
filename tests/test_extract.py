@@ -22,7 +22,7 @@ from app.services.extract import (
     GeminiExtractor,
     RuleExtractor,
 )
-from app.services.validate import missing_required, validate_shipment
+from app.services.validate import validate_shipment
 
 # ---------------------------------------------------------------------------
 # RuleExtractor — happy path (en)
@@ -315,40 +315,6 @@ def test_validate_accepts_valid_shipment() -> None:
         confidence="high",
     )
     assert validate_shipment(s) is s
-
-
-def test_missing_required_incomplete_shipment() -> None:
-    s = Shipment(
-        product_category="embroidered-home-textiles",
-        quantity=-1,
-        weight_grams=-1,
-        destination_country="unknown",
-        confidence="low",
-    )
-    missing = missing_required(s, "PBE_IV")
-    assert missing  # non-empty -> the "ask the user" list
-    assert "quantity_unit" in missing
-    assert "gross_weight" in missing
-    assert "net_weight" in missing
-    assert "consignee_details" in missing
-    # category IS present -> its PBE fields are not reported
-    assert "product_description" not in missing
-    assert "cth" not in missing
-    # fields outside the extraction contract are never reported
-    assert "iec" not in missing
-    assert "state_code" not in missing
-    assert "invoice_no_date" not in missing
-
-
-def test_missing_required_complete_shipment_empty() -> None:
-    s = Shipment(
-        product_category="jute-products",
-        quantity=5,
-        weight_grams=1000,
-        destination_country="IN",
-        confidence="high",
-    )
-    assert missing_required(s, "PBE_IV") == []
 
 
 # ---------------------------------------------------------------------------

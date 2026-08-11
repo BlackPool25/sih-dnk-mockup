@@ -14,18 +14,26 @@ Three surfaces:
   saying "unstated" and are always accepted; the caller asks the user for the
   missing ones (see ``missing_required``).
 - ``missing_required`` — queries ``pbe_field_schemas`` for the required fields
-  of a form type and returns the PBE field keys whose source value in the
-  Shipment is absent.  That list drives the "ask the user" flow.
+  of a form type and returns the PBE field keys with no resolvable value in a
+  ``DocumentData`` (``resolve_value`` is the single formatting point — a
+  field is missing when it renders "—").  Now covers ALL required fields,
+  including ``assessable_value`` (the F3 gap).  That list drives the "ask the
+  user" flow.
 - ``validate_document_rules`` — enforces the portal's official filling rules
   (gross ≤ 110% of net, FOB ≤ invoice, Σ sub-piece value/weight, description ↔
   HS/CTH, ITCH restricted-policy warning, DGFT/KYC gates) against a
-  ``DocumentData``.  Returns a ``DocumentRuleResult`` whose ``errors`` carry
-  the official rejection strings VERBATIM; the renderer raises on them.
+  ``DocumentData``.  The rule catalog is DB-DRIVEN: the ENABLED rows of the
+  ``filling_rules`` table (Wave 0) are loaded per call — each row contributes
+  its evaluator (keyed by ``rule_key``), its ``params``, its ``severity`` and
+  its VERBATIM ``message``.  Returns a ``DocumentRuleResult`` whose ``errors``
+  carry the official rejection strings; the renderer raises on them.
 """
 
 from __future__ import annotations
 
 import re
+import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import NoReturn
 
@@ -34,7 +42,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import PbeFieldSchema
+from app.models import FillingRule, PbeFieldSchema
 from app.schemas.shipment import (
     CATEGORY_SLUGS,
     DESTINATION_UNSTATED,
@@ -50,19 +58,6 @@ _ISO2_RE = re.compile(r"^[A-Z]{2}$")
 # Business-rule bounds (from the todo-10 spec).
 _QUANTITY_MIN, _QUANTITY_MAX = 1, 10_000
 _WEIGHT_MIN_G, _WEIGHT_MAX_G = 1, 50_000
-
-# PBE field_key -> the Shipment field that can satisfy it (the extraction
-# contract owns exactly these four shipment fields; every other required PBE
-# field — iec, state_code, invoice_no_date, assessable_value, decl.* — is
-# filled by asking the user, not by the extractor, and is NOT reported here).
-_PBE_KEY_TO_SHIPMENT: dict[str, str] = {
-    "product_description": "product_category",
-    "cth": "product_category",
-    "quantity_unit": "quantity",
-    "gross_weight": "weight_grams",
-    "net_weight": "weight_grams",
-    "consignee_details": "destination_country",
-}
 
 
 def _error(loc: str, msg: str, input_value: object) -> dict:
@@ -152,31 +147,19 @@ def validate_shipment(s: Shipment) -> Shipment:
     return s
 
 
-def _source_present(s: Shipment, shipment_key: str) -> bool:
-    """Is the Shipment's source value for ``shipment_key`` actually known?"""
-    if shipment_key == "quantity":
-        return s.quantity != QUANTITY_UNSTATED
-    if shipment_key == "weight_grams":
-        return s.weight_grams != WEIGHT_UNSTATED
-    if shipment_key == "destination_country":
-        return _is_real_iso2(s.destination_country)  # "unknown" sentinel = absent
-    if shipment_key == "product_category":
-        return s.product_category in CATEGORY_SLUGS
-    return False
-
-
-def missing_required(s: Shipment, form_type: str) -> list[str]:
-    """Required PBE fields of ``form_type`` the extractor did NOT supply.
+def missing_required(data: DocumentData, form_type: str | None = None) -> list[str]:
+    """Required PBE fields of ``form_type`` with no resolvable value.
 
     Queries ``pbe_field_schemas`` (required=true, ordered by id) and returns
-    the field keys whose source value in the Shipment is absent (sentinel -1 /
-    non-ISO2 destination).  Only the four contract fields are ever considered;
-    required PBE fields outside the Shipment contract (iec, state_code, …) are
-    not extractor concerns and are never reported here.
+    the field keys whose rendered value is the "—" placeholder (via
+    ``DocumentData.resolve_value`` — the single formatting point).  Covers
+    ALL required fields, including ``assessable_value`` (F3 fix: the old
+    Shipment-projection could never see it).
 
     The result drives the "ask the user" flow: for each key in the returned
     list, the caller prompts the user for that field.
     """
+    form_type = form_type or data.form_type
     with SessionLocal() as session:
         required_keys = session.scalars(
             select(PbeFieldSchema.field_key)
@@ -186,20 +169,17 @@ def missing_required(s: Shipment, form_type: str) -> list[str]:
             )
             .order_by(PbeFieldSchema.id)
         ).all()
-
-    missing = []
-    for key in required_keys:
-        shipment_key = _PBE_KEY_TO_SHIPMENT.get(key)
-        if shipment_key is not None and not _source_present(s, shipment_key):
-            missing.append(key)
-    return missing
+    return [key for key in required_keys if data.resolve_value(key) == "—"]
 
 
 # --- todo 14: the OFFICIAL PBE/CN22 filling rules (pbe-iii-iv-fields.md §7) ---
 #
-# Rejection strings are the portal's own error taxonomy (SOP v1.3 error table;
-# dnk-sop-wayback.txt §3.2.1) — VERBATIM, never paraphrased.  Every rule is
-# deterministic arithmetic / set logic / db_tools lookups; no model validates.
+# Wave 2: the rule CATALOG is DB-driven — the enabled rows of the
+# ``filling_rules`` table (rule_key / severity / applies_to / params /
+# message) are loaded per call; each row's evaluator below is looked up by
+# rule_key and returns True when the rule is VIOLATED.  The MSG_* constants
+# mirror the seeded messages (tests reference them; the DB row is the source
+# of truth at runtime).
 
 MSG_SUB_PIECE_VALUE = "Value of Sub pieces does not match"
 MSG_SUB_PIECE_WEIGHT = "Weight of Sub pieces does not match"
@@ -209,13 +189,6 @@ MSG_DESC_HS = "Description does not match with HS Code/CTH"
 MSG_ITCH_RESTRICTED = "ITCH code not applicable for restricted policy"
 MSG_DGFT_IEC_MISSING = "DGFT registration data missing"
 MSG_KYC_IEC_OR_GSTIN = "booking requires at least one of IEC or GSTIN"
-
-# HS/ITCH codes the corpus flags as restricted-policy (no standard-policy
-# booking/claim): 5303 raw jute fibre (jute-products §1: "restricted-ish and
-# biosecurity-heavy") and 4403 wood in the rough (small-woodware §4.1: raw
-# timber/logs/sandalwood restricted/prohibited).  No restricted ITCH row is
-# seeded for these — the warning fires only when such a code is selected.
-_ITCH_RESTRICTED_POLICY_H6: frozenset[str] = frozenset({"5303", "4403"})
 
 # Words too generic to prove a description↔HS match (tokens are ≥ 4 letters).
 _DESC_STOPWORDS: frozenset[str] = frozenset(
@@ -283,67 +256,119 @@ def _description_consistent(data: DocumentData, hs: dict) -> bool:
     return canonical is not None and rendered == canonical
 
 
-def _itch_restricted(hs: dict) -> bool:
-    """True iff the HS row's 6-digit code is restricted-policy ITCH."""
+def _itch_restricted_with(hs: dict, restricted_hs6: list[str]) -> bool:
+    """True iff the HS row's 6-digit code is in the restricted-policy set."""
     for code in (hs.get("hs6"), hs.get("itc_hs_8")):
         if code:
             six = re.sub(r"\D", "", str(code))[:6]
-            if six in _ITCH_RESTRICTED_POLICY_H6:
+            if six in restricted_hs6:
                 return True
     return False
+
+
+# --- rule evaluators ---------------------------------------------------------
+# Each evaluator returns True when its rule is VIOLATED.  ``params`` is the
+# rule's ``filling_rules.params`` JSONB ({} when the row has none).  The
+# evaluator registry maps rule_key -> evaluator; a DB row whose rule_key is
+# not registered is reported as a warning and skipped (never crashes).
+
+
+def _eval_kyc_iec_or_gstin(data: DocumentData, params: dict) -> bool:
+    return data.iec is None and data.gstin is None
+
+
+def _eval_dgft_iec_missing(data: DocumentData, params: dict) -> bool:
+    return data.iec is None and data.gstin is not None
+
+
+def _eval_gross_net_110(data: DocumentData, params: dict) -> bool:
+    return data.weight_grams > data.net_weight_g * float(
+        params.get("max_ratio", 1.10)
+    )
+
+
+def _eval_fob_le_invoice(data: DocumentData, params: dict) -> bool:
+    return (
+        data.fob_minor is not None
+        and data.value_minor is not None
+        and data.fob_minor > data.value_minor
+    )
+
+
+def _eval_sub_piece_value_sum(data: DocumentData, params: dict) -> bool:
+    return (
+        data.quantity > 1
+        and data.unit_value_minor is not None
+        and data.quantity * data.unit_value_minor > (data.value_minor or 0)
+    )
+
+
+def _eval_sub_piece_weight_sum(data: DocumentData, params: dict) -> bool:
+    return (
+        data.quantity > 1
+        and data.piece_gross_g is not None
+        and data.quantity * data.piece_gross_g > data.weight_grams
+    )
+
+
+def _eval_desc_hs_match(data: DocumentData, params: dict) -> bool:
+    hs = _primary_hs_row(data)
+    return hs is not None and not _description_consistent(data, hs)
+
+
+def _eval_itch_restricted_policy(data: DocumentData, params: dict) -> bool:
+    hs = _primary_hs_row(data)
+    return hs is not None and _itch_restricted_with(
+        hs, params.get("restricted_hs6", ["5303", "4403"])
+    )
+
+
+_EVALUATORS: dict[str, Callable[[DocumentData, dict], bool]] = {
+    "kyc_iec_or_gstin": _eval_kyc_iec_or_gstin,
+    "dgft_iec_missing": _eval_dgft_iec_missing,
+    "gross_net_110": _eval_gross_net_110,
+    "fob_le_invoice": _eval_fob_le_invoice,
+    "sub_piece_value_sum": _eval_sub_piece_value_sum,
+    "sub_piece_weight_sum": _eval_sub_piece_weight_sum,
+    "desc_hs_match": _eval_desc_hs_match,
+    "itch_restricted_policy": _eval_itch_restricted_policy,
+}
 
 
 def validate_document_rules(document_data: DocumentData) -> DocumentRuleResult:
     """Enforce the official PBE/CN22 filling rules (pbe-iii-iv-fields.md §7).
 
+    DB-driven (wave 2): the ENABLED ``filling_rules`` rows are loaded per
+    call; each contributes its evaluator (by rule_key), its params, its
+    severity and its VERBATIM message — disabling a row disables the check
+    and editing a row's message changes the rejection string.  ``errors``
+    reject the document; ``warnings`` (restricted-policy ITCH) do not block.
     Deterministic-only — pure arithmetic / set logic / db_tools lookups; the
-    LLM never validates.  ``errors`` carry the portal's official rejection
-    strings VERBATIM; ``warnings`` (restricted-policy ITCH) do not block.
-
-    Gate order (portal submission flow): KYC first (≥1 of IEC/GSTIN), then the
-    DGFT/IEC gate, which applies once at least one KYC document exists.
+    LLM never validates.
     """
     data = DocumentData.model_validate(document_data)
     errors: list[str] = []
     warnings: list[str] = []
-
-    if data.iec is None and data.gstin is None:
-        errors.append(MSG_KYC_IEC_OR_GSTIN)
-    elif data.iec is None:
-        errors.append(MSG_DGFT_IEC_MISSING)
-
-    # gross ≤ 110% of net — net defaults to the gross when only one weight is
-    # known, so a parcel that exceeds the tolerance must declare it explicitly.
-    if data.weight_grams > data.net_weight_g * 1.10:
-        errors.append(MSG_GROSS_110_NET)
-
-    # FOB ≤ invoice value — FOB defaults to the declared cost value.
-    if data.fob_minor is not None and data.fob_minor > data.value_minor:
-        errors.append(MSG_FOB_INVOICE)
-
-    # Σ piece values ≤ parcel value (multi-piece, when a unit value is known).
-    if (
-        data.quantity > 1
-        and data.unit_value_minor is not None
-        and data.quantity * data.unit_value_minor > data.value_minor
-    ):
-        errors.append(MSG_SUB_PIECE_VALUE)
-
-    # Σ piece gross weights ≤ parcel weight (multi-piece, when known).
-    if (
-        data.quantity > 1
-        and data.piece_gross_g is not None
-        and data.quantity * data.piece_gross_g > data.weight_grams
-    ):
-        errors.append(MSG_SUB_PIECE_WEIGHT)
-
-    hs = _primary_hs_row(data)
-    if hs is not None and not _description_consistent(data, hs):
-        errors.append(MSG_DESC_HS)
-
-    if hs is not None and _itch_restricted(hs):
-        warnings.append(MSG_ITCH_RESTRICTED)
-
+    with SessionLocal() as session:
+        rules = session.scalars(
+            select(FillingRule)
+            .where(FillingRule.enabled.is_(True))
+            .order_by(FillingRule.id)
+        ).all()
+    for rule in rules:
+        if rule.applies_to and data.form_type not in (rule.applies_to or {}).get(
+            "form_types", []
+        ):
+            continue
+        evaluator = _EVALUATORS.get(rule.rule_key)
+        if evaluator is None:
+            print(
+                f"warning: unknown filling rule {rule.rule_key!r} in DB",
+                file=sys.stderr,
+            )
+            continue
+        if evaluator(data, rule.params or {}):
+            (warnings if rule.severity == "warning" else errors).append(rule.message)
     return DocumentRuleResult(errors=errors, warnings=warnings)
 
 

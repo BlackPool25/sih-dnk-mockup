@@ -15,6 +15,7 @@ Gates (todo-8 spec):
     G5  product_categories = 8            G10 every imported row has source_url
     G6  every category >= 1 hs_code + total hs_codes >= 24
     G11 spot checks (rates/cap/transit/flags)  G12 psql auth SELECT 1
+    G13 filling_rules = 8
 
 The report also carries the C-1..C-13 conflict log (each entry quoted with
 BOTH values + sources) and a flagged-rows list (confidence=unverified or
@@ -42,6 +43,7 @@ from app.db import DATABASE_URL, SessionLocal
 from app.models import (
     ConfigFlag,
     CountryRate,
+    FillingRule,
     HsCode,
     Lane,
     PbeFieldSchema,
@@ -61,6 +63,7 @@ CATEGORIES_EXPECTED = 8
 HS_CODES_MIN = 24
 FLAGS_MIN = 40
 PBE_MIN = 30
+FILLING_RULES_EXPECTED = 8
 
 # G11 spot checks: (iso2, first_slab_rate_minor, addl_slab_rate_minor)
 ITPS_SPOT: dict[str, tuple[int, int]] = {
@@ -259,6 +262,17 @@ def _spot_check_gate(session) -> list[Gate]:
             )
         )
     return gates
+
+
+def _rules_gate(session) -> Gate:
+    """G13: filling_rules seeded — count(*) == 8 (the rule catalog is fixed)."""
+    n = _count(session, FillingRule)
+    return Gate(
+        "G13 filling_rules seeded",
+        n == FILLING_RULES_EXPECTED,
+        str(n),
+        str(FILLING_RULES_EXPECTED),
+    )
 
 
 def _auth_gate() -> Gate:
@@ -571,7 +585,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         ems_log = _ems_conflict_log(session)
         flagged = _flagged_rows(session)
+        rules_gate = _rules_gate(session)
     gates.append(_auth_gate())
+    gates.append(rules_gate)  # G13 runs after G12 in the report
 
     report = _render(gates, ems_log, flagged)
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)

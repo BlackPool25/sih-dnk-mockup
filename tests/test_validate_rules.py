@@ -17,10 +17,10 @@ import subprocess
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.db import SessionLocal
-from app.models import Document
+from app.models import Document, FillingRule
 from app.schemas.shipment import Shipment
 from app.services.docs.__main__ import main as docs_cli_main
 from app.services.docs.document import build_document_data
@@ -113,6 +113,40 @@ def test_gross_weight_rule_happy_path():
 def test_gross_weight_exceeding_110_percent_of_net_rejects():
     r = validate_document_rules(_data(net_weight_g=300))  # 400 > 330
     assert MSG_GROSS_110_NET in r.errors
+
+
+# --- wave 2: rules are read from the filling_rules DB table ------------------
+
+
+def test_rules_db_driven_disable():
+    """Disabling gross_net_110 in the DB disables the check — the rule chain
+    is data, not hardcoded code."""
+    try:
+        with SessionLocal.begin() as session:
+            session.execute(
+                update(FillingRule)
+                .where(FillingRule.rule_key == "gross_net_110")
+                .values(enabled=False)
+            )
+        r = validate_document_rules(_data(net_weight_g=300))  # 400 > 330
+        assert MSG_GROSS_110_NET not in r.errors
+    finally:
+        with SessionLocal.begin() as session:
+            session.execute(
+                update(FillingRule)
+                .where(FillingRule.rule_key == "gross_net_110")
+                .values(enabled=True)
+            )
+
+
+def test_rules_db_driven_params_and_messages():
+    """The rejection message comes from the DB row, not a code constant."""
+    with SessionLocal() as session:
+        db_message = session.scalar(
+            select(FillingRule.message).where(FillingRule.rule_key == "gross_net_110")
+        )
+    r = validate_document_rules(_data(net_weight_g=300))  # 400 > 330
+    assert db_message in r.errors
 
 
 # --- FOB <= invoice value ---------------------------------------------------
@@ -270,6 +304,10 @@ def test_cli_rejects_without_iec_or_gstin(capsys):
                 "US",
                 "--form",
                 "PBE_IV",
+                "--value-minor",
+                "200000",
+                "--consignee",
+                "Jane Doe, 123 Main St",
             ]
         )
     assert excinfo.value.code != 0
@@ -296,6 +334,10 @@ def test_cli_renders_with_iec_and_gstin(tmp_path, clean_documents):
             IEC,
             "--gstin",
             GSTIN,
+            "--value-minor",
+            "200000",
+            "--consignee",
+            "Jane Doe, 123 Main St",
             "--out",
             str(out),
         ]
@@ -441,6 +483,7 @@ def test_pbe_form_unaffected_by_sdr_gate(tmp_path, capsys, clean_documents):
             "render", "--category", "embroidered-home-textiles", "--qty", "8",
             "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
             "--iec", IEC, "--gstin", GSTIN, "--value-minor", "5000000",
+            "--consignee", "Jane Doe, 123 Main St",
             "--out", str(out),
         ]
     )

@@ -64,7 +64,7 @@
     <th colspan="2">Consignee details</th>
     <th colspan="3">Product details</th>
     <th colspan="3">Details of Parcel</th>
-    <th colspan="5">E-commerce particulars</th>
+    <th colspan="5">E‑commerce particulars</th>
   </tr>
   <tr>
     <th>Name and Address</th>
@@ -167,7 +167,7 @@
   <tr>
     <th>Invoice No.</th>
     <th>Item Serial No. in Invoice</th>
-    <th>RITC code/ITC-HS code</th>
+    <th>RITC code/ITC‑HS code</th>
     <th>DBK serial No.</th>
     <th>Drawback quantity</th>
     <th>IGST payment status (Yes/No)</th>
@@ -198,7 +198,7 @@
     <table class="decl">
       <tr>
         <td class="decl-label">{{ row.label }}</td>
-        <td class="decl-box">[ ] Yes&nbsp;&nbsp;[ ] No&nbsp;&nbsp;[ ] NA</td>
+        <td class="decl-box">[{% if row.value == 'Yes' %}X{% else %}&nbsp;{% endif %}] Yes&nbsp;&nbsp;[{% if row.value == 'No' %}X{% else %}&nbsp;{% endif %}] No&nbsp;&nbsp;[{% if row.value == 'NA' %}X{% else %}&nbsp;{% endif %}] NA</td>
       </tr>
     </table>
   {% endfor %}

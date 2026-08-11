@@ -1,4 +1,4 @@
-"""CLI for the document generation pipeline (todo 11).
+"""CLI for the document generation pipeline (todo 11, wave 4).
 
 Usage:
     uv run python -m app.services.docs render \\
@@ -16,6 +16,20 @@ Flags:
     --iec            exporter IEC — the DGFT/KYC gate requires ≥1 of IEC/GSTIN.
     --gstin          exporter GSTIN (15-char; gates alongside --iec).
 
+Wave-4 additions:
+    --net-weight     net weight in grams (rule input: gross ≤ 110% of net).
+    --fob            FOB value in INR minor units (rule input: FOB ≤ invoice).
+    --unit-value     unit value in INR minor units (Σ sub-piece value rule).
+    --piece-gross    piece gross weight in grams (Σ sub-piece weight rule).
+    --sender/--sender-ref/--non-delivery/--num-invoices — the CN22/CN23
+                     sender block.
+    --<db-field>     ONE auto-generated flag per remaining pbe_field_schemas
+                     field (e.g. --exporter-name, --state-code,
+                     --decl-drawback, --scheme-code) — derived from the DB;
+                     money fields take INR MINOR units and carry a "-minor"
+                     suffix (--export-duty-amount-minor).  Run
+                     ``--help`` on the render subcommand to list them.
+
 Exit codes:
     0  rendered (or preview printed with --yes).
     1  invalid shipment / missing required fields / official filling-rule
@@ -25,8 +39,8 @@ Exit codes:
 
 Validity is deterministic-only: ``validate_shipment`` (business rules),
 ``DocumentData.model_validate`` (shape), ``validate_document_rules`` (the
-official PBE/CN22 filling rules) and ``missing_required`` (completeness per
-pbe_field_schemas.required) — the LLM never validates.
+official PBE/CN22 filling rules, DB-driven) and ``missing_required``
+(completeness per pbe_field_schemas.required) — the LLM never validates.
 """
 
 from __future__ import annotations
@@ -38,7 +52,13 @@ from typing import NoReturn
 from pydantic import ValidationError
 
 from app.schemas.shipment import Shipment
-from app.services.docs.document import FORM_TYPES, DocumentData, build_document_data
+from app.services.docs.cli_fields import add_pbe_field_arguments, collect_field_values
+from app.services.docs.document import (
+    FORM_TYPES,
+    DocumentData,
+    SenderBlock,
+    build_document_data,
+)
 from app.services.docs.renderer import build_preview, render
 from app.services.validate import missing_required, validate_shipment
 
@@ -56,34 +76,72 @@ def _print_validation_error(exc: ValidationError, heading: str) -> NoReturn:
     raise SystemExit(1)
 
 
-def _ask_optional(data: DocumentData, args: argparse.Namespace) -> DocumentData:
+def _build_data(
+    shipment: Shipment,
+    args: argparse.Namespace,
+    *,
+    consignee: str | None = None,
+    value_minor: int | None = None,
+) -> DocumentData:
+    """Assemble the DocumentData from the shipment + ALL CLI flags (legacy,
+    auto-generated DB fields, sender block, filling-rule inputs).
+
+    ``consignee``/``value_minor`` override the CLI values (the prompted
+    optional details are folded in by ``_prompt_optional``)."""
+    if consignee is None:
+        consignee = args.consignee
+    if value_minor is None:
+        value_minor = args.value_minor
+    return build_document_data(
+        shipment,
+        args.form,
+        consignee=consignee,
+        value_minor=value_minor,
+        iec=args.iec,
+        gstin=args.gstin,
+        field_values=collect_field_values(args),
+        sender=SenderBlock(
+            name_address=args.sender,
+            sender_ref=args.sender_ref,
+            non_delivery=args.non_delivery,
+            num_invoices=args.num_invoices,
+        ),
+        net_weight_g=args.net_weight,
+        fob_minor=args.fob,
+        unit_value_minor=args.unit_value,
+        piece_gross_g=args.piece_gross,
+    )
+
+
+def _prompt_optional(args: argparse.Namespace) -> tuple[str | None, int | None]:
     """Prompt for the optional order fields; declined values stay omitted
-    (rendered "—").  EOF-safe so non-interactive runs fall back to omitted."""
+    (rendered "—").  EOF-safe so non-interactive runs fall back to omitted.
+    Returns the final (consignee, value_minor) — flag values when given."""
     print("Optional order details (press Enter to omit — renders as '—'):")
-    updates: dict = {}
-    if args.consignee is None:
+    consignee = args.consignee
+    if consignee is None:
         try:
             value = input("Consignee name/address [empty]: ").strip()
         except EOFError:
             value = ""
-        if value:
-            updates["consignee"] = value
-    if args.value_minor is None:
+        consignee = value or None
+    value_minor = args.value_minor
+    if value_minor is None:
         try:
             raw = input("Declared value (INR minor units) [empty]: ").strip()
         except EOFError:
             raw = ""
         if raw:
             try:
-                updates["value_minor"] = int(raw)
+                value_minor = int(raw)
             except ValueError:
                 print(
                     "error: declared value must be an integer (INR minor units) — omitted",
                     file=sys.stderr,
                 )
-    if not updates:
+    if consignee is None and value_minor is None:
         print("  (no optional fields supplied — will render as '—')")
-    return data.model_copy(update=updates)
+    return consignee, value_minor
 
 
 def cmd_render(args: argparse.Namespace) -> int:
@@ -100,31 +158,26 @@ def cmd_render(args: argparse.Namespace) -> int:
     except ValidationError as exc:
         _print_validation_error(exc, "error: invalid shipment:")
 
-    # 2. Completeness gate (pbe_field_schemas.required) — fails BEFORE any
-    #    lookup or rendering; the missing pbe fields are listed.
-    missing = missing_required(shipment, args.form)
-    if missing:
-        _error("cannot render — required fields missing: " + ", ".join(missing))
-
-    # 3. Assemble DocumentData from DB lookups + validated Shipment keys +
-    #    CLI order fields.
+    # 2. Assemble DocumentData from DB lookups + validated Shipment keys +
+    #    CLI order fields + auto-generated DB field flags.
     try:
-        data = build_document_data(
-            shipment,
-            args.form,
-            consignee=args.consignee,
-            value_minor=args.value_minor,
-            iec=args.iec,
-            gstin=args.gstin,
-        )
+        data = _build_data(shipment, args)
     except (LookupError, ValueError, ValidationError) as exc:
         if isinstance(exc, ValidationError):
             _print_validation_error(exc, "error: invalid document data:")
         _error(str(exc))
 
-    # 4. Optional details — ask the user before preview/render.
+    # 3. Optional details — ask the user, then REBUILD with the prompted
+    #    values so the derived field_values (assessable_value etc.) follow.
     if args.ask_optional:
-        data = _ask_optional(data, args)
+        consignee, value_minor = _prompt_optional(args)
+        data = _build_data(shipment, args, consignee=consignee, value_minor=value_minor)
+
+    # 4. Completeness gate (pbe_field_schemas.required) — fails BEFORE the
+    #    preview/render; the missing pbe fields are listed.
+    missing = missing_required(data, args.form)
+    if missing:
+        _error("cannot render — required fields missing: " + ", ".join(missing))
 
     # 5. Preview gate — the form summary + hi/kn confirm labels are shown;
     #    no PDF is written unless the user confirms with --yes.
@@ -205,6 +258,39 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="exporter GSTIN (15-char) — gates alongside --iec",
     )
+    # Wave 4: the filling-rule inputs + sender block.
+    render_p.add_argument(
+        "--net-weight", type=int, default=None, help="net weight in grams (rule input)"
+    )
+    render_p.add_argument(
+        "--fob", type=int, default=None, help="FOB value in INR minor units (rule input)"
+    )
+    render_p.add_argument(
+        "--unit-value",
+        type=int,
+        default=None,
+        help="unit value in INR minor units (sub-piece value rule)",
+    )
+    render_p.add_argument(
+        "--piece-gross",
+        type=int,
+        default=None,
+        help="piece gross weight in grams (sub-piece weight rule)",
+    )
+    render_p.add_argument("--sender", default=None, help="sender name and address")
+    render_p.add_argument(
+        "--sender-ref", default=None, help="sender's customs reference (e.g. IOSS)"
+    )
+    render_p.add_argument(
+        "--non-delivery", default=None, help="non-delivery instruction (abandoned/return)"
+    )
+    render_p.add_argument(
+        "--num-invoices",
+        default=None,
+        help="number of invoices/licenses/certificates",
+    )
+    # Wave 4: one auto-generated flag per remaining pbe_field_schemas field.
+    add_pbe_field_arguments(render_p)
     render_p.set_defaults(func=cmd_render)
 
     args = parser.parse_args(argv)

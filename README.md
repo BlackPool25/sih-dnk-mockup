@@ -5,14 +5,16 @@ prototype). It ships:
 
 - **A seeded configuration database** (Postgres 16 in Docker): 139 ITPS/EMS
   lanes, 8 product categories + HS codes + country duty rates, 51 US state
-  sales-tax rows, 86 config flags, 116 PBE field schemas — every rate carrying
-  provenance (source URL, level, confidence, verified-at).
+  sales-tax rows, 86 config flags, 116 PBE field schemas, 8 DB-driven filling
+  rules — every rate carrying provenance (source URL, level, confidence,
+  verified-at).
 - **A read-only LLM access layer** (`app/services/db_tools`) — exactly six
   SELECT-only functions; the model never touches raw data.
 - **Deterministic extraction + document generation** — hi/kn speech → English
   form keys → validation (never by the LLM) → confirm preview → PDF
   (PBE-III/IV, CN22, CN23, invoice, packing list) with checksum + immutable
-  versioning.
+  versioning. Every PBE field is CLI-reachable via auto-generated flags; the
+  official filling rules are enforced from the `filling_rules` table.
 
 ---
 
@@ -55,10 +57,14 @@ uv run python -m app.services.convert --all
 uv run python -m app.services.verify
 ```
 
-`convert --all` is the full serial re-seed: lanes first, then the six config
+`convert --all` is the full serial re-seed: lanes first, then the seven config
 tables, each import in its own transaction (TRUNCATE + insert) so re-runs never
 duplicate. Fine-grained variants exist for parallel-safe partial seeding:
-`--lanes` alone, or `--categories --states --flags --pbe` together.
+`--lanes` alone, or `--categories --states --flags --pbe --rules` together
+(`--rules` seeds the `filling_rules` table — the DB-driven validation rules).
+
+`app/services/convert.py` is a thin facade: the seeding logic lives in the
+`app/services/seed/` package (one module per domain + orchestration/CLI).
 
 ---
 
@@ -149,7 +155,10 @@ Guardrails (pinned by tests):
   `[]` (never an error).
 - **Validation is deterministic** — business rules in `app/services/validate.py`
   (`validate_shipment`, `missing_required`, `validate_document_rules`) plus
-  Pydantic model validation; the LLM never validates anything.
+  Pydantic model validation; the LLM never validates anything. The official
+  PBE/CN22 filling rules are **DB-driven**: `validate_document_rules` reads the
+  enabled rows of the `filling_rules` table on every call (rule_key → evaluator,
+  params/messages/enablement are DB data).
 
 ---
 
@@ -163,9 +172,12 @@ Guardrails (pinned by tests):
    inject a mock). Neither ever invents values: unstated fields stay sentinels
    (`-1` / `unknown`) so the CALLER asks the user.
 2. **Deterministic validation.** `validate_shipment` (business rules) +
-   `Shipment`/`DocumentData` Pydantic models + `validate_document_rules` (the
-   official PBE/CN22 filling rules) + `missing_required` (completeness per
-   `pbe_field_schemas.required`) — no LLM in the loop.
+   `DocumentData` Pydantic validation (every provided field value is verified
+   against the `pbe_field_schemas` DB metadata: value_type/options) +
+   `validate_document_rules` (the official PBE/CN22 filling rules, **DB-driven
+   from the `filling_rules` table**) + `missing_required(data)` (completeness
+   per `pbe_field_schemas.required` — covers ALL 7 required fields per PBE
+   form, including `assessable_value`) — no LLM in the loop.
 3. **Preview before generate.** The CLI's `--preview` prints the full form
    summary — every section/field with its value, required fields marked, plus
    the hi/kn confirm labels from `config_flags` (`कृपया पुष्टि करें` /
@@ -173,10 +185,18 @@ Guardrails (pinned by tests):
    hi/kn text appears **only** in preview/UI — the rendered forms are English.
 4. **Optional details.** A prompt collects the optional order fields
    (consignee name/address, declared value) before rendering; declined values
-   render as "—" (the form is honest about what it does not know).
+   render as "—" (the form is honest about what it does not know). For PBE
+   forms, `consignee_details` and `assessable_value` are completeness-gated:
+   a declared value + consignee are required unless the seller supplies them
+   via the CLI flags below.
 5. **Official filling rules.** Before any PDF, the renderer enforces the DNK
    portal's own error taxonomy (pbe-iii-iv-fields.md §7, SOP v1.3) with the
-   **exact** official rejection strings — never paraphrased:
+   **exact** official rejection strings — never paraphrased. The rule catalog
+   is **DB-driven**: `validate_document_rules` loads the enabled rows of the
+   `filling_rules` table on every call — each row's params, message and
+   enablement are data (change them with an UPDATE, no code change), and the
+   rule inputs are CLI-reachable via `--net-weight` / `--fob` / `--unit-value`
+   / `--piece-gross`:
 
    | Rule | Rejection (verbatim) |
    |---|---|
@@ -195,6 +215,7 @@ Guardrails (pinned by tests):
    is blocked.  `net_weight_g` defaults to the gross weight and `fob_minor` to
    the declared value when only one figure is known — a single known figure is
    never rejected for lacking the other.
+
 6. **SDR → CN22/CN23 auto-selection.** The SDR value is auto-computed from the
    declared value using the seeded estimate `sdr.fx_minor_per_sdr` (1 SDR ≈
    ₹109.42, itps-lane.md — `is_estimate=true`); the 300-SDR threshold **only
@@ -211,28 +232,44 @@ Guardrails (pinned by tests):
 
 ```bash
 # Happy path — render a PBE-IV for a US shipment (IEC + GSTIN satisfy the
-# DGFT/KYC gates; without either the render is blocked)
+# DGFT/KYC gates; value + consignee satisfy the completeness gate)
 uv run python -m app.services.docs render \
     --category embroidered-home-textiles --qty 8 --weight-g 400 \
     --country US --form PBE_IV --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
+    --value-minor 200000 --consignee "Jane Doe, 123 Main St" \
     --out docs-out/pbe_sample.pdf
 # document rendered: docs-out/pbe_sample.pdf
 # checksum: <sha256>   document id: <id> (version <n>)
 
+# Seller fields via the auto-generated flags (one per pbe_field_schemas field)
+uv run python -m app.services.docs render \
+    --category embroidered-home-textiles --qty 8 --weight-g 400 \
+    --country US --form PBE_IV --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
+    --value-minor 200000 --consignee "Jane Doe, 123 Main St" \
+    --exporter-name "Acme Exporters Pvt Ltd" --exporter-address "42 MG Road, Bengaluru 560001" \
+    --state-code 29 --ad-code A1234567 --decl-drawback Yes --scheme-code drawback \
+    --export-duty-amount-minor 50000 --out docs-out/seller.pdf
+pdftotext docs-out/seller.pdf - | grep -E "Acme Exporters|₹500.00|\[X\] Yes"   # all present
+
+# Rule inputs are CLI-reachable: --net-weight 300 on a 400 g parcel ⇒ the
+# gross ≤ 110%-of-net rule fires (exit 1, no PDF)
+uv run python -m app.services.docs render \
+    --category embroidered-home-textiles --qty 8 --weight-g 400 \
+    --country US --form PBE_IV --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
+    --value-minor 200000 --consignee "Jane Doe, 123 Main St" \
+    --net-weight 300 --out docs-out/never.pdf
+# error: cannot render — document data rejected:
+#   - rules: Value error, gross weight exceeds 110% of net weight
+
 # Preview only — form summary + hi/kn confirm labels, NO PDF (exit 1)
 uv run python -m app.services.docs render \
     --category jute-products --qty 2 --weight-g 800 \
-    --country US --form PBE_III --preview
+    --country US --form PBE_III --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
+    --value-minor 200000 --consignee "Jane Doe, 123 Main St" --preview
 # ... Document preview — Bill of Export — PBE-III ...
 # Confirm (हिन्दी): कृपया पुष्टि करें
 # Confirm (ಕನ್ನಡ): ದಯವಿಟ್ಟು ದೃಢೀಕರಿಸಿ
 # confirm required: re-run with --yes to write the PDF
-
-# Preview + confirm in one shot (gates need --iec/--gstin to reach the PDF)
-uv run python -m app.services.docs render \
-    --category jute-products --qty 2 --weight-g 800 \
-    --country US --form PBE_III --preview --yes \
-    --iec IN1234567890 --gstin 29ABCDE1234F1Z5
 
 # Prompt for optional order details before rendering
 uv run python -m app.services.docs render \
@@ -246,9 +283,16 @@ uv run python -m app.services.docs render \
 # Official-rule rejection — no --iec/--gstin ⇒ KYC gate blocks (exit 1)
 uv run python -m app.services.docs render \
     --category embroidered-home-textiles --qty 8 --weight-g 400 \
-    --country US --form PBE_IV
+    --country US --form PBE_IV --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
+    --value-minor 200000 --consignee "Jane Doe, 123 Main St"
 # error: cannot render — document data rejected:
 #   - rules: Value error, booking requires at least one of IEC or GSTIN
+
+# Completeness gate — missing required fields listed, exit 1
+uv run python -m app.services.docs render \
+    --category embroidered-home-textiles --qty 8 --weight-g 400 \
+    --country US --form PBE_IV --iec IN1234567890 --gstin 29ABCDE1234F1Z5
+# error: cannot render — required fields missing: consignee_details, assessable_value
 
 # SDR → CN22/CN23 auto-selection: the label is derived from the declared value,
 # never user-picked.  A >300 SDR parcel (≈ ₹32,800) requested as CN22 renders
@@ -256,13 +300,16 @@ uv run python -m app.services.docs render \
 uv run python -m app.services.docs render \
     --category embroidered-home-textiles --qty 8 --weight-g 400 \
     --country US --form CN22 --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
-    --value-minor 4000000 --out docs-out/cn23-derived.pdf
+    --value-minor 4000000 --consignee "Jane Doe, 123 Main St" \
+    --out docs-out/cn23-derived.pdf
 
-# Completeness error — missing required fields listed, exit 1, BEFORE any lookup
+# CN22 with the seller sender block (--sender/--sender-ref/--non-delivery/--num-invoices)
 uv run python -m app.services.docs render \
-    --category jute-products --qty 2 --weight-g 800 \
-    --country unknown --form PBE_III
-# error: cannot render — required fields missing: consignee_details
+    --category embroidered-home-textiles --qty 8 --weight-g 400 \
+    --country US --form CN22 --iec IN1234567890 --gstin 29ABCDE1234F1Z5 \
+    --value-minor 2000 --consignee "Jane Doe, 123 Main St" \
+    --sender "Acme Exports, Delhi" --sender-ref IOSS0001 \
+    --non-delivery return --num-invoices 2 --out docs-out/cn22-sender.pdf
 ```
 
 Form types: `PBE_III`, `PBE_IV`, `CN22`, `CN23`, `INVOICE`, `PACKING_LIST`.
@@ -276,11 +323,12 @@ persists an immutable `documents` row.
 ## 7. Verification & tests
 
 ```bash
-uv run python -m app.services.verify     # all gates PASS -> exit 0
-uv run pytest -q                          # full suite (114+ tests)
+uv run python -m app.services.verify     # all 29 gates PASS -> exit 0
+uv run pytest -q                          # full suite (138 tests)
 ```
 
 `verify` regenerates `seed/verification_report.md` (git-ignored) with the
 row-count gates (135 ITPS / 4 EMS / 51 states / 8 categories / ≥40 flags /
-≥30 PBE), provenance and tamper gates, the C-1..C-13 conflict log, and a psql
-auth probe. Tests run against the live seeded DB — keep the container up.
+≥30 PBE / 8 filling rules), provenance and tamper gates, the C-1..C-13
+conflict log, and a psql auth probe. Tests run against the live seeded DB —
+keep the container up.

@@ -12,7 +12,9 @@ from app.db import SessionLocal
 from app.models import (
     ConfigFlag,
     CountryRate,
+    FillingRule,
     HsCode,
+    PbeFieldSchema,
     ProductCategory,
     StateSalesTax,
 )
@@ -55,3 +57,27 @@ def test_states_alone_leaves_other_config_tables_untouched() -> None:
 
     after = _counts()
     assert after == before
+
+
+def test_rules_seed_idempotent() -> None:
+    """import_configs(rules=True) twice — exactly 8 filling_rules rows both times."""
+    for _ in range(2):
+        import_configs(categories=False, states=False, flags=False, pbe=False, rules=True)
+        with SessionLocal() as session:
+            n = session.scalar(select(func.count()).select_from(FillingRule)) or 0
+        assert n == 8
+
+
+def test_rules_alone_truncate_scope() -> None:
+    """--rules ALONE must not truncate pbe_field_schemas or config_flags."""
+    with SessionLocal() as session:
+        pbe_before = session.scalar(select(func.count()).select_from(PbeFieldSchema)) or 0
+        flags_before = session.scalar(select(func.count()).select_from(ConfigFlag)) or 0
+
+    import_configs(categories=False, states=False, flags=False, pbe=False, rules=True)
+
+    with SessionLocal() as session:
+        pbe_after = session.scalar(select(func.count()).select_from(PbeFieldSchema)) or 0
+        flags_after = session.scalar(select(func.count()).select_from(ConfigFlag)) or 0
+    assert pbe_after == pbe_before == 116
+    assert flags_after == flags_before == 86

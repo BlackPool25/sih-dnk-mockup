@@ -4,7 +4,10 @@
 .venv/
 __pycache__/
 *.pyc
-seed/
+/seed/
 .omo/
 docs-out/
 .pytest_cache/
+# User-added data artifacts (see HANDOFF.md §4) — never commit
+BULK_UPDATED_FILE/
+BULK_UPDATED_FILE.zip
