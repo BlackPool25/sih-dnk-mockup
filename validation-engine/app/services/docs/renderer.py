@@ -28,9 +28,10 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.db import SessionLocal
-from app.models import Document, PbeFieldSchema
+from app.models import Document, Order, PbeFieldSchema
+from app.schemas.shipment import Shipment
 from app.services.db_tools import get_config_flag
-from app.services.docs.document import FORM_TYPES, DocumentData
+from app.services.docs.document import FORM_TYPES, DocumentData, build_document_data
 from app.services.validate import missing_required, validate_document_rules
 
 DOCS_OUT = Path("docs-out")  # git-ignored (see .gitignore)
@@ -46,6 +47,12 @@ _TEMPLATE_FILE: dict[str, str] = {
     "CN23": "cn23.html",
     "INVOICE": "invoice.html",
     "PACKING_LIST": "packing_list.html",
+}
+
+# Form type -> line-item template file (multi-product orders).
+_LINE_TEMPLATE_FILE: dict[str, str] = {
+    "INVOICE": "invoice_lines.html",
+    "PACKING_LIST": "invoice_lines.html",
 }
 
 _DOC_TITLES: dict[str, str] = {
@@ -331,13 +338,19 @@ def _gate_completeness(data: DocumentData, doc_type: str) -> None:
         _raise_missing(missing, _load_form_fields(doc_type))
 
 
-def build_html(document_data: DocumentData, doc_type: str) -> str:
+def build_html(
+    document_data: DocumentData,
+    doc_type: str,
+    *,
+    line_docs: list[dict] | None = None,
+) -> str:
     """Render the form HTML via Jinja2 — English content only.
 
     PBE forms iterate the pbe_field_schemas sections/fields from the DB; the
-    simple forms (CN22/CN23/invoice/packing list) use summary rows.  The
-    context carries NO Hindi/Kannada text — bilingual labels are preview/UI
-    only (see ``build_preview``).
+    simple forms (CN22/CN23/invoice/packing list) use summary rows.  When
+    ``line_docs`` is provided for INVOICE/PACKING_LIST, the line-item template
+    is used instead.  The context carries NO Hindi/Kannada text — bilingual
+    labels are preview/UI only (see ``build_preview``).
     """
     data = DocumentData.model_validate(document_data)
     if doc_type not in _TEMPLATE_FILE:
@@ -363,6 +376,9 @@ def build_html(document_data: DocumentData, doc_type: str) -> str:
         "by_key": _by_key(sections),
         "cn": _cn_context(data) if doc_type in ("CN22", "CN23") else {},
     }
+    if line_docs is not None and doc_type in _LINE_TEMPLATE_FILE:
+        ctx["line_docs"] = line_docs
+        return _JINJA.get_template(_LINE_TEMPLATE_FILE[doc_type]).render(**ctx)
     return _JINJA.get_template(_TEMPLATE_FILE[doc_type]).render(**ctx)
 
 
@@ -443,10 +459,197 @@ def _next_version(doc_type: str) -> tuple[int, int | None]:
     return version, supersedes
 
 
+def render_line_items(
+    order: Order,
+    doc_type: str,
+    out_dir: str | Path | None = None,
+) -> list[Document]:
+    """Per-line document generation for multi-product orders.
+
+    For invoice + packing_list: build one DocumentData per line item, collect
+    per-line summaries into ``line_docs``, render a single combined HTML with
+    the line-item template, produce one PDF with all line rows, and insert one
+    Document row per line item.
+
+    For PBE_III/PBE_IV/CN22/CN23: aggregate all line items into a single
+    DocumentData (first line item's category for the HS lookup, sums for
+    quantity/weight), render once with the standard template, and insert one
+    Document row.
+
+    Returns:
+        list of Document rows — one per line item for INVOICE/PACKING_LIST,
+        one for PBE/CN forms.
+    """
+    if doc_type not in _TEMPLATE_FILE:
+        raise ValueError(
+            f"unknown doc_type {doc_type!r} — expected one of {list(FORM_TYPES)}"
+        )
+    if not order.line_items:
+        raise ValueError("order has no line_items")
+    destination = order.destination_country or "US"
+
+    if doc_type in ("INVOICE", "PACKING_LIST"):
+        # ── per-line build ──
+        line_docs: list[dict] = []
+        documents: list[Document] = []
+        total_qty = 0
+        total_weight = 0
+        for idx, li in enumerate(order.line_items, start=1):
+            cat = li.category_slug or "embroidered-home-textiles"
+            qty = li.quantity or 1
+            wgt = li.weight_g or 100
+            total_qty += qty
+            total_weight += wgt
+            shipment = Shipment(
+                product_category=cat,
+                quantity=qty,
+                weight_grams=wgt,
+                destination_country=destination,
+                confidence="high",
+            )
+            data = build_document_data(
+                shipment,
+                doc_type,
+                consignee=order.consignee,
+                value_minor=li.value_minor or order.value_minor,
+                iec=order.iec,
+                gstin=order.gstin,
+                net_weight_g=order.net_weight_g,
+            )
+            hs = data.hs_codes[0] if data.hs_codes else None
+            line_docs.append({
+                "si_no": str(idx),
+                "description": hs["description"] if hs else (li.category_slug or "—"),
+                "quantity": f"{qty} Nos",
+                "weight_grams": f"{wgt} g",
+                "hs_code": li.hs_code or (hs["hs6"] if hs else "—"),
+                "value": _money(li.value_minor or order.value_minor),
+            })
+
+        # ── overall DocumentData for the summary rows ──
+        first_li = order.line_items[0]
+        total_shipment = Shipment(
+            product_category=first_li.category_slug or "embroidered-home-textiles",
+            quantity=total_qty,
+            weight_grams=total_weight,
+            destination_country=destination,
+            confidence="high",
+        )
+        total_data = build_document_data(
+            total_shipment,
+            doc_type,
+            consignee=order.consignee,
+            value_minor=order.value_minor,
+            iec=order.iec,
+            gstin=order.gstin,
+            net_weight_g=order.net_weight_g,
+        )
+
+        # Gates
+        rules = validate_document_rules(total_data)
+        for warning in rules.warnings:
+            print(f"warning: {warning}", file=sys.stderr)
+        if rules.errors:
+            _raise_rules_error(rules.errors)
+        _gate_completeness(total_data, doc_type)
+        resolved_doc_type, total_data = _resolve_cn_label(total_data, doc_type)
+
+        html = build_html(total_data, resolved_doc_type, line_docs=line_docs)
+        pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+        checksum = _checksum(pdf_bytes)
+        version, supersedes = _next_version(resolved_doc_type)
+        out_dir_path = Path(out_dir) if out_dir else DOCS_OUT
+        path = out_dir_path / f"{resolved_doc_type}-v{version}.pdf"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(pdf_bytes)
+
+        # One Document row per line item
+        with SessionLocal() as session:
+            session.expire_on_commit = False
+            for idx, li in enumerate(order.line_items, start=1):
+                row = Document(
+                    doc_type=resolved_doc_type,
+                    version=version,
+                    checksum=checksum,
+                    structured_json=total_data.model_dump(mode="json"),
+                    file_path=str(path),
+                    supersedes_doc_id=supersedes,
+                )
+                session.add(row)
+                documents.append(row)
+            session.commit()
+        return documents
+
+    # ── PBE_III / PBE_IV / CN22 / CN23: aggregate all lines into one DocumentData ──
+    first_li = order.line_items[0]
+    cat = first_li.category_slug or "embroidered-home-textiles"
+    total_qty = sum(li.quantity or 1 for li in order.line_items)
+    total_weight = sum(li.weight_g or 100 for li in order.line_items)
+    total_value = sum(
+        (li.value_minor or order.value_minor or 0) for li in order.line_items
+    )
+
+    shipment = Shipment(
+        product_category=cat,
+        quantity=total_qty,
+        weight_grams=total_weight,
+        destination_country=destination,
+        confidence="high",
+    )
+    data = build_document_data(
+        shipment,
+        doc_type,
+        consignee=order.consignee,
+        value_minor=total_value if total_value > 0 else order.value_minor,
+        iec=order.iec,
+        gstin=order.gstin,
+        net_weight_g=order.net_weight_g,
+    )
+
+    rules = validate_document_rules(data)
+    for warning in rules.warnings:
+        print(f"warning: {warning}", file=sys.stderr)
+    if rules.errors:
+        _raise_rules_error(rules.errors)
+    _gate_completeness(data, doc_type)
+    resolved_doc_type, data = _resolve_cn_label(data, doc_type)
+    if resolved_doc_type != doc_type:
+        print(_cn_switch_note(doc_type, resolved_doc_type, data.value_minor))
+        doc_type = resolved_doc_type
+
+    html = build_html(data, doc_type)
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+    checksum = _checksum(pdf_bytes)
+    version, supersedes = _next_version(doc_type)
+    path = (
+        Path(out_dir) / f"{doc_type}-v{version}.pdf"
+        if out_dir
+        else DOCS_OUT / f"{doc_type}-v{version}.pdf"
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(pdf_bytes)
+
+    with SessionLocal() as session:
+        row = Document(
+            doc_type=doc_type,
+            version=version,
+            checksum=checksum,
+            structured_json=data.model_dump(mode="json"),
+            file_path=str(path),
+            supersedes_doc_id=supersedes,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+    return [row]
+
+
 def render(
     document_data: DocumentData,
     doc_type: str,
     out_path: str | Path | None = None,
+    *,
+    order: Order | None = None,
 ) -> Document:
     """Render a document: gate -> Jinja2 -> WeasyPrint -> sha256 -> new row.
 
@@ -454,6 +657,9 @@ def render(
         document_data: DocumentData (or dict shaped like it — model_validate).
         doc_type: one of FORM_TYPES.
         out_path: PDF destination (default ``docs-out/{doc_type}-v{version}.pdf``).
+        order: optional Order with line_items — when provided and order has
+            multiple line_items for INVOICE/PACKING_LIST, delegates to
+            ``render_line_items()`` and returns the first Document row.
 
     Returns:
         The persisted ``Document`` row (version 1, 2, … — never overwritten).
@@ -464,6 +670,16 @@ def render(
             filling-rule rejection (pbe-iii-iv-fields.md §7) or required
             pbe_field_schemas fields missing (all raised BEFORE WeasyPrint).
     """
+    # Multi-product delegation: when an Order with multiple line items is
+    # supplied for INVOICE/PACKING_LIST, build per-line documents.
+    if (
+        order is not None
+        and len(order.line_items) > 1
+        and doc_type in ("INVOICE", "PACKING_LIST")
+    ):
+        results = render_line_items(order, doc_type, out_dir=out_path)
+        return results[0] if results else render(document_data, doc_type, out_path)
+
     data = DocumentData.model_validate(document_data)
     if doc_type not in _TEMPLATE_FILE:
         raise ValueError(
@@ -518,4 +734,4 @@ def render(
     return row
 
 
-__all__ = ["build_html", "build_preview", "render", "sdr_info"]
+__all__ = ["build_html", "build_preview", "render", "render_line_items", "sdr_info"]
