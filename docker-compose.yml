@@ -172,14 +172,23 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8004:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      PYTHONUNBUFFERED: "1"
     volumes:
       - ./tracking-api:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "kill -0 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 10s
     networks:
       - dbnet
 
