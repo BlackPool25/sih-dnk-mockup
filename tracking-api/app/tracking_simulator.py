@@ -10,7 +10,7 @@ def advance_shipments():
     try:
         shipments = db.query(models.Shipment).filter(models.Shipment.status != "Delivered").all()
         for shipment in shipments:
-            next_step = provider.get_next_status(shipment.status)
+            next_step = provider.get_latest_status(shipment.tracking_number, shipment.status)
             if next_step is None:
                 continue
             new_event = models.TrackingEvent(

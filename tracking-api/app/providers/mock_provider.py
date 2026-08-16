@@ -11,7 +11,10 @@ LOCATIONS = {
 }
 
 class MockProvider(TrackingProvider):
-    def get_next_status(self, current_status: str):
+    def register(self, tracking_number: str, carrier: str) -> None:
+        pass  # nothing to register, mock generates its own progression
+
+    def get_latest_status(self, tracking_number: str, current_status: str):
         if current_status not in STATE_FLOW:
             return None
         current_index = STATE_FLOW.index(current_status)

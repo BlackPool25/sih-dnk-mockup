@@ -176,12 +176,14 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
       PYTHONUNBUFFERED: "1"
+      TRACK17_API_KEY: ${TRACK17_API_KEY}
+      TRACKING_PROVIDER: mock
     volumes:
       - ./tracking-api:/app
-    depends_on:
+    depends_on: 
       db:
         condition: service_healthy
-      redis:
+      redis: 
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]

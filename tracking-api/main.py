@@ -80,3 +80,20 @@ def get_events(tracking_number: str, db: Session = Depends(get_db)):
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
     return shipment.events
+
+from app.providers import get_provider
+# ...
+@app.post("/shipments")
+def register_shipment(shipment: ShipmentRequest, db: Session = Depends(get_db)):
+    existing = db.query(models.Shipment).filter_by(tracking_number=shipment.tracking_number).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Shipment already registered")
+
+    provider = get_provider()
+    provider.register(shipment.tracking_number, shipment.carrier)
+
+    new_shipment = models.Shipment(tracking_number=shipment.tracking_number, carrier=shipment.carrier)
+    db.add(new_shipment)
+    db.commit()
+    db.refresh(new_shipment)
+    return new_shipment
