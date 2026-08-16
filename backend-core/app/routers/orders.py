@@ -256,6 +256,17 @@ async def create_order(
         await session.commit()
         await session.refresh(order)
 
+    # Auto-generate export document pack (CI, PL, CN22, PBE-IV) and QR token
+    try:
+        from app.cli.__main__ import _attach_doc_pack, _attach_qr
+        await _attach_doc_pack(order, uuid.UUID(user_id))
+        await _attach_qr(order)
+        async with get_session()() as session:
+            result = await session.execute(select(Order).where(Order.id == order.id))
+            order = result.scalar_one()
+    except Exception as e:
+        logger.error("DocPack/QR generation failed: %s", e)
+
     return _build_order_response(order, user_id)
 
 

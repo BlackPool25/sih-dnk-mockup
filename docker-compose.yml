@@ -194,8 +194,8 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8005:80"
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 10s

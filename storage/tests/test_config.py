@@ -82,7 +82,7 @@ class TestDefaults:
 
     def test_access_token_expire_default(self) -> None:
         s = Settings(**_valid_kwargs())
-        assert s.ACCESS_TOKEN_EXPIRE_MINUTES == 15
+        assert s.ACCESS_TOKEN_EXPIRE_MINUTES == 120
 
     def test_refresh_token_expire_default(self) -> None:
         s = Settings(**_valid_kwargs())

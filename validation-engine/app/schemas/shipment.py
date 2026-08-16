@@ -69,11 +69,19 @@ class Shipment(BaseModel):
     raw_transcript: str | None = None  # demo-log ONLY; never sent to any model
 
 
-__all__ = [
-    "CATEGORY_SLUGS",
-    "DESTINATION_UNSTATED",
-    "QUANTITY_UNSTATED",
-    "WEIGHT_UNSTATED",
-    "CategorySlug",
-    "Shipment",
-]
+class ShipmentDraft(BaseModel):
+    """Raw, nullable extraction output — what the user actually said.
+
+    Deliberately NO HS codes, no duty, no DB facts (the anti-hallucination
+    contract).  ``None`` = unstated.  Used as the response_schema for the
+    ONE Gemini extraction call (or the fallback RuleExtractor) and as the
+    draft the intake workflow fills in.
+    """
+    product_category: str | None = None
+    quantity: int | None = None
+    weight_grams: int | None = None
+    destination_country: str | None = None
+    consignee: str | None = None
+    value_minor: int | None = None
+    confidence: Literal["high", "medium", "low"] | None = None
+    raw_transcript: str | None = None

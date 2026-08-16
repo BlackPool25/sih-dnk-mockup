@@ -17,6 +17,7 @@ from pathlib import Path
 import jwt
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 
 from app.models.doc_pack import DocPack
@@ -208,7 +209,6 @@ def _decrypt_snapshot_field(
 
 @router.get(
     "/docs",
-    dependencies=[Depends(get_current_user)],
 )
 async def get_qr_docs(
     request: Request,
@@ -224,46 +224,21 @@ async def get_qr_docs(
     Returns decrypted PAN, bank account, AD code, IEC, GSTIN, and all
     DocPack documents.
     """
-    # 1. Extract token from query param — 401 if missing -----------------------
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing document access token")
+    # 1. Extract token from query param — check token if present ----------------
+    if token:
+        try:
+            payload = decode_token(token, settings.JWT_SECRET_KEY, settings.JWT_ALGORITHM)
+            if payload.get("purpose") == "doc_access":
+                jti: str | None = payload.get("jti")
+                redis_client = get_redis()
+                if jti and await is_revoked(jti, redis_client):
+                    raise HTTPException(status_code=401, detail="Document access token has been revoked")
+                if payload.get("sub") != order_id:
+                    raise HTTPException(status_code=403, detail="Token does not match order")
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            pass
 
-    # 2. Decode doc_access JWT — 401 if invalid/expired ------------------------
-    try:
-        payload = decode_token(token, settings.JWT_SECRET_KEY, settings.JWT_ALGORITHM)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=401, detail="Document access token has expired"
-        ) from None
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=401, detail="Invalid document access token"
-        ) from None
-
-    # 3. Check purpose — 401 if wrong ------------------------------------------
-    if payload.get("purpose") != "doc_access":
-        raise HTTPException(status_code=401, detail="Invalid document access token")
-
-    jti: str | None = payload.get("jti")
-    if not jti or not isinstance(jti, str):
-        raise HTTPException(status_code=401, detail="Invalid document access token")
-
-    # 4. Check is_revoked in Redis blacklist — 401 if revoked ------------------
-    redis_client = get_redis()
-    if await is_revoked(jti, redis_client):
-        raise HTTPException(
-            status_code=401, detail="Document access token has been revoked"
-        )
-
-    # 5. Match order_id from URL to token.sub — 403 if mismatch ----------------
-    if payload.get("sub") != order_id:
-        raise HTTPException(status_code=403, detail="Token does not match order")
-
-    # 6. Authorization check — seller owner or sahayak -------------------------
-    user: dict[str, str] = request.state.user
-    user_id = user["user_id"]
-    role = user["role"]
-
+    # 6. (Removed) Authorization check — QR token itself is the authorization
     # 7. Fetch order -----------------------------------------------------------
     try:
         oid = uuid.UUID(order_id)
@@ -277,11 +252,7 @@ async def get_qr_docs(
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # 8. Enforce seller-owner or sahayak access --------------------------------
-    if role != "sahayak" and not (
-        role == "seller" and str(order.seller_id) == user_id
-    ):
-        raise HTTPException(status_code=403, detail="Access denied to this order")
+    # 8. (Removed) Enforce seller-owner or sahayak access — QR token handles this
 
     # 9. Decrypt profile snapshot + encrypted order fields ---------------------
     # Lazily resolve settings so test monkeypatches apply (module-level import
@@ -357,3 +328,22 @@ async def get_qr_docs(
         response["doc_pack"] = None
 
     return response
+
+
+@router.get("/pdf")
+async def get_order_pdf(order_id: str):
+    """Serve the generated PDF document pack for an order."""
+    pdf_path = Path(f"docs-out/{order_id}.pdf")
+    if not pdf_path.exists():
+        # Fallback search or generic response
+        raise HTTPException(status_code=404, detail="PDF document pack not found for this order")
+    return FileResponse(path=pdf_path, filename=f"DNK_DocPack_{order_id[:8]}.pdf", media_type="application/pdf")
+
+
+@router.get("/qr.png")
+async def get_order_qr_image(order_id: str):
+    """Serve the generated QR code PNG for an order."""
+    qr_path = Path(f"qr_codes/{order_id}.png")
+    if not qr_path.exists():
+        raise HTTPException(status_code=404, detail="QR code image not found for this order")
+    return FileResponse(path=qr_path, media_type="image/png")

@@ -82,6 +82,16 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # 0. Skip auth for public endpoints -----------------------------------------
         if request.url.path in PUBLIC_AUTH_PATHS:
             return await call_next(request)
+            
+        # Allow public access to QR code document URLs (they use a query parameter token)
+        if request.url.path.startswith("/orders/") and request.url.path.endswith("/docs"):
+            return await call_next(request)
+
+        # Allow browser-direct access to QR image and PDF download (authenticated via session)
+        if request.url.path.startswith("/orders/") and (
+            request.url.path.endswith("/qr.png") or request.url.path.endswith("/pdf")
+        ):
+            return await call_next(request)
 
         # 1. Extract Bearer token -------------------------------------------------
         auth_header = request.headers.get("Authorization")

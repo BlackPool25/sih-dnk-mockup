@@ -1,53 +1,79 @@
-# voice-pipeline
+# Voice Pipeline Service (`voice-pipeline`)
 
-Placeholder scaffold for the **voice pipeline** component of the SIH DNK mockup
-monorepo. Owned by the voice team — no business logic lives here yet.
+A local speech-to-text (STT) microservice built with **FastAPI** and **MLX-Whisper**, specifically optimized for Apple Silicon (M-series chips). It delivers sub-second local transcription for multi-lingual audio inputs from Indian artisans.
 
-## Ports
+---
 
-| Binding | Port |
-| ------- | ---- |
-| Host (docker-compose mapping) | **8002** |
-| Container (uvicorn) | **8000** |
+## ⚡ Key Features
 
-## Upstream dependencies
+- **Local Inference Engine**: Powered by `mlx-whisper` using the `whisper-large-v3-turbo` model.
+- **Lifespan Model Caching**: Loads and caches weights into unified memory once at server startup (eliminating per-request cold-start latency).
+- **Multi-Format Ingestion**: Supports `.m4a`, `.wav`, `.mp3`, `.ogg`, and `.webm` audio recordings via multipart/form-data upload.
+- **Language Guidance**: Accepts optional `language_hint` parameters (`en`, `hi`, `kn`, `mr`, `ta`, etc.) or performs automatic multi-lingual language detection.
+- **Zero Cloud Dependency**: Transcribes sensitive artisan speech completely offline without cloud API costs or external network dependencies.
 
-Consumed via `docker-compose.yml` (see repo root):
+---
 
-- **PostgreSQL** — `DATABASE_URL` (e.g. `postgresql+psycopg://postgres:postgres@postgres:5432/sih_dnk`)
-- **Redis** — `REDIS_URL` (e.g. `redis://redis:6379/0`)
+## 🔌 API Specification
 
-These are declared by compose; this component reads them from the environment at
-runtime.
-
-## Base image
-
-`Dockerfile` builds on the shared monorepo image **`sih-dnk-python-base`**
-(`docker/Dockerfile.python`, python 3.12-slim + WeasyPrint system deps + uv).
-Pattern:
-
-```dockerfile
-FROM sih-dnk-python-base
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
-CMD ["sleep", "infinity"]   # placeholder until a real entrypoint exists
+### 1. Health Check
+```http
+GET /healthz
+```
+**Response:**
+```json
+{
+  "status": "ok",
+  "model_loaded": true,
+  "model_name": "mlx-community/whisper-large-v3-turbo"
+}
 ```
 
-The base image's WORKDIR is `/app` and its default CMD is `sleep infinity`; the
-placeholder image overrides CMD explicitly.
-
-## Run
-
-**Container (primary):**
-
-```sh
-docker compose up voice-pipeline
+### 2. Audio Transcription
+```http
+POST /transcribe
+Content-Type: multipart/form-data
 ```
 
-**Local dev:**
+**Parameters:**
+- `file` *(UploadFile, Required)*: The audio file binary stream.
+- `language_hint` *(Form[str], Optional)*: ISO 639-1 language code (e.g., `en`, `hi`, `kn`).
 
-```sh
-uv run uvicorn main:app --host 0.0.0.0 --port 8000
+**Sample Request (cURL):**
+```bash
+curl -X POST "http://127.0.0.1:8002/transcribe" \
+  -F "file=@recording.m4a" \
+  -F "language_hint=hi"
 ```
 
-Health check: `GET /healthz` → `{"status": "ok"}`.
+**Sample Response (JSON):**
+```json
+{
+  "text": "12 जूट बैग जर्मनी भेजने हैं 500 ग्राम वजन 15000 रुपए की कीमत",
+  "language": "hi",
+  "model": "mlx-community/whisper-large-v3-turbo",
+  "duration_seconds": 1.12
+}
+```
+
+---
+
+## 🛠️ Local Setup & Execution
+
+### 1. Install Dependencies
+Using `uv`:
+```bash
+cd voice-pipeline
+uv sync
+```
+
+### 2. Run the Service
+```bash
+uv run uvicorn main:app --host 127.0.0.1 --port 8002
+```
+
+### 3. Verify STT Integration
+Run the standalone STT verification script against sample audio files:
+```bash
+uv run python scripts/verify_stt.py
+```

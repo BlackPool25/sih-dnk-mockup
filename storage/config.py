@@ -59,7 +59,7 @@ class Settings(BaseModel):
     ENCRYPTION_MASTER_KEY: str
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     DOC_ACCESS_TOKEN_EXPIRE_DAYS: int = 30
     APP_BASE_URL: str = "http://localhost:8000"
@@ -79,6 +79,7 @@ class Settings(BaseModel):
 
     # -- LLM -------------------------------------------------------------------
     LLM_CONVERSATION_TTL_HOURS: int = 24
+    GEMINI_API_KEY: str | None = Field(default=None)
 
     # -- Downstream engine URLs ------------------------------------------------
     VALIDATION_ENGINE_URL: str = "http://validation-engine:8000"

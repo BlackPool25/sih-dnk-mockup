@@ -37,6 +37,7 @@ from app.schemas.shipment import (
     QUANTITY_UNSTATED,
     WEIGHT_UNSTATED,
     Shipment,
+    ShipmentDraft,
 )
 
 
@@ -326,6 +327,7 @@ _COUNTRY_ALIASES: dict[str, str] = {
     "united states": "US",
     "america": "US",
     "usa": "US",
+    "us": "US",
     "अमेरिका": "US",
     "ಅಮೆರಿಕಾ": "US",
     # United Kingdom / Britain
@@ -345,14 +347,27 @@ _COUNTRY_ALIASES: dict[str, str] = {
     "australia": "AU",
     "ऑस्ट्रेलिया": "AU",
     "ಆಸ್ಟ್ರೇಲಿಯಾ": "AU",
+    # Germany
+    "germany": "DE",
+    "deutschland": "DE",
+    "de": "DE",
+    # Japan
+    "japan": "JP",
+    # France
+    "france": "FR",
 }
 
 
 def _match_country(text: str) -> str:
     """First matching country alias -> ISO2, else the ``unknown`` sentinel."""
+    tokens = text.split()
     for alias in sorted(_COUNTRY_ALIASES, key=len, reverse=True):
-        if alias in text:
-            return _COUNTRY_ALIASES[alias]
+        if len(alias) <= 3:
+            if alias in tokens:
+                return _COUNTRY_ALIASES[alias]
+        else:
+            if alias in text:
+                return _COUNTRY_ALIASES[alias]
     return DESTINATION_UNSTATED
 
 
@@ -504,68 +519,115 @@ _REPROMPT_PROMPT = (
 )
 
 
+GEMINI_SHIPMENT_DRAFT_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "product_category": {
+            "type": "STRING",
+            "description": "Category slug. Must be one of: block-printed-textiles, embroidered-bags-pouches, embroidered-home-textiles, handloom-scarves-stoles, imitation-artisan-jewellery, jute-products, small-brass-metalware, small-woodware"
+        },
+        "quantity": {"type": "INTEGER", "description": "Quantity or -1"},
+        "weight_grams": {"type": "INTEGER", "description": "Weight in grams or -1"},
+        "destination_country": {"type": "STRING", "description": "ISO2 country code or unknown"},
+        "consignee": {"type": "STRING", "description": "Consignee name and address or empty string"},
+        "value_minor": {"type": "INTEGER", "description": "Total value in INR * 100 (e.g. 15000 INR -> 1500000)"}
+    }
+}
+
+
 class GeminiExtractor(Extractor):
     """LLM adapter implementing the extraction contract.
 
     Guardrails:
-    - ``response_schema=Shipment.model_json_schema()`` with thinking disabled
-      (``thinking_config={"thinking_budget": 0}``).
-    - ``extract`` NEVER receives the transcript: the model gets only the
-      schema and, on a re-prompt, ``previous.model_dump(exclude={"raw_transcript"})``.
-    - Any thinking block in the (mock) response is dropped and never persisted
-      as a fact; ``raw_transcript`` on the produced Shipment stays ``None``.
-    - Schema ValidationError -> re-prompt (max ``max_reprompts`` times) with
-      ONLY the schema + prior Shipment.  Business validation stays in
-      ``app.services.validate`` — the model never validates.
+    - ``response_schema=GEMINI_SHIPMENT_DRAFT_SCHEMA``
+    - ``extract`` NEVER receives the transcript history: the model gets only the
+      schema, the CURRENT user message, and the prior ShipmentDraft object with raw_transcript stripped.
     """
 
     def __init__(self, client: Any, max_reprompts: int = 2):
-        # `client` is a MOCK in every test and every current caller — never a
-        # real Gemini client, never an API key, never a network call.
         self._client = client
         self._max_reprompts = max_reprompts
 
-    def extract(self, previous: Shipment | None, lang: str) -> Shipment:
-        schema = Shipment.model_json_schema()
-        config = {"response_schema": schema, "thinking_config": {"thinking_budget": 0}}
-        response = self._client.generate_content(
-            config=config,
-            contents=[{"instruction": _FIRST_PROMPT, "response_schema": schema}],
-        )
-        last_error: Exception | None = None
-        for _ in range(self._max_reprompts + 1):
-            shipment, last_error = _try_parse(response)
+    def extract(self, previous: Shipment | ShipmentDraft | dict | None = None, text: str = "", lang: str = "en") -> ShipmentDraft:
+        prompt_parts = [
+            "Extract the export shipment details described in the user's message. "
+            "Reply with ONLY JSON matching the requested schema."
+        ]
+        if text:
+            prompt_parts.append(f"Current User Message: {text}")
+        prior = _prior_without_transcript(previous)
+        if prior:
+            prompt_parts.append(f"Prior Shipment State: {json.dumps(prior)}")
+            
+        full_prompt = "\n\n".join(prompt_parts)
+        
+        print(f"\n--- [GEMINI EXTRACTOR PROMPT SENT] ---\n{full_prompt}\n--------------------------------------\n")
+        
+        try:
+            response = self._client.generate_content(
+                full_prompt,
+                generation_config={"response_mime_type": "application/json", "response_schema": GEMINI_SHIPMENT_DRAFT_SCHEMA}
+            )
+        except TypeError:
+            # Fallback if client is a mock expecting keyword config
+            response = self._client.generate_content(
+                config={"response_schema": GEMINI_SHIPMENT_DRAFT_SCHEMA},
+                contents=[{"instruction": full_prompt, "response_schema": GEMINI_SHIPMENT_DRAFT_SCHEMA}]
+            )
+
+        raw_text = _non_thinking_text(response)
+        print(f"\n--- [GEMINI EXTRACTOR RAW RESPONSE RECEIVED] ---\n{raw_text}\n------------------------------------------------\n")
+
+        shipment, last_error = _try_parse_draft(response)
+        if shipment is not None:
+            return shipment
+            
+        for _ in range(self._max_reprompts):
+            response = self._client.generate_content(
+                f"{_REPROMPT_PROMPT}\n\n{full_prompt}",
+                generation_config={"response_mime_type": "application/json", "response_schema": schema}
+            )
+            shipment, last_error = _try_parse_draft(response)
             if shipment is not None:
                 return shipment
-            prior = _prior_without_transcript(previous)
-            response = self._client.generate_content(
-                config=config,
-                contents=[
-                    {"instruction": _REPROMPT_PROMPT, "response_schema": schema},
-                    {"prior_shipment": prior},
-                ],
-            )
+
         raise ValueError(
-            "GeminiExtractor could not produce a schema-valid Shipment after "
+            "GeminiExtractor could not produce a schema-valid ShipmentDraft after "
             f"{self._max_reprompts + 1} attempt(s): {last_error}"
         )
 
 
-def _try_parse(response: Any) -> tuple[Shipment | None, Exception | None]:
-    """Parse a model response into a Shipment.
+def _try_parse_draft(response: Any) -> tuple[ShipmentDraft | None, Exception | None]:
+    """Parse a model response into a ShipmentDraft."""
+    try:
+        text = _non_thinking_text(response)
+        data = json.loads(_strip_code_fence(text)) if isinstance(text, str) else text
+        return ShipmentDraft.model_validate(data), None
+    except (ValidationError, ValueError) as exc:
+        return None, exc
 
-    The response text is JSON (Gemini's structured-output convention); it is
-    ``json.loads``-ed (code fences stripped defensively) and validated with
-    ``Shipment.model_validate``.  Returns (None, error) when the JSON or the
-    schema validation fails — the caller re-prompts.  The model never
-    validates; only Pydantic + app.services.validate decide.
-    """
+
+def _try_parse(response: Any) -> tuple[Shipment | None, Exception | None]:
+    """Parse a model response into a Shipment."""
     try:
         text = _non_thinking_text(response)
         data = json.loads(_strip_code_fence(text)) if isinstance(text, str) else text
         return Shipment.model_validate(data), None
     except (ValidationError, ValueError) as exc:
         return None, exc
+
+
+def _clean_schema(d: Any) -> Any:
+    """Strip title and default keys from JSON schema so Gemini API accepts it."""
+    if isinstance(d, dict):
+        return {
+            k: _clean_schema(v)
+            for k, v in d.items()
+            if k not in ("title", "default")
+        }
+    if isinstance(d, list):
+        return [_clean_schema(item) for item in d]
+    return d
 
 
 def _strip_code_fence(text: str) -> str:
@@ -577,15 +639,16 @@ def _strip_code_fence(text: str) -> str:
     return stripped
 
 
-def _prior_without_transcript(previous: Shipment | None) -> dict | None:
-    """The prior Shipment as the model may see it — raw_transcript stripped.
-
-    This is the USER-REQUIREMENT guarantee: even if the demo log stored the
-    transcript on a Shipment, the LLM re-prompt never contains it.
-    """
+def _prior_without_transcript(previous: Any) -> dict | None:
+    """The prior Shipment / ShipmentDraft as the model may see it — raw_transcript stripped."""
     if previous is None:
         return None
-    return previous.model_dump(exclude={"raw_transcript"})
+    if isinstance(previous, dict):
+        d = {k: v for k, v in previous.items() if k != "raw_transcript" and v is not None and v != -1 and v != "unknown"}
+        return d if d else None
+    if hasattr(previous, "model_dump"):
+        return previous.model_dump(exclude={"raw_transcript"}, exclude_none=True)
+    return None
 
 
 def _non_thinking_text(response: Any) -> str:
@@ -609,9 +672,53 @@ def _non_thinking_text(response: Any) -> str:
     return getattr(response, "text", "")
 
 
-__all__ = [
-    "CategoryUnknownError",
-    "Extractor",
-    "GeminiExtractor",
-    "RuleExtractor",
-]
+# ---------------------------------------------------------------------------
+# Public helpers — the workflow engine re-uses these.
+# ---------------------------------------------------------------------------
+
+def parse_quantity(text: str) -> int | None:
+    """Deterministically parse the first number run in *text*.
+
+    Returns None when no number run is present.
+    """
+    tokens = _tokenize(_normalize(text))
+    return _combine_numbers(_extract_quantity(tokens, set()))
+
+
+def parse_weight(text: str) -> int | None:
+    """Parse ``<number> <weight unit>`` in *text* → grams.
+
+    Returns None when no weight run is present.
+    """
+    tokens = _tokenize(_normalize(text))
+    weight, _ = _extract_weight(tokens)
+    return weight
+
+
+def match_category(text: str) -> str | None:
+    """Best seeded category slug from *text*, or None when nothing matches.
+
+    Raises CategoryUnknownError (as before).
+    """
+    return _match_category(_normalize(text))
+
+
+def match_country(text: str) -> str:
+    """First matching country alias → ISO2, else the ``unknown`` sentinel.
+
+    Same convention as _match_country but returns a plain string (no sentinel).
+    """
+    return _match_country(_normalize(text))
+
+
+def parse_value_minor(text: str) -> int | None:
+    """Parse a rupees amount from *text* into minor units.
+
+    Strips currency symbols (₹, $, commas) and then parses the number.
+    Returns None when no valid number is found.
+    """
+    cleaned = re.sub(r"[₹$,.\s]+", "", text)
+    n = parse_quantity(cleaned)
+    if n is None:
+        return None
+    return n * 100

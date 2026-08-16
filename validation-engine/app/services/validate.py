@@ -148,17 +148,35 @@ def validate_shipment(s: Shipment) -> Shipment:
     return s
 
 
+_KNOWN_PLACEHOLDER_PATTERNS = (
+    "consignee_val",
+    "value_val",
+    "null",
+    "none",
+    "unknown",
+    "-1",
+    "—",
+    "",
+)
+
+def _is_placeholder_value(val: Any) -> bool:
+    if val is None:
+        return True
+    s = str(val).strip().lower()
+    if s in _KNOWN_PLACEHOLDER_PATTERNS:
+        return True
+    if s.endswith("_val") or s.startswith("placeholder"):
+        return True
+    if isinstance(val, (int, float)) and val <= 0:
+        return True
+    return False
+
 def missing_required(data: DocumentData, form_type: str | None = None) -> list[str]:
     """Required PBE fields of ``form_type`` with no resolvable value.
 
     Queries ``pbe_field_schemas`` (required=true, ordered by id) and returns
-    the field keys whose rendered value is the "—" placeholder (via
-    ``DocumentData.resolve_value`` — the single formatting point).  Covers
-    ALL required fields, including ``assessable_value`` (F3 fix: the old
-    Shipment-projection could never see it).
-
-    The result drives the "ask the user" flow: for each key in the returned
-    list, the caller prompts the user for that field.
+    the field keys whose rendered value is missing or matches a placeholder pattern.
+    Covers ALL required fields, including ``assessable_value``.
     """
     form_type = form_type or data.form_type
     with SessionLocal() as session:
@@ -170,7 +188,20 @@ def missing_required(data: DocumentData, form_type: str | None = None) -> list[s
             )
             .order_by(PbeFieldSchema.id)
         ).all()
-    return [key for key in required_keys if data.resolve_value(key) == "—"]
+
+    missing = []
+    import logging
+    for key in required_keys:
+        raw_val = data.field_values.get(key)
+        resolved_val = data.resolve_value(key)
+        if _is_placeholder_value(raw_val) or resolved_val == "—":
+            if raw_val is not None and str(raw_val).strip() not in ("—", ""):
+                logging.error(
+                    f"[SAFEGUARD ALERT] Field '{key}' has placeholder/invalid value {raw_val!r} "
+                    f"(resolved: {resolved_val!r}) — treating as MISSING."
+                )
+            missing.append(key)
+    return missing
 
 
 # --- todo 14: the OFFICIAL PBE/CN22 filling rules (pbe-iii-iv-fields.md §7) ---

@@ -9,17 +9,18 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import DeclarativeBase
 
 
-class Base(DeclarativeBase):
-    """Declarative base for backend-core models."""
-
-
 def utcnow() -> datetime:
     """Timezone-aware UTC now, for Python-side defaults."""
     return datetime.now(UTC)
 
+try:
+    from auth.models import Base as AuthBase
+    class Base(DeclarativeBase):
+        metadata = AuthBase.metadata
+except ImportError:
+    class Base(DeclarativeBase):
+        pass
 
-# Register models on Base.metadata — must follow Base definition to avoid
-# circular imports (models import Base from here, then we re-import them).
 from app.models.doc_pack import DocPack
 from app.models.order import Order, OrderStatus
 from app.models.profile import SellerProfile
