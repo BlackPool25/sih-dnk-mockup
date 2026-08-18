@@ -11,3 +11,11 @@ docs-out/
 # User-added data artifacts (see HANDOFF.md §4) — never commit
 BULK_UPDATED_FILE/
 BULK_UPDATED_FILE.zip
+
+# Generated artifacts — never commit
+/qr_codes/
+/backend-core/qr_codes/
+.playwright-mcp/
+voice-pipeline/models/
+sih2026-deck/
+*.pptx
