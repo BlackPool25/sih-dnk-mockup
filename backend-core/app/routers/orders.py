@@ -26,6 +26,7 @@ from app.schemas.order import (
     OrderListResponse,
     OrderResponse,
 )
+from app.services.translation import ensure_english_free_text
 from app.services.val_client import (
     InvalidInputError,
     NotFoundError,
@@ -305,6 +306,13 @@ async def create_order(
     profile = await _fetch_seller_profile(user_id)
     if profile is None:
         raise HTTPException(status_code=400, detail="Complete profile first")
+
+    # English invariant: every free-text value reaching the validation engine
+    # must be Latin-script. Session state keeps the Hindi-canonical value; the
+    # Latin form is derived here, at the boundary. Never blocks on failure —
+    # ensure_english_free_text falls back to the raw value.
+    english = await ensure_english_free_text([("consignee", body.consignee)])
+    body = body.model_copy(update={"consignee": english["consignee"]})
 
     payload = _build_order_payload(profile, user_id, body)
     try:

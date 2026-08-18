@@ -420,3 +420,67 @@ async def test_get_order_pdf_auto_generates_docs(
     assert pdf_resp.status_code == 200
     assert pdf_resp.headers["content-type"] == "application/pdf"
     assert "generate_docs_all" in val_fake.calls
+
+
+# ---------------------------------------------------------------------------
+# Translation hook — Devanagari free-text becomes Latin at the boundary
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_order_transliterates_devanagari_consignee(
+    test_seller: dict[str, str],
+    val_fake: FakeValClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consignee in Devanagari is transliterated to Latin before the payload
+    leaves backend-core (so engine DB + rendered docs are English)."""
+    from unittest.mock import AsyncMock
+
+    translated = {"consignee": "Shikha Sharma"}
+    monkeypatch.setattr(
+        "app.routers.orders.ensure_english_free_text",
+        AsyncMock(return_value=translated),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        payload = dict(ORDER_PAYLOAD)
+        payload["consignee"] = "शिखा शर्मा"
+        response = await client.post(
+            "/orders",
+            json=payload,
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+
+    assert response.status_code == 201, response.text
+    assert val_fake.last_payload["consignee"] == "Shikha Sharma"
+
+
+@pytest.mark.asyncio
+async def test_create_order_passes_latin_consignee_through(
+    test_seller: dict[str, str],
+    val_fake: FakeValClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Latin consignee passes through unchanged — the English invariant is
+    preserved and the engine receives the exact value sent."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "app.routers.orders.ensure_english_free_text",
+        AsyncMock(return_value={"consignee": "Acme Corp, New York"}),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        response = await client.post(
+            "/orders",
+            json=ORDER_PAYLOAD,  # consignee 'Acme Corp, New York' (Latin)
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+
+    assert response.status_code == 201, response.text
+    assert val_fake.last_payload["consignee"] == "Acme Corp, New York"
