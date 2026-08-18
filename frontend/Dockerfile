@@ -1,13 +1,14 @@
-# =============================================================================
-# SIH-DNK Mockup — frontend (placeholder)
-# =============================================================================
-# Minimal static placeholder served by nginx:alpine.
-# Host port 8005 -> container port 80 (see root docker-compose.yml / COMPONENTS.md).
-# =============================================================================
+# Stage 1: Build
+FROM node:20-alpine as builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# Stage 2: Serve via Nginx with API Proxy pointing to the backend-core compose service
 FROM nginx:alpine
-
-COPY index.html /usr/share/nginx/html/index.html
-
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
 EXPOSE 80
-
 CMD ["nginx", "-g", "daemon off;"]
