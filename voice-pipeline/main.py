@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from app.sarvam import SarvamError, get_sarvam_client
+from app.sarvam import SarvamClient, SarvamError, get_sarvam_client
 
 MAX_TTS_CHARS = 400
 
@@ -31,6 +31,25 @@ class TranslateRequest(BaseModel):
     input: str
     source_language_code: str = "auto"
     target_language_code: str = "hi-IN"
+
+
+class TranslateTextItem(BaseModel):
+    key: str
+    text: str
+    kind: str = "transliterate"  # "translate" | "transliterate"
+
+
+class TranslateTextRequest(BaseModel):
+    items: list[TranslateTextItem]
+
+
+class TranslatedItem(BaseModel):
+    key: str
+    english: str
+
+
+class TranslateTextResponse(BaseModel):
+    items: list[TranslatedItem]
 
 
 def _elapsed_ms(start_ns: int) -> int:
@@ -94,3 +113,62 @@ def translate(body: TranslateRequest) -> dict[str, str]:
     except SarvamError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"translated_text": translated}
+
+
+def _translate_item(client: SarvamClient, item: TranslateTextItem) -> str:
+    """Translate/transliterate ONE item to English (target en-IN)."""
+    return client.translate(
+        item.text,
+        target="en-IN",
+        enable_indic_transliteration=(item.kind == "transliterate"),
+    )
+
+
+@app.post("/translate/text")
+def translate_text(body: TranslateTextRequest) -> TranslateTextResponse:
+    """Batch translate|transliterate free-text items to English in ONE mayura call.
+
+    Items are newline-joined into a single upstream request; the response is
+    split back per item. If the upstream collapses lines, each item is retried
+    individually so no item is ever lost.
+    """
+    if not body.items:
+        raise HTTPException(status_code=400, detail="items must not be empty")
+    keys = [item.key for item in body.items]
+    if len(keys) != len(set(keys)):
+        raise HTTPException(status_code=400, detail="duplicate item key")
+    for item in body.items:
+        if not item.text.strip():
+            raise HTTPException(status_code=400, detail=f"empty text for item '{item.key}'")
+
+    client = get_sarvam_client()
+    try:
+        if len(body.items) == 1:
+            english = _translate_item(client, body.items[0])
+            return TranslateTextResponse(
+                items=[TranslatedItem(key=body.items[0].key, english=english)]
+            )
+
+        joined = "\n".join(item.text for item in body.items)
+        any_transliterate = any(item.kind == "transliterate" for item in body.items)
+        translated = client.translate(
+            joined,
+            target="en-IN",
+            enable_indic_transliteration=any_transliterate,
+        )
+        parts = translated.split("\n")
+        if len(parts) == len(body.items):
+            return TranslateTextResponse(
+                items=[
+                    TranslatedItem(key=item.key, english=part)
+                    for item, part in zip(body.items, parts, strict=True)
+                ]
+            )
+        return TranslateTextResponse(
+            items=[
+                TranslatedItem(key=item.key, english=_translate_item(client, item))
+                for item in body.items
+            ]
+        )
+    except SarvamError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

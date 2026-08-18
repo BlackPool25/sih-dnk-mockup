@@ -91,17 +91,23 @@ class SarvamClient:
         )
         return base64.b64decode(response.json()["audios"][0])
 
-    def translate(self, text: str, source: str = "auto", target: str = "hi-IN") -> str:
+    def translate(
+        self,
+        text: str,
+        source: str = "auto",
+        target: str = "hi-IN",
+        enable_indic_transliteration: bool | None = None,
+    ) -> str:
+        payload: dict[str, str | bool] = {
+            "input": text,
+            "source_language_code": source,
+            "target_language_code": target,
+            "model": TRANSLATE_MODEL,
+        }
+        if enable_indic_transliteration is not None:
+            payload["enable_indic_transliteration"] = enable_indic_transliteration
         response = self._request(
-            lambda: self._client.post(
-                "/translate",
-                json={
-                    "input": text,
-                    "source_language_code": source,
-                    "target_language_code": target,
-                    "model": TRANSLATE_MODEL,
-                },
-            )
+            lambda: self._client.post("/translate", json=payload)
         )
         return str(response.json()["translated_text"])
 
