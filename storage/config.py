@@ -32,7 +32,9 @@ def _parse_rate_limit(raw: str) -> tuple[int, int]:
     except ValueError:
         raise ValueError(f"Rate limit values must be integers, got: {raw!r}") from None
     if max_req < 0 or window <= 0:
-        raise ValueError(f"Rate limit must have non-negative count and positive window, got: {raw!r}")
+        raise ValueError(
+            f"Rate limit must have non-negative count and positive window, got: {raw!r}"
+        )
     return max_req, window
 
 
@@ -79,6 +81,11 @@ class Settings(BaseModel):
 
     # -- LLM -------------------------------------------------------------------
     LLM_CONVERSATION_TTL_HOURS: int = 24
+
+    # Optional keys — absent ⇒ RuleDraftExtractor + template replies (no network).
+    GEMINI_API_KEY: str | None = None
+    SARVAM_API_KEY: str | None = None
+    SARVAM_ENABLED: bool = False
 
     # -- Downstream engine URLs ------------------------------------------------
     VALIDATION_ENGINE_URL: str = "http://validation-engine:8000"

@@ -1,7 +1,7 @@
 # sih-dnk-storage-base — shared base image for auth/ and backend-core/.
 # Bakes in the storage Python dependencies so downstream Dockerfiles need
 # only `FROM sih-dnk-storage-base` and add their own deps on top.
-FROM python:3.12-slim
+FROM python:3.12-slim AS runtime
 
 # uv for dependency management (copies instead of symlinks — slim-friendly)
 RUN pip install --no-cache-dir uv
@@ -25,3 +25,13 @@ ENV PATH="/opt/storage/.venv/bin:$PATH"
 WORKDIR /app
 
 CMD ["sleep", "infinity"]
+
+# ---------------------------------------------------------------------------
+# Test stage — full dependency set (incl. dev groups) for running pytest in CI.
+# Build with: docker build --target test -t sih-dnk-storage:test .
+# ---------------------------------------------------------------------------
+FROM runtime AS test
+WORKDIR /opt/storage
+COPY uv.lock ./
+RUN uv sync --frozen
+CMD ["uv", "run", "pytest"]

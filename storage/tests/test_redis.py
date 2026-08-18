@@ -34,9 +34,10 @@ def test_get_redis_returns_redis_instance() -> None:
     """get_redis() returns a `redis.asyncio.Redis` when REDIS_URL is set."""
     os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 
-    with patch("redis.asyncio.ConnectionPool.from_url") as mock_pool, patch(
-        "redis.asyncio.Redis"
-    ) as mock_redis:
+    with (
+        patch("redis.asyncio.ConnectionPool.from_url") as mock_pool,
+        patch("redis.asyncio.Redis") as mock_redis,
+    ):
         mock_redis.return_value = MagicMock(name="redis_client")
         mock_pool.return_value = MagicMock(name="pool")
 
@@ -51,9 +52,7 @@ def test_get_redis_reuses_same_instance() -> None:
     """Subsequent calls return the cached singleton client."""
     os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 
-    with patch("redis.asyncio.ConnectionPool.from_url"), patch(
-        "redis.asyncio.Redis"
-    ) as mock_redis:
+    with patch("redis.asyncio.ConnectionPool.from_url"), patch("redis.asyncio.Redis") as mock_redis:
         mock_redis.return_value = MagicMock(name="redis_client")
 
         first = get_redis()
@@ -68,9 +67,7 @@ def test_get_redis_ping_returns_true() -> None:
     """``await get_redis().ping()`` returns ``True``."""
     os.environ["REDIS_URL"] = "redis://localhost:6379/0"
 
-    with patch("redis.asyncio.ConnectionPool.from_url"), patch(
-        "redis.asyncio.Redis"
-    ) as mock_redis:
+    with patch("redis.asyncio.ConnectionPool.from_url"), patch("redis.asyncio.Redis") as mock_redis:
         mock_client = MagicMock()
         mock_client.ping = AsyncMock(return_value=True)
         mock_redis.return_value = mock_client

@@ -379,7 +379,17 @@ class TestEdgeCases:
         assert s.RATE_LIMIT_DEFAULT_TUPLE == (100, 86400)
 
     def test_all_jwt_algorithms_accepted(self) -> None:
-        for alg in ("HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "ES256", "ES384", "ES512"):
+        for alg in (
+            "HS256",
+            "HS384",
+            "HS512",
+            "RS256",
+            "RS384",
+            "RS512",
+            "ES256",
+            "ES384",
+            "ES512",
+        ):
             s = Settings(**_valid_kwargs(JWT_ALGORITHM=alg))
             assert s.JWT_ALGORITHM == alg
 

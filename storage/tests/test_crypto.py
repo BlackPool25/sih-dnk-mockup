@@ -1,4 +1,5 @@
 """Tests for storage.crypto — AES-256-GCM encryption with HKDF key derivation."""
+
 import base64
 import os
 
@@ -27,13 +28,11 @@ PLAINTEXT = "sensitive-field-value-123"
 # user_uuid = "vector-user"
 # key_version = 1
 # Expected derived key (pre-computed, verifiable independently):
-EXPECTED_DERIVED_KEY_HEX = (
-    "e29a3d0a16001e0aed4f0185f453636f"
-    "54c4c82de059e46560a4f457af0d1da3"
-)
+EXPECTED_DERIVED_KEY_HEX = "e29a3d0a16001e0aed4f0185f453636f54c4c82de059e46560a4f457af0d1da3"
 
 
 # ── Test: roundtrip ──────────────────────────────────────────────────────
+
 
 def test_roundtrip():
     """encrypt(plaintext) then decrypt → identical plaintext."""
@@ -48,6 +47,7 @@ def test_roundtrip():
 
 # ── Test: key isolation (different users) ────────────────────────────────
 
+
 def test_key_isolation():
     """Different user_uuids → different derived keys → decryption fails."""
     encrypted = encrypt_field(PLAINTEXT, USER_UUID, MASTER_KEY, KEY_VERSION)
@@ -57,6 +57,7 @@ def test_key_isolation():
 
 
 # ── Test: key version isolation ──────────────────────────────────────────
+
 
 def test_key_version_isolation():
     """Different key_versions → different derived keys → decryption fails."""
@@ -72,6 +73,7 @@ def test_key_version_isolation():
 
 # ── Test: wrong master key ───────────────────────────────────────────────
 
+
 def test_wrong_key():
     """Encrypt with one master_key, decrypt with another → DecryptionError."""
     encrypted = encrypt_field(PLAINTEXT, USER_UUID, MASTER_KEY, KEY_VERSION)
@@ -81,6 +83,7 @@ def test_wrong_key():
 
 
 # ── Test: tampered ciphertext ────────────────────────────────────────────
+
 
 def test_tampered_ciphertext():
     """Modifying the ciphertext → GCM auth fails → DecryptionError."""
@@ -99,6 +102,7 @@ def test_tampered_ciphertext():
 
 # ── Test: nonce randomness ───────────────────────────────────────────────
 
+
 def test_nonce_randomness():
     """Same plaintext encrypted twice → different ciphertexts (random nonce)."""
     enc1 = encrypt_field(PLAINTEXT, USER_UUID, MASTER_KEY, KEY_VERSION)
@@ -114,6 +118,7 @@ def test_nonce_randomness():
 
 
 # ── Test: deterministic test vector ──────────────────────────────────────
+
 
 def test_test_vector_deterministic():
     """HKDF-SHA256 with known inputs → known derived key (deterministic)."""

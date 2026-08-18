@@ -13,7 +13,6 @@ from storage.db import get_engine, get_session
 
 
 class TestGetEngine:
-
     def test_raises_valueerror_when_databse_url_unset(self) -> None:
         os.environ["DATABASE_URL"] = ""
         try:
@@ -23,9 +22,7 @@ class TestGetEngine:
             del os.environ["DATABASE_URL"]
 
     def test_returns_engine_when_url_set(self) -> None:
-        os.environ["DATABASE_URL"] = (
-            "postgresql+psycopg://test:test@localhost:5432/test"
-        )
+        os.environ["DATABASE_URL"] = "postgresql+psycopg://test:test@localhost:5432/test"
         try:
             engine = get_engine()
             assert engine is not None
@@ -35,11 +32,8 @@ class TestGetEngine:
 
 
 class TestGetSession:
-
     def test_returns_async_sessionmaker(self) -> None:
-        os.environ["DATABASE_URL"] = (
-            "postgresql+psycopg://test:test@localhost:5432/test"
-        )
+        os.environ["DATABASE_URL"] = "postgresql+psycopg://test:test@localhost:5432/test"
         try:
             sessionmaker = get_session()
             assert sessionmaker is not None
