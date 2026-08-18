@@ -11,7 +11,7 @@ def get_cached_shipment(tracking_number: str):
     data = r.get(f"shipment:{tracking_number}")
     return json.loads(data) if data else None
 
-def set_cached_shipment(tracking_number: str, shipment_data: dict):
+def set_cached_shipment(tracking_number: str, shipment_data: dict[str, object]) -> None:
     r.setex(f"shipment:{tracking_number}", CACHE_TTL_SECONDS, json.dumps(shipment_data))
 
 def invalidate_shipment_cache(tracking_number: str):

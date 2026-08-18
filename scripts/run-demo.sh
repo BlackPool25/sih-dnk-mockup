@@ -29,12 +29,19 @@ export PYTHONPATH="$ROOT"
 setsid nohup /tmp/opencode/be-venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8006 > /tmp/opencode/be-8006.log 2>&1 < /dev/null &
 disown
 
+echo "→ starting tracking-api on :8004 (mock 17TRACK simulator)"
+cd "$ROOT/tracking-api"
+export TRACKING_PROVIDER=mock
+setsid nohup /tmp/opencode/ta-venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8004 > /tmp/opencode/ta-8004.log 2>&1 < /dev/null &
+disown
+
 sleep 6
 echo ""
 echo "=== health check ==="
 curl -s -o /dev/null -w "validation-engine :8001  → HTTP %{http_code}\n" -m 3 http://127.0.0.1:8001/ || true
 curl -s -o /dev/null -w "voice-pipeline    :8002  → HTTP %{http_code}\n" -m 3 http://127.0.0.1:8002/healthz || true
+curl -s -o /dev/null -w "tracking-api      :8004  → HTTP %{http_code}\n" -m 3 http://127.0.0.1:8004/healthz || true
 curl -s -o /dev/null -w "backend-core      :8006  → HTTP %{http_code}\n" -m 3 http://127.0.0.1:8006/health || true
 echo ""
-echo "All services started. Logs: /tmp/opencode/{ve-8001,vp-8002,be-8006}.log"
+echo "All services started. Logs: /tmp/opencode/{ve-8001,vp-8002,ta-8004,be-8006}.log"
 echo "Stop with: pkill -f 'uvicorn app.api:app'; pkill -f 'uvicorn main:app'; pkill -f 'uvicorn app.main:app'"

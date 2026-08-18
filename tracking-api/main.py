@@ -47,7 +47,7 @@ class EventRequest(BaseModel):
 
 
 @app.post("/shipments")
-def register_shipment(shipment: ShipmentRequest, db: Session = Depends(get_db)) -> models.Shipment:
+def register_shipment(shipment: ShipmentRequest, db: Session = Depends(get_db)) -> dict[str, object]:
     existing = db.query(models.Shipment).filter_by(tracking_number=shipment.tracking_number).first()
     if existing:
         raise HTTPException(status_code=400, detail="Shipment already registered")
@@ -59,11 +59,11 @@ def register_shipment(shipment: ShipmentRequest, db: Session = Depends(get_db)) 
     db.add(new_shipment)
     db.commit()
     db.refresh(new_shipment)
-    return new_shipment
+    return jsonable_encoder(new_shipment)
 
 
 @app.get("/shipments/{tracking_number}")
-def get_shipment(tracking_number: str, db: Session = Depends(get_db)) -> dict:
+def get_shipment(tracking_number: str, db: Session = Depends(get_db)) -> dict[str, object]:
     cached = get_cached_shipment(tracking_number)
     if cached:
         return cached
@@ -76,7 +76,7 @@ def get_shipment(tracking_number: str, db: Session = Depends(get_db)) -> dict:
 
 
 @app.post("/shipments/{tracking_number}/events")
-def add_event(tracking_number: str, event: EventRequest, db: Session = Depends(get_db)) -> models.TrackingEvent:
+def add_event(tracking_number: str, event: EventRequest, db: Session = Depends(get_db)) -> dict[str, object]:
     shipment = db.query(models.Shipment).filter_by(tracking_number=tracking_number).first()
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
@@ -90,12 +90,12 @@ def add_event(tracking_number: str, event: EventRequest, db: Session = Depends(g
     db.commit()
     db.refresh(new_event)
     invalidate_shipment_cache(tracking_number)
-    return new_event
+    return jsonable_encoder(new_event)
 
 
 @app.get("/shipments/{tracking_number}/events")
-def get_events(tracking_number: str, db: Session = Depends(get_db)) -> list[models.TrackingEvent]:
+def get_events(tracking_number: str, db: Session = Depends(get_db)) -> list[dict[str, object]]:
     shipment = db.query(models.Shipment).filter_by(tracking_number=tracking_number).first()
     if not shipment:
         raise HTTPException(status_code=404, detail="Shipment not found")
-    return shipment.events
+    return jsonable_encoder(shipment.events)
