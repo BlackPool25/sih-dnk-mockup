@@ -16,7 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.shipment import Shipment
-from app.services.docs.document import DocumentData, SenderBlock, build_document_data
+from app.services.docs.document import DocumentData, NonLatinFreeTextError, SenderBlock, build_document_data
 from app.services.validate import missing_required, validate_shipment
 
 
@@ -167,3 +167,19 @@ def test_missing_required_complete_document_empty() -> None:
     """A fully-supplied document (consignee + value + shipment) misses nothing."""
     data = _build()
     assert missing_required(data, "PBE_IV") == []
+
+
+def test_non_latin_consignee_rejected() -> None:
+    """F-8 invariant: free-text reaching doc render MUST be Latin-script.
+
+    Devanagari consignee (stored as spoken in session state) must be
+    transliterated before docs are built — the engine hard-rejects it.
+    """
+    with pytest.raises(NonLatinFreeTextError):
+        _build(consignee="शिखा")
+
+
+def test_latin_consignee_accepted() -> None:
+    """Latin-script consignee passes the guard unchanged."""
+    data = _build(consignee="Shikha Sharma")
+    assert data.resolve_value("consignee_details") == "Shikha Sharma"

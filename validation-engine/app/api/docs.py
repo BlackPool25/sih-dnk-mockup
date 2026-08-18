@@ -21,7 +21,12 @@ from app.schemas.shipment import (
     WEIGHT_UNSTATED,
     Shipment,
 )
-from app.services.docs.document import DocumentData, build_document_data
+from app.services.docs.document import (
+    DocumentData,
+    NonLatinFreeTextError,
+    build_document_data,
+    ensure_latin_free_text,
+)
 from app.services.docs.renderer import render
 from app.services.graded import graded_evaluate
 
@@ -78,6 +83,11 @@ def generate_docs(
         if order is None:
             raise HTTPException(status_code=404, detail=f"order {order_id!r} not found")
 
+        try:
+            ensure_latin_free_text(order.consignee, "consignee")
+        except NonLatinFreeTextError as exc:
+            raise HTTPException(status_code=422, detail=f"translate before submit: {exc}") from exc
+
         # Re-run graded evaluation.
         report = graded_evaluate(order)
 
@@ -95,11 +105,11 @@ def generate_docs(
         # fallback path.  When the order has >1 line item and doc_type is
         # INVOICE/PACKING_LIST, ``render()`` delegates to
         # ``render_line_items()`` which builds its own DocumentData per line.
-        data = _document_data_for(order, doc_type)
-
-        # Render — delegates to render_line_items() for multi-line
-        # INVOICE/PACKING_LIST orders.
-        doc = render(data, doc_type, order=order)
+        try:
+            data = _document_data_for(order, doc_type)
+            doc = render(data, doc_type, order=order)
+        except NonLatinFreeTextError as exc:
+            raise HTTPException(status_code=422, detail=f"translate before submit: {exc}") from exc
 
         return {
             "pdf_url": doc.file_path,
@@ -127,6 +137,11 @@ def generate_all_docs(order_id: str = Query(...)) -> dict:
         if order is None:
             raise HTTPException(status_code=404, detail=f"order {order_id!r} not found")
 
+        try:
+            ensure_latin_free_text(order.consignee, "consignee")
+        except NonLatinFreeTextError as exc:
+            raise HTTPException(status_code=422, detail=f"translate before submit: {exc}") from exc
+
         report = graded_evaluate(order)
 
         if report.validation_state != "ready":
@@ -140,7 +155,12 @@ def generate_all_docs(order_id: str = Query(...)) -> dict:
 
         documents: list[dict] = []
         for doc_type in ("INVOICE", "PACKING_LIST", "CN22", "PBE_IV"):
-            doc = render(_document_data_for(order, doc_type), doc_type, order=order)
+            try:
+                doc = render(_document_data_for(order, doc_type), doc_type, order=order)
+            except NonLatinFreeTextError as exc:
+                raise HTTPException(
+                    status_code=422, detail=f"translate before submit: {exc}"
+                ) from exc
             documents.append(
                 {
                     "doc_type": doc.doc_type,

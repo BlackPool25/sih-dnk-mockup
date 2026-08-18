@@ -115,3 +115,32 @@ def test_customs_doc_switches_to_cn23_above_sdr_threshold(order_cleanup) -> None
     assert body["status"] == "complete"
     customs = next(d for d in body["documents"] if d["doc_type"] in _CUSTOMS_TYPES)
     assert customs["doc_type"] == "CN23"
+
+
+def test_generate_all_rejects_non_latin_consignee(order_cleanup) -> None:
+    """The docs API hard-rejects non-Latin free-text (F-8 English invariant).
+
+    An order created with a Devanagari consignee must return 422 'translate
+    before submit' — the caller is responsible for transliteration first.
+    """
+    created = client.post("/validate", json=_full_payload(consignee="शिखा"))
+    order_id = created.json()["order_id"]
+    order_cleanup.append(order_id)
+    # The order exists but cannot validate as ready (F-8 document rule fires
+    # during graded evaluation); docs must still 422 hard-reject.
+    assert created.json()["validation_state"] == "invalid"
+
+    response = client.post(f"/docs/generate-all?order_id={order_id}")
+    assert response.status_code == 422
+    assert "translate before submit" in response.json()["detail"]
+
+
+def test_generate_rejects_non_latin_consignee(order_cleanup) -> None:
+    """The single-doc endpoint applies the same guard."""
+    created = client.post("/validate", json=_full_payload(consignee="रमेश कुमार"))
+    order_id = created.json()["order_id"]
+    order_cleanup.append(order_id)
+
+    response = client.post(f"/docs/generate?order_id={order_id}&doc_type=INVOICE")
+    assert response.status_code == 422
+    assert "translate before submit" in response.json()["detail"]

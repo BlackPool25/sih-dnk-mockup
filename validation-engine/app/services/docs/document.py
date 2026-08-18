@@ -63,6 +63,30 @@ FormType = Literal["PBE_III", "PBE_IV", "CN22", "CN23", "INVOICE", "PACKING_LIST
 
 _URL_RE = r"^https?://"
 
+# Free-text values reaching the rendered document MUST be Latin-script (F-8):
+# the DNK workflow transliterates Devanagari-as-spoken (e.g. consignee) to
+# Latin at the order boundary; anything else is a caller bug.
+_LATIN_FREE_TEXT_RE = re.compile(r"^[A-Za-z0-9 ,.'-]+$")
+
+
+class NonLatinFreeTextError(ValueError):
+    """A free-text value reaching document render is not Latin-script.
+
+    The invariant (F-8) is that every text value on a generated document is
+    English/Latin.  A Devanagari (or otherwise non-Latin) consignee stored as
+    spoken must be transliterated to Latin before documents are built; raising
+    here makes that a structural requirement instead of silently rendering a
+    non-English document.
+    """
+
+
+def ensure_latin_free_text(value: str | None, field: str) -> None:
+    """Raise NonLatinFreeTextError when *value* is not Latin-script free-text."""
+    if value is not None and not _LATIN_FREE_TEXT_RE.match(value.strip()):
+        raise NonLatinFreeTextError(
+            f"{field} {value!r} is not Latin-script — transliterate before submit"
+        )
+
 
 class SenderBlock(BaseModel):
     """The exporter/sender block (CN22/CN23 + invoice) — all optional.
@@ -316,6 +340,7 @@ def build_document_data(
     if primary is not None:
         derived["cth"] = primary["hs6"][:4]
     if consignee is not None:
+        ensure_latin_free_text(consignee, "consignee")
         derived["consignee_details"] = consignee  # F7: verbatim, no country suffix
     if iec is not None:
         derived["iec"] = iec
