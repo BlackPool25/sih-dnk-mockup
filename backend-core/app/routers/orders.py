@@ -36,6 +36,7 @@ from app.services.val_client import (
 from auth.deps import get_current_user, require_role
 from storage.crypto import DecryptionError, decrypt_field
 from storage.db import get_session
+from storage.redis import get_redis
 
 # ---------------------------------------------------------------------------
 # Router
@@ -311,7 +312,13 @@ async def create_order(
     # must be Latin-script. Session state keeps the Hindi-canonical value; the
     # Latin form is derived here, at the boundary. Never blocks on failure —
     # ensure_english_free_text falls back to the raw value.
-    english = await ensure_english_free_text([("consignee", body.consignee)])
+    try:
+        redis_client = get_redis()
+    except (ValueError, ConnectionError):
+        redis_client = None  # cache is best-effort; never block order creation
+    english = await ensure_english_free_text(
+        [("consignee", body.consignee)], redis=redis_client
+    )
     body = body.model_copy(update={"consignee": english["consignee"]})
 
     payload = _build_order_payload(profile, user_id, body)

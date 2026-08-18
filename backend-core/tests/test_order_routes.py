@@ -484,3 +484,79 @@ async def test_create_order_passes_latin_consignee_through(
 
     assert response.status_code == 201, response.text
     assert val_fake.last_payload["consignee"] == "Acme Corp, New York"
+
+
+@pytest.mark.asyncio
+async def test_create_order_wires_redis_into_translation(
+    test_seller: dict[str, str],
+    val_fake: FakeValClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The route passes the shared Redis client into the translation call so
+    the i18n:{kind}:{text} write-through cache (30d TTL) is populated and
+    repeated consignees skip the mayura call."""
+    from unittest.mock import AsyncMock
+
+    captured: dict[str, object] = {}
+    fake_redis = object()
+
+    async def _fake_ensure(
+        items: list[tuple[str, str]],
+        *,
+        redis: object | None = None,
+        client: object | None = None,
+    ) -> dict[str, str]:
+        captured["redis"] = redis
+        return {"consignee": "Shikha Sharma"}
+
+    monkeypatch.setattr("app.routers.orders.ensure_english_free_text", _fake_ensure)
+    monkeypatch.setattr("app.routers.orders.get_redis", lambda: fake_redis)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        payload = dict(ORDER_PAYLOAD)
+        payload["consignee"] = "शिखा शर्मा"
+        response = await client.post(
+            "/orders",
+            json=payload,
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+
+    assert response.status_code == 201, response.text
+    assert captured["redis"] is fake_redis
+    assert val_fake.last_payload["consignee"] == "Shikha Sharma"
+
+
+@pytest.mark.asyncio
+async def test_create_order_survives_redis_unavailable(
+    test_seller: dict[str, str],
+    val_fake: FakeValClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cache failure (REDIS_URL unset / pool error) must never block order
+    creation — translation still runs, engine still gets Latin."""
+    from unittest.mock import AsyncMock
+
+    def _raise_unset() -> object:
+        raise ValueError("REDIS_URL is not set")
+
+    monkeypatch.setattr("app.routers.orders.get_redis", _raise_unset)
+    monkeypatch.setattr(
+        "app.routers.orders.ensure_english_free_text",
+        AsyncMock(return_value={"consignee": "Shikha Sharma"}),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await _create_profile(client, test_seller["token"])
+        payload = dict(ORDER_PAYLOAD)
+        payload["consignee"] = "शिखा शर्मा"
+        response = await client.post(
+            "/orders",
+            json=payload,
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+
+    assert response.status_code == 201, response.text
+    assert val_fake.last_payload["consignee"] == "Shikha Sharma"
