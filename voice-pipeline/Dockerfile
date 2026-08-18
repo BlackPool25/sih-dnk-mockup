@@ -1,11 +1,11 @@
-# voice-pipeline placeholder image.
+# voice-pipeline image.
 # Builds on the shared sih-dnk base (python 3.12-slim + weasyprint deps + uv).
-# Base image WORKDIR is /app; CMD is overridden here to keep the placeholder
-# container alive until the voice team ships a real entrypoint.
+# Base image WORKDIR is /app.
 FROM sih-dnk-python-base
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen
 
-# Placeholder override — no real entrypoint yet.
-CMD ["sleep", "infinity"]
+# Real entrypoint.  Docker runs CPU-int8 STT (no ROCm passthrough); the
+# GPU/ROCm path is the local-dev route via scripts/setup_rocm.sh.
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

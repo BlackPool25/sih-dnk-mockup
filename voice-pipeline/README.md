@@ -1,7 +1,14 @@
 # voice-pipeline
 
-Placeholder scaffold for the **voice pipeline** component of the SIH DNK mockup
-monorepo. Owned by the voice team — no business logic lives here yet.
+Speech-to-text (STT) + text-to-speech (TTS) microservice for the SIH DNK mockup —
+the voice layer of the Hindi-first export assistant. All voice operations run on
+the **Sarvam AI** cloud API.
+
+| Operation | Sarvam model |
+| --------- | ------------ |
+| STT | `saaras:v3` (`/speech-to-text`) |
+| TTS | `bulbul:v2`, speaker `anushka` (`/text-to-speech`) |
+| Translate | `mayura:v1` (`/translate`) |
 
 ## Ports
 
@@ -10,44 +17,26 @@ monorepo. Owned by the voice team — no business logic lives here yet.
 | Host (docker-compose mapping) | **8002** |
 | Container (uvicorn) | **8000** |
 
-## Upstream dependencies
+## API
 
-Consumed via `docker-compose.yml` (see repo root):
-
-- **PostgreSQL** — `DATABASE_URL` (e.g. `postgresql+psycopg://postgres:postgres@postgres:5432/sih_dnk`)
-- **Redis** — `REDIS_URL` (e.g. `redis://redis:6379/0`)
-
-These are declared by compose; this component reads them from the environment at
-runtime.
-
-## Base image
-
-`Dockerfile` builds on the shared monorepo image **`sih-dnk-python-base`**
-(`docker/Dockerfile.python`, python 3.12-slim + WeasyPrint system deps + uv).
-Pattern:
-
-```dockerfile
-FROM sih-dnk-python-base
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
-CMD ["sleep", "infinity"]   # placeholder until a real entrypoint exists
-```
-
-The base image's WORKDIR is `/app` and its default CMD is `sleep infinity`; the
-placeholder image overrides CMD explicitly.
+- `GET /healthz` → `{status, provider}` (`provider` is always `sarvam`)
+- `POST /transcribe` — multipart `file` + optional `language_hint` → `{transcript, language, duration_ms, provider, word_count, low_confidence, language_probability?}` (`language_probability` is present only when Sarvam returns it)
+- `POST /tts` — JSON `{text, language}` → `audio/wav` bytes (text longer than 400 chars → 400)
+- `POST /translate` — JSON `{input, source_language_code, target_language_code}` → `{translated_text}`
 
 ## Run
 
-**Container (primary):**
-
-```sh
-docker compose up voice-pipeline
+```bash
+uv sync
+uv run uvicorn main:app --port 8002
 ```
 
-**Local dev:**
+## Environment
 
-```sh
-uv run uvicorn main:app --host 0.0.0.0 --port 8000
-```
+| Var | Default | Purpose |
+| --- | ------- | ------- |
+| `SARVAM_API_KEY` | — | Sarvam subscription key (header `api-subscription-key`) |
 
-Health check: `GET /healthz` → `{"status": "ok"}`.
+Sarvam is the only STT/TTS provider — no local engines are bundled.
+
+The backend-core router proxies this service under `/api/voice/*` (auth-protected).
