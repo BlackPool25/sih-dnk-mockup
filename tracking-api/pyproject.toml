@@ -1,10 +1,15 @@
 [project]
 name = "tracking-api"
 version = "0.1.0"
-description = "SIH DNK tracking-api component — placeholder scaffold (tracking team owns real implementation)"
+description = "SIH DNK tracking-api component — shipment tracking with mock/live 17TRACK providers"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "apscheduler>=3.11.3",
     "fastapi>=0.115,<1",
+    "httpx>=0.28.1",
+    "psycopg[binary]>=3.3.4",
+    "redis>=8.1.0",
+    "sqlalchemy>=2.0.52",
     "uvicorn>=0.30,<1",
 ]

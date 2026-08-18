@@ -1,14 +1,31 @@
 # tracking-api
 
-Placeholder scaffold for the **tracking API** component of the SIH DNK mockup
-monorepo. Owned by the tracking team — no business logic lives here yet.
+Shipment tracking API for the SIH DNK mockup monorepo. Built on the monorepo's
+Python pattern (FastAPI + uvicorn + uv), mirroring the other services so the
+whole stack shares one base image (`sih-dnk-python-base`) and one dependency
+manager.
 
-> **Language choice (2026-08-11):** the scaffold mirrors the monorepo's Python
-> pattern (fastapi + uvicorn) instead of Node.js. Rationale: a tracking API is a
-> plain REST service with no requirement that would favor a second toolchain —
-> Python keeps the entire stack on one base image (`sih-dnk-python-base`), one
-> dependency manager (uv), and one Dockerfile pattern that teammates can mirror.
-> The team is free to swap the runtime to Node.js when implementing real logic.
+## Endpoints
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| `GET`  | `/healthz` | Liveness probe → `{"status": "ok"}` |
+| `POST` | `/shipments` | Register a shipment `{tracking_number, carrier}` (also registers with the active tracking provider) |
+| `GET`  | `/shipments/{tracking_number}` | Shipment details (Redis-cached for 30s) |
+| `POST` | `/shipments/{tracking_number}/events` | Manually append a tracking event |
+| `GET`  | `/shipments/{tracking_number}/events` | Event history for a shipment |
+
+## Tracking providers
+
+Provider selection via `TRACKING_PROVIDER` env var (default `mock`):
+
+- **`mock`** — `MockProvider`: a local simulator auto-advances every registered
+  shipment through `Booked → Picked Up → In Transit → Out for Delivery →
+  Delivered` on a 15s scheduler, picking locations from a fixed hub list. No
+  external calls; used for local dev / demo / tests.
+- **`live`** — `RealProvider`: talks to the real 17TRACK API v2.4
+  (`register` + `gettrackinfo`). Requires `TRACK17_API_KEY`. Carrier codes
+  currently mapped: `IndiaPost`.
 
 ## Ports
 
@@ -21,27 +38,8 @@ monorepo. Owned by the tracking team — no business logic lives here yet.
 
 Consumed via `docker-compose.yml` (see repo root):
 
-- **PostgreSQL** — `DATABASE_URL` (e.g. `postgresql+psycopg://postgres:postgres@postgres:5432/sih_dnk`)
+- **PostgreSQL** — `DATABASE_URL` (e.g. `postgresql+psycopg://...`)
 - **Redis** — `REDIS_URL` (e.g. `redis://redis:6379/0`)
-
-These are declared by compose; this component reads them from the environment at
-runtime.
-
-## Base image
-
-`Dockerfile` builds on the shared monorepo image **`sih-dnk-python-base`**
-(`docker/Dockerfile.python`, python 3.12-slim + WeasyPrint system deps + uv).
-Pattern:
-
-```dockerfile
-FROM sih-dnk-python-base
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen
-CMD ["sleep", "infinity"]   # placeholder until a real entrypoint exists
-```
-
-The base image's WORKDIR is `/app` and its default CMD is `sleep infinity`; the
-placeholder image overrides CMD explicitly.
 
 ## Run
 
