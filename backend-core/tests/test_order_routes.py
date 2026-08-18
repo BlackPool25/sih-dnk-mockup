@@ -495,8 +495,6 @@ async def test_create_order_wires_redis_into_translation(
     """The route passes the shared Redis client into the translation call so
     the i18n:{kind}:{text} write-through cache (30d TTL) is populated and
     repeated consignees skip the mayura call."""
-    from unittest.mock import AsyncMock
-
     captured: dict[str, object] = {}
     fake_redis = object()
 
