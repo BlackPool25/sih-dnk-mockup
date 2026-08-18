@@ -25,13 +25,16 @@ import hashlib
 import re
 import shutil
 import subprocess
+import uuid
 
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from app.db import SessionLocal
 from app.models import Document
+from app.models.order import Order, OrderStatus
 from app.schemas.shipment import Shipment
 from app.services.docs.__main__ import main as docs_cli_main
 from app.services.docs.cli_fields import (
@@ -85,18 +88,14 @@ def _complete_data():
 def _doc_count(doc_type: str) -> int:
     with SessionLocal() as session:
         return session.scalar(
-            select(func.count())
-            .select_from(Document)
-            .where(Document.doc_type == doc_type)
+            select(func.count()).select_from(Document).where(Document.doc_type == doc_type)
         )
 
 
 def _max_version(doc_type: str) -> int:
     with SessionLocal() as session:
         return (
-            session.scalar(
-                select(func.max(Document.version)).where(Document.doc_type == doc_type)
-            )
+            session.scalar(select(func.max(Document.version)).where(Document.doc_type == doc_type))
             or 0
         )
 
@@ -137,6 +136,34 @@ def test_render_happy_returns_document_with_checksum(tmp_path, clean_documents):
     assert out.exists() and out.stat().st_size > 0
     assert doc.checksum == hashlib.sha256(out.read_bytes()).hexdigest()
     assert doc.file_path == str(out)
+
+
+def test_render_with_order_sets_document_order_id(tmp_path, clean_documents) -> None:
+    """Rendering with an Order writes order_id on the new Document row."""
+    order_id = uuid.uuid4()
+    with SessionLocal.begin() as session:
+        session.add(
+            Order(
+                id=order_id,
+                seller_id=uuid.UUID("dc777c25-9f68-47d4-ba6b-959a14387d90"),
+                buyer_id=uuid.UUID("197e1aa3-8799-404d-b983-111b2108dd1e"),
+                status=OrderStatus.quote_accepted,
+            )
+        )
+    with SessionLocal() as session:
+        order = session.execute(
+            select(Order)
+            .where(Order.id == order_id)
+            .options(selectinload(Order.line_items))
+        ).scalar_one()
+        doc = render(
+            _complete_data(), "PBE_IV", out_path=tmp_path / "ordered.pdf", order=order
+        )
+    assert doc.order_id == order_id
+    with SessionLocal.begin() as session:
+        row = session.get(Order, order_id)
+        if row is not None:
+            session.delete(row)
 
 
 # --- failure paths -----------------------------------------------------------
@@ -226,10 +253,14 @@ def test_preview_without_yes_does_not_call_renderer(capsys, monkeypatch):
             "--form",
             "PBE_IV",
             "--preview",
-            "--iec", "IN1234567890",
-            "--gstin", "29ABCDE1234F1Z5",
-            "--value-minor", "200000",
-            "--consignee", "Jane Doe, 123 Main St",
+            "--iec",
+            "IN1234567890",
+            "--gstin",
+            "29ABCDE1234F1Z5",
+            "--value-minor",
+            "200000",
+            "--consignee",
+            "Jane Doe, 123 Main St",
         ]
     )
     assert rc == 1  # confirm required
@@ -334,13 +365,34 @@ def test_cli_auto_flag_renders(tmp_path, clean_documents):
     rc = docs_cli_main(
         [
             "render",
-            "--category", "embroidered-home-textiles", "--qty", "8",
-            "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
-            "--iec", "IN1234567890", "--gstin", "29ABCDE1234F1Z5",
-            "--value-minor", "200000", "--consignee", "Jane Doe",
-            "--exporter-name", "Acme Exporters", "--state-code", "29",
-            "--decl-drawback", "Yes", "--scheme-code", "drawback",
-            "--out", str(out),
+            "--category",
+            "embroidered-home-textiles",
+            "--qty",
+            "8",
+            "--weight-g",
+            "400",
+            "--country",
+            "US",
+            "--form",
+            "PBE_IV",
+            "--iec",
+            "IN1234567890",
+            "--gstin",
+            "29ABCDE1234F1Z5",
+            "--value-minor",
+            "200000",
+            "--consignee",
+            "Jane Doe",
+            "--exporter-name",
+            "Acme Exporters",
+            "--state-code",
+            "29",
+            "--decl-drawback",
+            "Yes",
+            "--scheme-code",
+            "drawback",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -360,12 +412,28 @@ def test_cli_money_minor_units(tmp_path, clean_documents):
     rc = docs_cli_main(
         [
             "render",
-            "--category", "embroidered-home-textiles", "--qty", "8",
-            "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
-            "--iec", "IN1234567890", "--gstin", "29ABCDE1234F1Z5",
-            "--value-minor", "200000", "--consignee", "Jane Doe",
-            "--export-duty-amount-minor", "50000",
-            "--out", str(out),
+            "--category",
+            "embroidered-home-textiles",
+            "--qty",
+            "8",
+            "--weight-g",
+            "400",
+            "--country",
+            "US",
+            "--form",
+            "PBE_IV",
+            "--iec",
+            "IN1234567890",
+            "--gstin",
+            "29ABCDE1234F1Z5",
+            "--value-minor",
+            "200000",
+            "--consignee",
+            "Jane Doe",
+            "--export-duty-amount-minor",
+            "50000",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -382,12 +450,28 @@ def test_cli_net_weight_flag_reachable(tmp_path, capsys, clean_documents):
         docs_cli_main(
             [
                 "render",
-                "--category", "embroidered-home-textiles", "--qty", "8",
-                "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
-                "--iec", "IN1234567890", "--gstin", "29ABCDE1234F1Z5",
-                "--value-minor", "200000", "--consignee", "Jane Doe",
-                "--net-weight", "300",
-                "--out", str(out),
+                "--category",
+                "embroidered-home-textiles",
+                "--qty",
+                "8",
+                "--weight-g",
+                "400",
+                "--country",
+                "US",
+                "--form",
+                "PBE_IV",
+                "--iec",
+                "IN1234567890",
+                "--gstin",
+                "29ABCDE1234F1Z5",
+                "--value-minor",
+                "200000",
+                "--consignee",
+                "Jane Doe",
+                "--net-weight",
+                "300",
+                "--out",
+                str(out),
             ]
         )
     assert excinfo.value.code != 0
@@ -398,9 +482,19 @@ def test_cli_net_weight_flag_reachable(tmp_path, capsys, clean_documents):
 def test_cli_auto_flags_no_collision():
     """Auto flags never collide with the legacy or dedicated flag names."""
     legacy = {
-        "--category", "--qty", "--weight-g", "--country", "--form", "--out",
-        "--preview", "--yes", "--ask-optional", "--consignee", "--value-minor",
-        "--iec", "--gstin",
+        "--category",
+        "--qty",
+        "--weight-g",
+        "--country",
+        "--form",
+        "--out",
+        "--preview",
+        "--yes",
+        "--ask-optional",
+        "--consignee",
+        "--value-minor",
+        "--iec",
+        "--gstin",
     }
     auto = {field_flag_name(s) for s in pbe_field_specs()}
     assert auto.isdisjoint(legacy | DEDICATED_FLAGS)
@@ -463,9 +557,7 @@ def test_declaration_box_marks_chosen_value():
         }
     )
     html = build_html(data, "PBE_IV")
-    m = re.search(
-        r"claim Drawback.*?<td class=\"decl-box\">(.*?)</td>", html, re.DOTALL
-    )
+    m = re.search(r"claim Drawback.*?<td class=\"decl-box\">(.*?)</td>", html, re.DOTALL)
     assert m is not None, "Drawback declaration row not found"
     box = m.group(1).replace("&nbsp;", " ")
     assert "[X] Yes" in box

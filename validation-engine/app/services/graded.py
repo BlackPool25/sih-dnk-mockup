@@ -22,7 +22,16 @@ from app.schemas.shipment import (
 )
 
 ErrorSeverity = Literal["error", "warning", "incomplete", "block"]
-ErrorAction = Literal["blocking", "fix_value", "fix_format", "check_input", "provide_field", "provide_line_items", "provide_missing_fields", "freeze_payout"]
+ErrorAction = Literal[
+    "blocking",
+    "fix_value",
+    "fix_format",
+    "check_input",
+    "provide_field",
+    "provide_line_items",
+    "provide_missing_fields",
+    "freeze_payout",
+]
 
 
 class ErrorEntry(BaseModel):
@@ -88,8 +97,7 @@ def _iso2_valid(country: str | None) -> bool:
     if country is None:
         return False
     return (
-        _ISO2_RE.match(country) is not None
-        and pycountry.countries.get(alpha_2=country) is not None
+        _ISO2_RE.match(country) is not None and pycountry.countries.get(alpha_2=country) is not None
     )
 
 

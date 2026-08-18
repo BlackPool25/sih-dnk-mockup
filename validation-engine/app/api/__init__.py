@@ -36,13 +36,19 @@ app = FastAPI(
 )
 
 from app.api.docs import router as docs_router
+from app.api.extract import router as extract_router
 from app.api.health import router as health_router
 from app.api.orders import router as orders_router
 from app.api.pricing import router as pricing_router
+from app.api.tools import router as tools_router
 from app.api.validate import router as validate_router
+from app.api.validate import shipment_router as validate_shipment_router
 
 app.include_router(docs_router)
+app.include_router(extract_router)
 app.include_router(health_router)
 app.include_router(orders_router)
 app.include_router(pricing_router)
+app.include_router(tools_router)
 app.include_router(validate_router)
+app.include_router(validate_shipment_router)

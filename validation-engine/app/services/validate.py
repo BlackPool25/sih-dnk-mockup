@@ -45,10 +45,13 @@ from app.db import SessionLocal
 from app.models import FillingRule, PbeFieldSchema
 from app.schemas.shipment import (
     CATEGORY_SLUGS,
+    CONSIGNEE_UNSTATED,
     DESTINATION_UNSTATED,
     QUANTITY_UNSTATED,
+    VALUE_UNSTATED,
     WEIGHT_UNSTATED,
     Shipment,
+    ShipmentDraft,
 )
 from app.services.cache import cache
 from app.services.db_tools import search_categories
@@ -59,6 +62,27 @@ _ISO2_RE = re.compile(r"^[A-Z]{2}$")
 # Business-rule bounds (from the todo-10 spec).
 _QUANTITY_MIN, _QUANTITY_MAX = 1, 10_000
 _WEIGHT_MIN_G, _WEIGHT_MAX_G = 1, 50_000
+
+# The six chat-collection draft fields whose sentinel state gates document
+# readiness.  PBE required fields alone miss quantity (PBE_IV requires
+# ``quantity_unit``, not ``quantity``), so without this gate a draft missing
+# only quantity would report document_ready=True while the chat still asks
+# for it — the "दो हजार पे" bug's sibling (Wave-2 pin).
+_DRAFT_UNSTATED: dict[str, object] = {
+    "product_category": None,
+    "quantity": QUANTITY_UNSTATED,
+    "weight_grams": WEIGHT_UNSTATED,
+    "destination_country": DESTINATION_UNSTATED,
+    "consignee": CONSIGNEE_UNSTATED,
+    "value_minor": VALUE_UNSTATED,
+}
+
+
+def _all_draft_fields_stated(draft: ShipmentDraft) -> bool:
+    """True iff every chat-collection draft field holds a stated (non-sentinel) value."""
+    return all(
+        getattr(draft, field) != sentinel for field, sentinel in _DRAFT_UNSTATED.items()
+    )
 
 
 def _error(loc: str, msg: str, input_value: object) -> dict:
@@ -84,8 +108,7 @@ def _is_real_iso2(country: str) -> bool:
     regex but is not a real code and must be rejected.
     """
     return (
-        _ISO2_RE.match(country) is not None
-        and pycountry.countries.get(alpha_2=country) is not None
+        _ISO2_RE.match(country) is not None and pycountry.countries.get(alpha_2=country) is not None
     )
 
 
@@ -98,9 +121,7 @@ def validate_shipment(s: Shipment) -> Shipment:
     """
     line_errors: list[dict] = []
 
-    if s.quantity != QUANTITY_UNSTATED and not (
-        _QUANTITY_MIN <= s.quantity <= _QUANTITY_MAX
-    ):
+    if s.quantity != QUANTITY_UNSTATED and not (_QUANTITY_MIN <= s.quantity <= _QUANTITY_MAX):
         line_errors.append(
             _error(
                 "quantity",
@@ -110,9 +131,7 @@ def validate_shipment(s: Shipment) -> Shipment:
             )
         )
 
-    if s.weight_grams != WEIGHT_UNSTATED and not (
-        _WEIGHT_MIN_G <= s.weight_grams <= _WEIGHT_MAX_G
-    ):
+    if s.weight_grams != WEIGHT_UNSTATED and not (_WEIGHT_MIN_G <= s.weight_grams <= _WEIGHT_MAX_G):
         line_errors.append(
             _error(
                 "weight_grams",
@@ -122,9 +141,7 @@ def validate_shipment(s: Shipment) -> Shipment:
             )
         )
 
-    if s.destination_country != DESTINATION_UNSTATED and not _is_real_iso2(
-        s.destination_country
-    ):
+    if s.destination_country != DESTINATION_UNSTATED and not _is_real_iso2(s.destination_country):
         line_errors.append(
             _error(
                 "destination_country",
@@ -212,10 +229,7 @@ class DocumentRuleResult:
 
 def _significant_words(text: str) -> set[str]:
     """Lowercase words of ≥ 4 letters minus the generic stopwords."""
-    return {
-        w for w in re.findall(r"[a-z]{4,}", text.lower())
-        if w not in _DESC_STOPWORDS
-    }
+    return {w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _DESC_STOPWORDS}
 
 
 def _word_overlap(a: str, b: str) -> bool:
@@ -246,11 +260,7 @@ def _description_consistent(data: DocumentData, hs: dict) -> bool:
     "Bed linen…" share no word but are the same taxonomy).
     """
     hs_desc = hs.get("description") or ""
-    rendered = (
-        data.category_name
-        if data.form_type in ("PBE_III", "PBE_IV")
-        else hs_desc
-    )
+    rendered = data.category_name if data.form_type in ("PBE_III", "PBE_IV") else hs_desc
     if _word_overlap(rendered, hs_desc):
         return True
     canonical = _canonical_category_name(data.category_slug)
@@ -283,9 +293,7 @@ def _eval_dgft_iec_missing(data: DocumentData, params: dict) -> bool:
 
 
 def _eval_gross_net_110(data: DocumentData, params: dict) -> bool:
-    return data.weight_grams > data.net_weight_g * float(
-        params.get("max_ratio", 1.10)
-    )
+    return data.weight_grams > data.net_weight_g * float(params.get("max_ratio", 1.10))
 
 
 def _eval_fob_le_invoice(data: DocumentData, params: dict) -> bool:
@@ -352,6 +360,7 @@ def validate_document_rules(document_data: DocumentData) -> DocumentRuleResult:
     warnings: list[str] = []
     # Lazy import — avoids circular import with country_rules module.
     from app.services.country_rules import _EVALUATORS as _COUNTRY_EVALUATORS
+
     evaluators = {**_COUNTRY_EVALUATORS, **_EVALUATORS}  # country rules first
     cache_key = "filling_rules:all"
     cached = cache.get(cache_key)
@@ -360,9 +369,7 @@ def validate_document_rules(document_data: DocumentData) -> DocumentRuleResult:
     else:
         with SessionLocal() as session:
             db_rules = session.scalars(
-                select(FillingRule)
-                .where(FillingRule.enabled.is_(True))
-                .order_by(FillingRule.id)
+                select(FillingRule).where(FillingRule.enabled.is_(True)).order_by(FillingRule.id)
             ).all()
         rules = [
             {

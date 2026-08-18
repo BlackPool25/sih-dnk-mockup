@@ -55,6 +55,8 @@ class OrderPayload(BaseModel):
     """
 
     order_id: str | None = None
+    seller_id: str | None = None
+    buyer_id: str | None = None
     destination_country: str | None = None
     value_minor: int | None = None
     currency: str | None = None

@@ -1,9 +1,10 @@
 """Rendered documents with immutable versioning (business table — NO config FKs)."""
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, utcnow
@@ -18,6 +19,10 @@ class Document(Base):
     checksum: Mapped[str] = mapped_column(String(64), nullable=False)
     structured_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     file_path: Mapped[str] = mapped_column(nullable=False)
+    # The order this document was rendered for (unified orders table).
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=True
+    )
     # Self-FK: the doc this one supersedes (NULL for the first version).
     supersedes_doc_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("documents.id"), nullable=True

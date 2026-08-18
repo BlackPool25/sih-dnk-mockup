@@ -163,9 +163,9 @@ class DocumentData(BaseModel):
                         value = int(value)
                     except (TypeError, ValueError):
                         self._field_value_error(
-                            key, label,
-                            f"expects an integer for value_type {vt!r}, "
-                            f"got {value!r}",
+                            key,
+                            label,
+                            f"expects an integer for value_type {vt!r}, got {value!r}",
                         )
                     self.field_values[key] = value
                 if vt == "money" and value < 0:
@@ -176,7 +176,8 @@ class DocumentData(BaseModel):
                 allowed = (spec["options"] or {}).get("values")
                 if allowed and value not in allowed:
                     self._field_value_error(
-                        key, label,
+                        key,
+                        label,
                         f"must be one of {allowed}, got {value!r}",
                     )
             elif vt == "url":
@@ -191,13 +192,15 @@ class DocumentData(BaseModel):
         msg = f"field {key!r} ({label}) {detail}"
         raise ValidationError.from_exception_data(
             "DocumentData",
-            [{
-                "type": "value_error",
-                "loc": ("field_values", key),
-                "msg": msg,
-                "input": self.field_values.get(key),
-                "ctx": {"error": ValueError(msg)},
-            }],
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("field_values", key),
+                    "msg": msg,
+                    "input": self.field_values.get(key),
+                    "ctx": {"error": ValueError(msg)},
+                }
+            ],
         )
 
     def resolve_value(self, field_key: str) -> str:
@@ -281,9 +284,7 @@ def build_document_data(
     cats = search_categories(shipment.product_category)
     category = next((c for c in cats if c["slug"] == shipment.product_category), None)
     if category is None:
-        raise LookupError(
-            f"category {shipment.product_category!r} not found in product_categories"
-        )
+        raise LookupError(f"category {shipment.product_category!r} not found in product_categories")
     lane = quote_lane(shipment.destination_country, shipment.weight_grams)
     hs_codes = lookup_hs_codes(shipment.product_category)
     cache_key = f"field_schemas:{form_type}"
@@ -354,9 +355,7 @@ def build_document_data(
         duties=lookup_duty(shipment.destination_country),
         lane=lane,
         # Landed cost = declared value + freight, only when a value is given.
-        landed_cost_minor=(
-            value_minor + lane["cost_minor"] if value_minor is not None else None
-        ),
+        landed_cost_minor=(value_minor + lane["cost_minor"] if value_minor is not None else None),
         consignee=consignee,
         value_minor=value_minor,
         net_weight_g=net_weight_g,

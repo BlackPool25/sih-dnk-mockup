@@ -55,9 +55,7 @@ def parse_int(value: str | None) -> int | None:
     """Parse an integer cell; ``None`` for empty / em-dash / unavailable."""
     if value is None:
         return None
-    cleaned = (
-        value.strip().replace("₹", "").replace(",", "").replace("\u2009", "")
-    )
+    cleaned = value.strip().replace("₹", "").replace(",", "").replace("\u2009", "")
     if cleaned in _EMPTY_CELLS:
         return None
     return int(cleaned)

@@ -184,9 +184,7 @@ def cmd_render(args: argparse.Namespace) -> int:
     if args.preview:
         print(build_preview(data))
         if not args.yes:
-            print(
-                "confirm required: re-run with --yes to write the PDF", file=sys.stderr
-            )
+            print("confirm required: re-run with --yes to write the PDF", file=sys.stderr)
             return 1
 
     # 6. Render: gate -> Jinja2 -> WeasyPrint -> sha256 -> immutable row.
@@ -220,12 +218,8 @@ def main(argv: list[str] | None = None) -> int:
         help="gross/net weight in grams",
     )
     render_p.add_argument("--country", required=True, help="destination ISO2 code")
-    render_p.add_argument(
-        "--form", choices=FORM_TYPES, required=True, help="form type to render"
-    )
-    render_p.add_argument(
-        "--out", default=None, help="output PDF path (default docs-out/)"
-    )
+    render_p.add_argument("--form", choices=FORM_TYPES, required=True, help="form type to render")
+    render_p.add_argument("--out", default=None, help="output PDF path (default docs-out/)")
     render_p.add_argument(
         "--preview",
         action="store_true",
@@ -236,18 +230,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="prompt for optional order fields before rendering",
     )
-    render_p.add_argument(
-        "--yes", action="store_true", help="confirm the preview and render"
-    )
+    render_p.add_argument("--yes", action="store_true", help="confirm the preview and render")
     render_p.add_argument(
         "--value-minor",
         type=int,
         default=None,
         help="optional declared value (INR minor units)",
     )
-    render_p.add_argument(
-        "--consignee", default=None, help="optional consignee name/address"
-    )
+    render_p.add_argument("--consignee", default=None, help="optional consignee name/address")
     render_p.add_argument(
         "--iec",
         default=None,

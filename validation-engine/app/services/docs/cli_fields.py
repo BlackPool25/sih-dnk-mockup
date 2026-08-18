@@ -16,33 +16,37 @@ from app.db import SessionLocal
 from app.models import PbeFieldSchema
 
 # Field keys already fed by the 13 legacy CLI flags — never auto-generated.
-RESERVED_FIELDS: frozenset[str] = frozenset({
-    "product_description",
-    "cth",
-    "quantity_unit",
-    "gross_weight",
-    "net_weight",
-    "destination_country",
-    "consignee_details",
-    "assessable_value",
-    "amount_inr",
-    "fob_value",
-    "currency",
-    "iec",
-    "gstin_or_as_applicable",
-})
+RESERVED_FIELDS: frozenset[str] = frozenset(
+    {
+        "product_description",
+        "cth",
+        "quantity_unit",
+        "gross_weight",
+        "net_weight",
+        "destination_country",
+        "consignee_details",
+        "assessable_value",
+        "amount_inr",
+        "fob_value",
+        "currency",
+        "iec",
+        "gstin_or_as_applicable",
+    }
+)
 
 # The 8 dedicated rule-input/sender flags added alongside the auto flags.
-DEDICATED_FLAGS: frozenset[str] = frozenset({
-    "--net-weight",
-    "--fob",
-    "--unit-value",
-    "--piece-gross",
-    "--sender",
-    "--sender-ref",
-    "--non-delivery",
-    "--num-invoices",
-})
+DEDICATED_FLAGS: frozenset[str] = frozenset(
+    {
+        "--net-weight",
+        "--fob",
+        "--unit-value",
+        "--piece-gross",
+        "--sender",
+        "--sender-ref",
+        "--non-delivery",
+        "--num-invoices",
+    }
+)
 
 
 def flag_name(field_key: str) -> str:

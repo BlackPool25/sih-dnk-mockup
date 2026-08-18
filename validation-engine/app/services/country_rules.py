@@ -98,8 +98,7 @@ def _eval_liquids_threshold_block(data: DocumentData, params: dict) -> bool:
     """
     threshold = params.get("threshold_ml", 100)
     is_liquid = any(
-        kw in data.category_slug.lower()
-        for kw in ["perfume", "oil", "liquid", "cosmetic"]
+        kw in data.category_slug.lower() for kw in ["perfume", "oil", "liquid", "cosmetic"]
     )
     if is_liquid and data.quantity > threshold:
         return True
@@ -124,10 +123,7 @@ def _eval_ayurveda_cosmetics_warn(data: DocumentData, params: dict) -> bool:
     before export clearance; courier portals flag this so the exporter
     attaches the NOC before the counter visit.
     """
-    return any(
-        kw in data.category_slug.lower()
-        for kw in ["ayurved", "cosmetic", "herbal"]
-    )
+    return any(kw in data.category_slug.lower() for kw in ["ayurved", "cosmetic", "herbal"])
 
 
 def _eval_magnets_threshold_warn(data: DocumentData, params: dict) -> bool:
@@ -259,10 +255,7 @@ def _eval_textiles_eu_block(data: DocumentData, params: dict) -> bool:
     Severity: error (blocking).
     """
     eu_countries = {"DE", "FR", "IT", "ES", "NL", "BE"}
-    return (
-        data.destination_country in eu_countries
-        and "textile" in data.category_slug.lower()
-    )
+    return data.destination_country in eu_countries and "textile" in data.category_slug.lower()
 
 
 # ---------------------------------------------------------------------------

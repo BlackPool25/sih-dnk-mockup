@@ -39,6 +39,4 @@ class ProvenanceMixin:
     )
     effective_from: Mapped[date | None] = mapped_column(nullable=True)
     effective_to: Mapped[date | None] = mapped_column(nullable=True)
-    verified_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

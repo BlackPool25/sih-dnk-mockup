@@ -30,9 +30,7 @@ from app.services.validate import validate_shipment
 
 
 def test_rule_extract_en_happy() -> None:
-    s = RuleExtractor().extract_from_text(
-        "eight cushion covers, four hundred grams, America", "en"
-    )
+    s = RuleExtractor().extract_from_text("eight cushion covers, four hundred grams, America", "en")
     assert s.quantity == 8
     assert s.weight_grams == 400
     assert s.destination_country == "US"
@@ -92,26 +90,15 @@ def test_rule_extract_unknown_category_raises() -> None:
 
 def test_rule_extract_country_aliases() -> None:
     assert (
-        RuleExtractor()
-        .extract_from_text("send scarves to the UK", "en")
-        .destination_country
+        RuleExtractor().extract_from_text("send scarves to the UK", "en").destination_country
         == "GB"
     )
     assert (
-        RuleExtractor()
-        .extract_from_text("send scarves to Dubai", "en")
-        .destination_country
-        == "AE"
+        RuleExtractor().extract_from_text("send scarves to Dubai", "en").destination_country == "AE"
     )
+    assert RuleExtractor().extract_from_text("jute to britain", "en").destination_country == "GB"
     assert (
-        RuleExtractor().extract_from_text("jute to britain", "en").destination_country
-        == "GB"
-    )
-    assert (
-        RuleExtractor()
-        .extract_from_text("brassware to america", "en")
-        .destination_country
-        == "US"
+        RuleExtractor().extract_from_text("brassware to america", "en").destination_country == "US"
     )
 
 

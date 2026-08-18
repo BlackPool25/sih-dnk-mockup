@@ -68,9 +68,7 @@ def _data(category: str = "embroidered-home-textiles", form: str = "PBE_IV", **k
     violated directly.
     """
     build_kw = {
-        key: kw.pop(key)
-        for key in ("value_minor", "consignee", "iec", "gstin")
-        if key in kw
+        key: kw.pop(key) for key in ("value_minor", "consignee", "iec", "gstin") if key in kw
     }
     build_kw.setdefault("iec", IEC)
     build_kw.setdefault("gstin", GSTIN)
@@ -171,17 +169,13 @@ def test_fob_exceeding_invoice_value_rejects():
 
 def test_sub_piece_values_rule_happy_path():
     # 8 pieces x 20000 = 160000 <= 200000 parcel value — passes.
-    r = validate_document_rules(
-        _data(value_minor=200000, unit_value_minor=20000)
-    )
+    r = validate_document_rules(_data(value_minor=200000, unit_value_minor=20000))
     assert MSG_SUB_PIECE_VALUE not in r.errors
 
 
 def test_sub_piece_values_exceeding_parcel_value_rejects():
     # 8 x 30000 = 240000 > 200000 — the official rejection string verbatim.
-    r = validate_document_rules(
-        _data(value_minor=200000, unit_value_minor=30000)
-    )
+    r = validate_document_rules(_data(value_minor=200000, unit_value_minor=30000))
     assert MSG_SUB_PIECE_VALUE in r.errors
 
 
@@ -230,9 +224,7 @@ def test_itch_restricted_policy_warning_not_reject():
     r2 = validate_document_rules(
         data.model_copy(
             update={
-                "hs_codes": [
-                    {"hs6": "5303", "itc_hs_8": None, "description": "Raw jute fibre"}
-                ]
+                "hs_codes": [{"hs6": "5303", "itc_hs_8": None, "description": "Raw jute fibre"}]
             }
         )
     )
@@ -425,10 +417,25 @@ def test_cn22_high_value_auto_switches_to_cn23(tmp_path, capsys, clean_documents
     out = tmp_path / "highval.pdf"
     rc = docs_cli_main(
         [
-            "render", "--category", "embroidered-home-textiles", "--qty", "8",
-            "--weight-g", "400", "--country", "US", "--form", "CN22",
-            "--iec", IEC, "--gstin", GSTIN, "--value-minor", "5000000",
-            "--out", str(out),
+            "render",
+            "--category",
+            "embroidered-home-textiles",
+            "--qty",
+            "8",
+            "--weight-g",
+            "400",
+            "--country",
+            "US",
+            "--form",
+            "CN22",
+            "--iec",
+            IEC,
+            "--gstin",
+            GSTIN,
+            "--value-minor",
+            "5000000",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -446,10 +453,25 @@ def test_cn23_low_value_auto_switches_to_cn22(tmp_path, capsys, clean_documents)
     out = tmp_path / "lowval.pdf"
     rc = docs_cli_main(
         [
-            "render", "--category", "embroidered-home-textiles", "--qty", "8",
-            "--weight-g", "400", "--country", "US", "--form", "CN23",
-            "--iec", IEC, "--gstin", GSTIN, "--value-minor", "2000",
-            "--out", str(out),
+            "render",
+            "--category",
+            "embroidered-home-textiles",
+            "--qty",
+            "8",
+            "--weight-g",
+            "400",
+            "--country",
+            "US",
+            "--form",
+            "CN23",
+            "--iec",
+            IEC,
+            "--gstin",
+            GSTIN,
+            "--value-minor",
+            "2000",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -466,10 +488,25 @@ def test_cn22_low_value_stays_cn22_without_switch_note(tmp_path, capsys, clean_d
     out = tmp_path / "staycn22.pdf"
     rc = docs_cli_main(
         [
-            "render", "--category", "embroidered-home-textiles", "--qty", "8",
-            "--weight-g", "400", "--country", "US", "--form", "CN22",
-            "--iec", IEC, "--gstin", GSTIN, "--value-minor", "2000",
-            "--out", str(out),
+            "render",
+            "--category",
+            "embroidered-home-textiles",
+            "--qty",
+            "8",
+            "--weight-g",
+            "400",
+            "--country",
+            "US",
+            "--form",
+            "CN22",
+            "--iec",
+            IEC,
+            "--gstin",
+            GSTIN,
+            "--value-minor",
+            "2000",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
@@ -483,11 +520,27 @@ def test_pbe_form_unaffected_by_sdr_gate(tmp_path, capsys, clean_documents):
     out = tmp_path / "pbe.pdf"
     rc = docs_cli_main(
         [
-            "render", "--category", "embroidered-home-textiles", "--qty", "8",
-            "--weight-g", "400", "--country", "US", "--form", "PBE_IV",
-            "--iec", IEC, "--gstin", GSTIN, "--value-minor", "5000000",
-            "--consignee", "Jane Doe, 123 Main St",
-            "--out", str(out),
+            "render",
+            "--category",
+            "embroidered-home-textiles",
+            "--qty",
+            "8",
+            "--weight-g",
+            "400",
+            "--country",
+            "US",
+            "--form",
+            "PBE_IV",
+            "--iec",
+            IEC,
+            "--gstin",
+            GSTIN,
+            "--value-minor",
+            "5000000",
+            "--consignee",
+            "Jane Doe, 123 Main St",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0

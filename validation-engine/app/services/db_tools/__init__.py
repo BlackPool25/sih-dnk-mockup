@@ -103,26 +103,81 @@ def _cache_write(key: str, data: Any) -> None:
     cache.set(key, {"v": cache.get_config_version(), "data": data})
 
 
-def search_categories(query: str) -> list[dict]:
-    """Find product categories whose slug or name contains the query text.
+# Spoken-language product words (Hindi + English) -> the seeded category
+# slugs they plausibly describe.  This is the search vocabulary that lets the
+# model-facing tool resolve a user's raw words ("कपड़ा" = cloth) to the
+# seeded categories.  Generic words ("कपड़ा", "cloth") deliberately map to
+# the whole plausible textile family — the model (or the chat
+# disambiguation) picks the best one, or asks the user when it cannot.
+_CATEGORY_KEYWORD_INDEX: dict[str, tuple[str, ...]] = {
+    "block-printed-textiles": (
+        "cloth", "fabric", "textile", "printed", "print", "saree", "sari",
+        "kurti", "shirt", "shirts", "tshirt", "t-shirt", "shorts", "garment",
+        "कपड़ा", "कपड़े", "वस्त्र", "कपडा", "कपडे", "साड़ी", "कुर्ती",
+        "शर्ट", "टी-शर्ट", "शॉर्ट", "शॉर्ट्स", "वस्त्र",
+        "ब्लॉक प्रिंट", "छपाई",
+    ),
+    "embroidered-bags-pouches": (
+        "bag", "bags", "handbag", "pouch", "tote", "clutch", "बैग", "थैला",
+        "हैंडबैग", "पाउच",
+    ),
+    "embroidered-home-textiles": (
+        "cushion", "tablecloth", "bedspread", "embroidered", "कढ़ाई",
+        "कुशन", "टेबलक्लॉथ", "कपड़ा", "कपड़े", "वस्त्र", "कपडा", "कपडे",
+    ),
+    "handloom-scarves-stoles": (
+        "scarf", "stole", "muffler", "dupatta", "handloom", "shawl", "शॉल",
+        "दुपट्टा", "कपड़ा", "कपड़े", "वस्त्र", "कपडा", "कपडे",
+    ),
+    "imitation-artisan-jewellery": (
+        "jewellery", "jewelry", "necklace", "earring", "bangle", "आभूषण",
+        "गहने", "कान की बाली",
+    ),
+    "jute-products": (
+        "jute", "जूट", "गोनी", "जूट बैग",
+    ),
+    "small-brass-metalware": (
+        "brass", "metalware", "diya", "bell", "idol", "पीतल", "कांस्य",
+    ),
+    "small-woodware": (
+        "wood", "wooden", "carving", "bowl", "लकड़ी", "काष्ठ", "लकडी",
+    ),
+}
 
-    Returns at most 5 rows (LIMIT in the query).  Each dict carries the
-    category identity plus provenance.
+_KEYWORD_TO_SLUGS: dict[str, tuple[str, ...]] = {
+    keyword: tuple(slug for slug, words in _CATEGORY_KEYWORD_INDEX.items() if keyword in words)
+    for keywords in _CATEGORY_KEYWORD_INDEX.values()
+    for keyword in keywords
+}
+
+
+def search_categories(query: str) -> list[dict]:
+    """Find product categories whose slug, name, or spoken-language keyword
+    contains the query text.
+
+    The keyword index lets a raw user word ("कपड़ा") resolve to the seeded
+    categories even though the DB stores English names — the model tool-call
+    path depends on this.  Returns at most 5 rows (LIMIT in the query); each
+    dict carries the category identity plus provenance.
     """
     cache_key = f"search_categories:{query}"
     cached = _cache_read(cache_key)
     if cached is not None:
         return cached
     like = f"%{query}%"
+    index_slugs = {
+        slug for word, slugs in _KEYWORD_TO_SLUGS.items() if word in query for slug in slugs
+    }
+    filters = [
+        ProductCategory.slug.ilike(like),
+        ProductCategory.name.ilike(like),
+    ]
+    if index_slugs:
+        filters.append(ProductCategory.slug.in_(index_slugs))
     with SessionLocal() as session:
         rows = session.scalars(
             select(ProductCategory)
-            .where(
-                or_(
-                    ProductCategory.slug.ilike(like),
-                    ProductCategory.name.ilike(like),
-                )
-            )
+            .where(or_(*filters))
             .order_by(ProductCategory.slug)
             .limit(SEARCH_CATEGORIES_LIMIT)
         ).all()
@@ -151,22 +206,16 @@ def lookup_hs_codes(category: str | None = None, hs6: str | None = None) -> list
     if cached is not None:
         return cached
     with SessionLocal() as session:
-        stmt = select(HsCode).join(
-            ProductCategory, ProductCategory.id == HsCode.product_cat
-        )
+        stmt = select(HsCode).join(ProductCategory, ProductCategory.id == HsCode.product_cat)
         if category is not None:
             stmt = stmt.where(ProductCategory.slug == category)
         if hs6 is not None:
             stmt = stmt.where(HsCode.hs6 == hs6)
-        rows = session.scalars(
-            stmt.order_by(HsCode.hs6, HsCode.id).limit(LOOKUP_HS_LIMIT)
-        ).all()
+        rows = session.scalars(stmt.order_by(HsCode.hs6, HsCode.id).limit(LOOKUP_HS_LIMIT)).all()
         cats = {
             c.id: c.slug
             for c in session.scalars(
-                select(ProductCategory).where(
-                    ProductCategory.id.in_({r.product_cat for r in rows})
-                )
+                select(ProductCategory).where(ProductCategory.id.in_({r.product_cat for r in rows}))
             )
         }
     result = [
@@ -250,14 +299,12 @@ def quote_lane(country_iso2: str, weight_g: int, lane: str = "ITPS") -> dict:
         raise LookupError(f"no {lane} lane for country {country_iso2!r}")
     if row.weight_cap_g is not None and weight_g > row.weight_cap_g:
         raise ValueError(
-            f"weight {weight_g}g exceeds {lane} {country_iso2} "
-            f"cap of {row.weight_cap_g}g"
+            f"weight {weight_g}g exceeds {lane} {country_iso2} cap of {row.weight_cap_g}g"
         )
     over_first = max(0, weight_g - row.first_slab_g)
     extra_slabs = math.ceil(over_first / row.addl_slab_g)
     result = {
-        "cost_minor": row.first_slab_rate_minor
-        + extra_slabs * row.addl_slab_rate_minor,
+        "cost_minor": row.first_slab_rate_minor + extra_slabs * row.addl_slab_rate_minor,
         "weight_cap_g": row.weight_cap_g,
         "volume_free": row.volume_free,
         "transit_min_days": row.transit_min_days,
@@ -278,9 +325,7 @@ def get_state_sales_tax(state_iso2: str) -> dict:
     if cached is not None:
         return cached
     with SessionLocal() as session:
-        row = session.scalar(
-            select(StateSalesTax).where(StateSalesTax.state_iso2 == state_iso2)
-        )
+        row = session.scalar(select(StateSalesTax).where(StateSalesTax.state_iso2 == state_iso2))
     if row is None:
         raise KeyError(f"unknown state_iso2 {state_iso2!r}")
     result = {

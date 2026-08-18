@@ -64,12 +64,8 @@ def build_report(report: ValidationReport) -> ValidationReport:
     for entry in report.errors:
         template_hi = _resolve_error_template(entry.field, "hi")
         template_en = _resolve_error_template(entry.field, "en")
-        entry.prompt_template_hi = template_hi.format(
-            field=entry.field, message=entry.message
-        )
-        entry.prompt_template_en = template_en.format(
-            field=entry.field, message=entry.message
-        )
+        entry.prompt_template_hi = template_hi.format(field=entry.field, message=entry.message)
+        entry.prompt_template_en = template_en.format(field=entry.field, message=entry.message)
 
     for entry in report.missing:
         template_hi = _resolve_missing_template(entry.field_key, "hi")

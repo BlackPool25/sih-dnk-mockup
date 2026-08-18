@@ -13,6 +13,7 @@ from app.models.hs_codes import HsCode
 from app.models.lanes import Lane
 from app.models.line_item import LineItem
 from app.models.lookups import Lookup
+from app.models.user_ref import User
 from app.models.order import Order, OrderStatus, ValidationState
 from app.models.pbe_field_schemas import PbeFieldSchema
 from app.models.product_categories import ProductCategory
@@ -36,5 +37,6 @@ __all__ = [
     "ProvenanceMixin",
     "StateSalesTax",
     "Transcript",
+    "User",
     "ValidationState",
 ]

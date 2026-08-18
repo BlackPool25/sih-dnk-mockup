@@ -135,11 +135,11 @@ object and a language tag).
 ```python
 from app.services import db_tools
 
-db_tools.search_categories("jute")            # up to 5 category rows
-db_tools.lookup_hs_codes("jute-products")     # up to 10 HS rows w/ provenance
-db_tools.lookup_duty("US", hs6="5310")        # MFN / S301 / VAT / de-minimis
-db_tools.quote_lane("US", weight_g=100)       # ITPS slab-price math (minor units)
-db_tools.get_state_sales_tax("CA")            # one state's sales-tax record
+db_tools.search_categories("jute")  # up to 5 category rows
+db_tools.lookup_hs_codes("jute-products")  # up to 10 HS rows w/ provenance
+db_tools.lookup_duty("US", hs6="5310")  # MFN / S301 / VAT / de-minimis
+db_tools.quote_lane("US", weight_g=100)  # ITPS slab-price math (minor units)
+db_tools.get_state_sales_tax("CA")  # one state's sales-tax record
 db_tools.get_config_flag("us.s301.rate_pct")  # one pinned flag w/ provenance
 ```
 

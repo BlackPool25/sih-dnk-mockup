@@ -26,17 +26,21 @@ no API key and no network path.  Tests inject a mock client object.
 from __future__ import annotations
 
 import json
+import os
 import re
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import ValidationError
 
 from app.schemas.shipment import (
     CATEGORY_SLUGS,
+    CONSIGNEE_UNSTATED,
     DESTINATION_UNSTATED,
     QUANTITY_UNSTATED,
+    VALUE_UNSTATED,
     WEIGHT_UNSTATED,
     Shipment,
+    ShipmentDraft,
 )
 
 
@@ -54,8 +58,14 @@ class CategoryUnknownError(ValueError):
     """Raised by ``RuleExtractor`` when no category keyword matches the text.
 
     The rule engine does not invent a category — the caller catches this and
-    asks the user which of the 8 seeded categories applies.
+    asks the user which of the 8 seeded categories applies.  ``partial_draft``
+    carries any OTHER fields already extracted from the same utterance (the
+    caller must not discard them when it re-asks).
     """
+
+    def __init__(self, message: str, partial_draft: "ShipmentDraft | None" = None) -> None:
+        super().__init__(message)
+        self.partial_draft = partial_draft
 
 
 # ---------------------------------------------------------------------------
@@ -163,11 +173,62 @@ _WEIGHT_UNITS: dict[str, int] = {
     "kilos": 1000,
     "kilogram": 1000,
     "kilograms": 1000,
+    # Hindi
+    "ग्राम": 1,
+    "ग्राम्स": 1,
+    "किलो": 1000,
+    "किलोग्राम": 1000,
 }
 
-# A token is a run of word characters (letters/digits, incl. Devanagari +
-# Kannada) — enough for both English and the Indic scripts.
-_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+# Time-unit words: a number run before one of these is a clock/calendar
+# reference ("दो बजे", "2 hours"), NEVER a quantity.
+_TIME_UNITS: frozenset[str] = frozenset(
+    {
+        "hour",
+        "hours",
+        "minute",
+        "minutes",
+        "day",
+        "days",
+        "week",
+        "weeks",
+        "year",
+        "years",
+        "h",
+        "m",
+        "d",
+        # Hindi
+        "घंटे",
+        "बजे",
+        "दिन",
+        "मिनट",
+        "सप्ताह",
+        "साल",
+    }
+)
+
+# Quantity-unit words: a number run next to one of these is a COUNT, never a
+# value utterance (used to gate the "पर"/"पे" price markers).
+_QUANTITY_UNITS: frozenset[str] = frozenset(
+    {
+        "piece",
+        "pieces",
+        "pcs",
+        "pc",
+        # Hindi
+        "टुकड़े",
+        "टुकड़ा",
+        "पीस",
+        "नग",
+    }
+)
+
+# A token is a run of word characters — \w covers ASCII + Unicode letters but
+# NOT the Devanagari/Kannada combining marks (virama ्, matra ा) that join
+# conjuncts like ग्राम into one word.  Include the full Indic script blocks
+# so Hindi/Kannada weight units and number words tokenize as single tokens.
+_INDIC_BLOCKS = "\u0900-\u097F\u0C80-\u0CFF"  # Devanagari + Kannada
+_TOKEN_RE = re.compile(rf"[\w{_INDIC_BLOCKS}]+", re.UNICODE)
 
 
 def _normalize(text: str) -> str:
@@ -261,7 +322,8 @@ _CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
         "bags",
         "हैंडबैग",
         "थैला",
-        "ಕೈಚೀಲ",
+        "बैग",
+        "कೈಚೀಲ",
         "ಪೌಚ್",
         "ಚೀಲ",
     ),
@@ -287,6 +349,7 @@ _CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
         "jute bags",
         "jute",
         "gunny",
+        "जूट बैग",
         "जूट",
         "ಜೂಟ್",
         "ಗೋಣಿ",
@@ -321,19 +384,29 @@ _CATEGORY_KEYWORDS: dict[str, tuple[str, ...]] = {
 # ---------------------------------------------------------------------------
 
 _COUNTRY_ALIASES: dict[str, str] = {
-    # America / USA
+    # America / USA — including the spoken-English forms users actually say
     "united states of america": "US",
     "united states": "US",
     "america": "US",
     "usa": "US",
+    "us": "US",
+    "u s": "US",
+    "u.s.": "US",
+    "यू एस": "US",
+    "यूएस": "US",
+    "यू.एस.": "US",
+    "यू एस पी ओ": "US",
     "अमेरिका": "US",
     "ಅಮೆರಿಕಾ": "US",
     # United Kingdom / Britain
     "united kingdom": "GB",
     "britain": "GB",
     "uk": "GB",
+    "u.k.": "GB",
     "england": "GB",
     "ब्रिटेन": "GB",
+    "यूके": "GB",
+    "यू के": "GB",
     "ಇಂಗ್ಲೆಂಡ್": "GB",
     # United Arab Emirates / Dubai
     "united arab emirates": "AE",
@@ -345,6 +418,19 @@ _COUNTRY_ALIASES: dict[str, str] = {
     "australia": "AU",
     "ऑस्ट्रेलिया": "AU",
     "ಆಸ್ಟ್ರೇಲಿಯಾ": "AU",
+    # Germany
+    "germany": "DE",
+    "जर्मनी": "DE",
+    "ಜರ್ಮನಿ": "DE",
+    # Canada
+    "canada": "CA",
+    "कनाडा": "CA",
+    # France
+    "france": "FR",
+    "फ्रांस": "FR",
+    # Japan
+    "japan": "JP",
+    "जापान": "JP",
 }
 
 
@@ -356,9 +442,18 @@ def _match_country(text: str) -> str:
     return DESTINATION_UNSTATED
 
 
+def _is_command(text: str) -> bool:
+    """True iff the utterance is a flow command (simulate/restart/help…)."""
+    return bool(re.match(r"(?i)^\s*(simulate|order|restart|reset|help|cancel)\b", text))
+
+
+def _is_pure_number(text: str) -> bool:
+    """True iff the utterance is only a number (with optional unit/currency)."""
+    return bool(re.match(r"^[\d\s,]+(?:g|kg|grams?|inr|rs|rupees?|₹)?\s*$", text, re.IGNORECASE))
+
+
 def _match_category(text: str) -> str:
     """Pick the seeded slug with the LONGEST matching keyword.
-
     Longest-match resolves compounds deterministically: "jute bags" must be
     jute-products (via "jute bags"), not embroidered-bags-pouches (via "bags").
     Ties fall back to category order, then keyword text — fully deterministic.
@@ -463,10 +558,30 @@ def _extract_weight(
     return None, set()
 
 
-def _extract_quantity(
-    tokens: list[tuple[str, int, int]], exclude: set[int]
-) -> int | None:
-    """First number run not consumed by the weight match -> value, or None."""
+def _extract_time_indices(tokens: list[tuple[str, int, int]]) -> set[int]:
+    """Indices of number runs immediately followed by a time unit.
+
+    ``"दो बजे"`` / ``"2 hours"`` are clock/calendar references, never
+    quantities: mirror ``_extract_weight``'s run+unit scan and mark the whole
+    run so ``_extract_quantity`` skips it.
+    """
+    indices: set[int] = set()
+    index = 0
+    while index < len(tokens):
+        if _number_value(tokens[index][0]) is None:
+            index += 1
+            continue
+        start = index
+        while index < len(tokens) and _number_value(tokens[index][0]) is not None:
+            index += 1
+        if index < len(tokens) and tokens[index][0] in _TIME_UNITS:
+            indices.update(range(start, index))
+    return indices
+
+
+def _extract_quantity(tokens: list[tuple[str, int, int]], exclude: set[int]) -> int | None:
+    """First number run not consumed by an earlier extractor (weight/time/value)
+    -> the quantity, or None."""
     index = 0
     while index < len(tokens):
         if index in exclude or _number_value(tokens[index][0]) is None:
@@ -609,9 +724,732 @@ def _non_thinking_text(response: Any) -> str:
     return getattr(response, "text", "")
 
 
+# ---------------------------------------------------------------------------
+# Draft extraction — the multi-turn accumulation contract (Wave 1).
+# ---------------------------------------------------------------------------
+
+# Currency signals -> which side the amount sits on: "right" = the symbol
+# precedes the number (₹15000), "left" = the word follows it (15000 rupees).
+_CURRENCY_SIGNALS: tuple[tuple[str, str], ...] = (
+    ("₹", "right"),
+    ("rs", "left"),
+    ("inr", "left"),
+    ("rupees", "left"),
+    ("रुपये", "left"),
+    ("रुपए", "left"),
+    ("$", "right"),
+    ("usd", "left"),
+)
+
+# Consignee markers -> whether the name precedes (-1) or follows (+1) the
+# marker: Hindi postpositions follow the name (जॉन को भेजें), English markers
+# precede it (send to John).
+_CONSIGNEE_MARKERS: tuple[tuple[str, int], ...] = (
+    ("को भेजना है", -1),
+    ("को भेजें", -1),
+    ("send to", 1),
+    ("ship to", 1),
+    ("for", 1),
+    ("consignee", 1),
+    ("recipient", 1),
+)
+
+_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+", re.IGNORECASE)
+
+# Hindi recipient postposition: "शिखा को अमेरिका में भेजना है" — the strict
+# "को भेजना है" marker misses it because the verb is NOT adjacent to the को.
+# Group 1 captures the pre-को name; the rest must contain a Hindi send verb.
+# Python's \b is unreliable after Devanagari vowel signs (ो/ै are not \w), so
+# both boundaries use a lookahead that rejects a continuing token character.
+_TOKEN_CHARS = rf"\w{_INDIC_BLOCKS}"
+_NOT_TOKEN = rf"(?![{_TOKEN_CHARS}])"
+_RECIPIENT_KO_RE = re.compile(
+    rf"^(.+?)\s*को{_NOT_TOKEN}[^।.!?]*(?:भेजना है|भेजो|भेजें|भेज){_NOT_TOKEN}"
+)
+
+# Postpositions that end a captured recipient name — grammar, never the name.
+_POSTPOSITIONS = ("को", "में", "मे", "से", "पर")
+
+
+def _draft_confidence(known: int) -> Literal["high", "medium", "low"]:
+    """Six-field known-count bands: >=4 high, 2-3 medium, <=1 low."""
+    if known >= 4:
+        return "high"
+    if known >= 2:
+        return "medium"
+    return "low"
+
+
+def draft_confidence(draft: ShipmentDraft) -> Literal["high", "medium", "low"]:
+    """Known-count confidence over a draft's six fields (>=4 high, 2-3 medium, <=1 low)."""
+    return _draft_confidence(
+        sum(
+            (
+                draft.product_category is not None,
+                draft.quantity != QUANTITY_UNSTATED,
+                draft.weight_grams != WEIGHT_UNSTATED,
+                draft.destination_country != DESTINATION_UNSTATED,
+                draft.consignee != CONSIGNEE_UNSTATED,
+                draft.value_minor != VALUE_UNSTATED,
+            )
+        )
+    )
+
+
+def category_candidates(text: str) -> list[str]:
+    """Category slugs whose keyword vocabulary intersects the text.
+
+    The deterministic counterpart to ``_match_category``: instead of picking
+    ONE best slug, returns every slug whose English/Hindi/Kannada keyword
+    appears in the (normalized) text.  The chat turns these into numbered
+    options when the exact category could not be resolved — the disambiguation
+    contract.  Empty when the text matches nothing.
+    """
+    normalized = _normalize(text)
+    hits: list[str] = []
+    for slug in CATEGORY_SLUGS:
+        for keyword in _CATEGORY_KEYWORDS[slug]:
+            if keyword in normalized:
+                hits.append(slug)
+                break
+    return hits
+
+
+def _extract_consignee(text: str) -> str:
+    """Name/address next to a consignee marker, else the ``unknown`` sentinel.
+
+    The earliest marker wins (longer markers preferred on a tie).  Hindi
+    markers are postpositions so the name precedes them ("जॉन को भेजें");
+    English markers take the text that follows ("send to John").  Leading
+    articles and surrounding punctuation are stripped; ~80 chars max.
+    """
+    normalized = _normalize(text)
+    best: tuple[int, int, int, str] | None = None  # (pos, -len(marker), side, marker)
+    for marker, side in _CONSIGNEE_MARKERS:
+        pos = normalized.find(marker)
+        if pos != -1 and (best is None or (pos, -len(marker)) < (best[0], best[1])):
+            best = (pos, -len(marker), side, marker)
+    if best is None:
+        # Recipient-को fallback: "शिखा को अमेरिका में भेजना है" has no
+        # contiguous marker, but the pre-को name is the consignee.
+        match = _RECIPIENT_KO_RE.match(normalized)
+        if match is not None:
+            start, end = match.span(1)
+            segment = _truncate_at_postposition(text[start:end])
+            segment = _ARTICLE_RE.sub("", segment.strip()).strip(" ,:;")
+            if segment:
+                return segment[:80]
+        return CONSIGNEE_UNSTATED
+    pos, _, side, marker = best
+    segment = text[:pos] if side < 0 else text[pos + len(marker):]
+    segment = _ARTICLE_RE.sub("", segment.strip()).strip(" ,:;")
+    if not segment:
+        return CONSIGNEE_UNSTATED
+    return segment[:80]
+
+
+def _truncate_at_postposition(name: str) -> str:
+    """Cut a captured recipient name at the first Hindi postposition token.
+
+    A postposition (को/में/मे/से/पर) is grammar, never part of the name —
+    "शिखा को अमेरिका" truncates to "शिखा".
+    """
+    for token, start, _ in _tokenize(name):
+        if token in _POSTPOSITIONS:
+            return name[:start].rstrip()
+    return name
+
+
+def _currency_amount_span(normalized: str) -> tuple[int, int] | None:
+    """(start, end) of the digit amount beside the FIRST currency signal.
+
+    Mirrors ``_extract_value_minor``'s matching: right signals take the digits
+    after the symbol ("₹15000"), left signals take the digit run at the end of
+    the preceding text ("15000 रुपये").  None when no signal has a number.
+    """
+    for signal, side in _CURRENCY_SIGNALS:
+        pos = normalized.find(signal)
+        if pos == -1:
+            continue
+        if side == "right":
+            match = re.search(r"\d[\d,]*", normalized[pos + 1:])
+            if match is None:
+                continue
+            start, end = match.span()
+            return pos + 1 + start, pos + 1 + end
+        match = re.search(r"(\d[\d,]*)\s*$", normalized[:pos])
+        if match is None:
+            continue
+        return match.span(1)
+    return None
+
+
+def _extract_value_minor(text: str) -> int:
+    """Declared amount in INR minor units next to a currency signal.
+
+    ``₹``/``$`` precede the amount ("₹15000"); the word signals follow it
+    ("15000 rupees", "15000 रुपये").  Indic digits are normalised first; a
+    comma-separated amount is accepted.  No signal, or no adjacent number, ->
+    the -1 sentinel.
+    """
+    normalized = _normalize(text)
+    span = _currency_amount_span(normalized)
+    if span is None:
+        return VALUE_UNSTATED
+    start, end = span
+    return int(normalized[start:end].replace(",", "")) * 100
+
+
+def _token_indices_over(
+    tokens: list[tuple[str, int, int]], start: int, end: int
+) -> set[int]:
+    """Indices of tokens overlapping the normalized-text span [start, end)."""
+    return {
+        i
+        for i, (_, token_start, token_end) in enumerate(tokens)
+        if token_start < end and start < token_end
+    }
+
+
+def _price_marker_len(
+    tokens: list[tuple[str, int, int]], index: int
+) -> int:
+    """Token count of a price-marker phrase starting at ``index`` (0 = none).
+
+    Single-token markers: पे/पर/कीमत; two-token phrases: का दाम, की कीमत.
+    """
+    if index >= len(tokens):
+        return 0
+    token = tokens[index][0]
+    if token in ("पे", "पर", "कीमत"):
+        return 1
+    if token in ("का", "की"):
+        nxt = tokens[index + 1][0] if index + 1 < len(tokens) else ""
+        if (token, nxt) in (("का", "दाम"), ("की", "कीमत")):
+            return 2
+    return 0
+
+
+def _unit_adjacent(
+    tokens: list[tuple[str, int, int]], start: int, end: int
+) -> bool:
+    """A quantity/weight/time unit token hugs the number run [start, end)."""
+    before = tokens[start - 1][0] if start > 0 else None
+    after = tokens[end][0] if end < len(tokens) else None
+    return (
+        before in _QUANTITY_UNITS
+        or after in _QUANTITY_UNITS
+        or before in _WEIGHT_UNITS
+        or after in _WEIGHT_UNITS
+        or before in _TIME_UNITS
+        or after in _TIME_UNITS
+    )
+
+
+def _run_is_value(
+    tokens: list[tuple[str, int, int]],
+    start: int,
+    end: int,
+    expected: str | None,
+) -> bool:
+    """A number run is a VALUE utterance iff a price marker hugs it, or the
+    caller explicitly asked for the value — and in BOTH cases the run is NOT
+    pinned to a quantity/weight/time unit (a number beside a unit stays
+    quantity/weight).  The "पर"/"पे" markers are deliberately gated this way
+    so "2 टुकड़े पे" never reads as an amount."""
+    price_hug = (
+        (start > 0 and _price_marker_len(tokens, start - 1) > 0)
+        or (start > 1 and _price_marker_len(tokens, start - 2) == 2)
+        or (end < len(tokens) and _price_marker_len(tokens, end) > 0)
+    )
+    if not price_hug and expected != "value_minor":
+        return False
+    return not _unit_adjacent(tokens, start, end)
+
+
+def _extract_value_utterance(
+    tokens: list[tuple[str, int, int]],
+    normalized: str,
+    expected: str | None,
+) -> tuple[int, set[int]]:
+    """Declared amount in INR minor units + the token indices it consumed.
+
+    Fires when (a) a currency signal is present (reusing ``_extract_value_minor``),
+    (b) a price marker hugs a number run not pinned to a quantity/weight/time
+    unit, or (c) the caller explicitly asked for the value (``expected ==
+    "value_minor"``) and the run is not pinned to a unit.  Returns
+    ``(VALUE_UNSTATED, set())`` when nothing qualifies.  The consumed indices
+    are unioned into ``_extract_quantity``'s exclude set so a value number is
+    never re-read as the quantity.
+    """
+    span = _currency_amount_span(normalized)
+    if span is not None:
+        start, end = span
+        return _extract_value_minor(normalized), _token_indices_over(tokens, start, end)
+    index = 0
+    while index < len(tokens):
+        if _number_value(tokens[index][0]) is None:
+            index += 1
+            continue
+        start = index
+        while index < len(tokens) and _number_value(tokens[index][0]) is not None:
+            index += 1
+        if _run_is_value(tokens, start, index, expected):
+            values = [
+                v
+                for v in (_number_value(tokens[i][0]) for i in range(start, index))
+                if v is not None
+            ]
+            return _combine_numbers(values) * 100, set(range(start, index))
+    return VALUE_UNSTATED, set()
+
+
+class DraftExtractor(Protocol):
+    """Model-facing multi-turn extraction contract.
+
+    Same shape as ``Extractor`` but over ``ShipmentDraft``: the model is given
+    ONLY the prior draft object (optionally) and a language tag — never the
+    transcript.
+    """
+
+    def extract(self, previous: ShipmentDraft | None, lang: str) -> ShipmentDraft: ...
+
+
+class RuleDraftExtractor(DraftExtractor):
+    """Deterministic draft extractor — the ``RuleExtractor`` engine plus the
+    consignee/value signals, with previous-draft carry-forward.
+
+    ``extract_from_text`` merges over the previous draft: an extracted value
+    always wins, a sentinel keeps the previous value.  The category carries
+    forward from the previous draft when the text yields no keyword;
+    ``CategoryUnknownError`` re-raises only when there is no previous category
+    to carry.  ``extract`` exists for protocol parity and raises (a rule
+    engine needs the spoken text).
+    """
+
+    def extract(self, previous: ShipmentDraft | None, lang: str) -> ShipmentDraft:
+        raise NotImplementedError(
+            "RuleDraftExtractor needs the spoken text — call "
+            "extract_from_text(text, lang, previous)"
+        )
+
+    def extract_from_text(
+        self, text: str, lang: str, previous: ShipmentDraft | None = None,
+        expected: str | None = None,
+    ) -> ShipmentDraft:
+        original = text
+        normalized = _normalize(text)
+        tokens = _tokenize(normalized)
+
+        # Extraction order (Wave 1 T2): time indices -> value indices -> weight
+        # -> quantity, with each stage's consumed indices unioned into the
+        # exclude set so a number run is claimed exactly once (a value number
+        # is never re-read as quantity, "दो घंटे" is never quantity, etc.).
+        time_indices = _extract_time_indices(tokens)
+        value_minor, value_indices = _extract_value_utterance(
+            tokens, normalized, expected
+        )
+        weight, weight_indices = _extract_weight(tokens)
+        quantity = _extract_quantity(
+            tokens, time_indices | value_indices | weight_indices
+        )
+
+        country = _match_country(normalized)
+        consignee = _extract_consignee(original)
+
+        # A consignee-only utterance ("जॉन डो, 123 बर्लिन को भेजना है") is the
+        # answer to the pending consignee question — the address's digits
+        # ("123") are NOT a quantity/weight/value re-statement.  When an
+        # explicit consignee marker fired, carry the numeric fields forward
+        # instead of re-extracting them from the address text.
+        if consignee != CONSIGNEE_UNSTATED and previous is not None:
+            quantity = previous.quantity
+            weight_grams = previous.weight_grams
+            value_minor = previous.value_minor
+
+        # Case B (PR #2): when the user is answering the pending consignee
+        # question with a plain name+address (no marker — the common case),
+        # the WHOLE utterance is the consignee, not a re-statement of numbers.
+        # Guarded by the ``expected`` hint so a stray multi-field turn is never
+        # swallowed.  Commands and pure numbers are still rejected.
+        if (
+            expected == "consignee"
+            and consignee == CONSIGNEE_UNSTATED
+            and not _is_command(text)
+            and not _is_pure_number(text)
+            and len(text.strip()) >= 3
+        ):
+            consignee = text.strip()[:80]
+            # The address's digits are part of the name — never quantities.
+            quantity = previous.quantity if previous else QUANTITY_UNSTATED
+            weight_grams = previous.weight_grams if previous else WEIGHT_UNSTATED
+            value_minor = previous.value_minor if previous else VALUE_UNSTATED
+
+        quantity = (
+            quantity if quantity is not None else (previous.quantity if previous else QUANTITY_UNSTATED)
+        )
+        weight_grams = (
+            weight if weight is not None else (previous.weight_grams if previous else WEIGHT_UNSTATED)
+        )
+        country = (
+            country
+            if country != DESTINATION_UNSTATED
+            else (previous.destination_country if previous else DESTINATION_UNSTATED)
+        )
+        consignee = (
+            consignee
+            if consignee != CONSIGNEE_UNSTATED
+            else (previous.consignee if previous else CONSIGNEE_UNSTATED)
+        )
+        value_minor = (
+            value_minor
+            if value_minor != VALUE_UNSTATED
+            else (previous.value_minor if previous else VALUE_UNSTATED)
+        )
+
+        # Category resolution happens LAST: every other field is already
+        # extracted, so an unknown category can attach them to the exception
+        # instead of the caller losing the turn's partial progress.
+        try:
+            category = _match_category(normalized)
+        except CategoryUnknownError:
+            if previous is not None and previous.product_category is not None:
+                category = previous.product_category
+            else:
+                partial = ShipmentDraft(
+                    product_category=None,
+                    quantity=quantity,
+                    weight_grams=weight_grams,
+                    destination_country=country,
+                    consignee=consignee,
+                    value_minor=value_minor,
+                    confidence=_draft_confidence(
+                        sum(
+                            (
+                                quantity != QUANTITY_UNSTATED,
+                                weight_grams != WEIGHT_UNSTATED,
+                                country != DESTINATION_UNSTATED,
+                                consignee != CONSIGNEE_UNSTATED,
+                                value_minor != VALUE_UNSTATED,
+                            )
+                        )
+                    ),
+                    raw_transcript=original,
+                )
+                raise CategoryUnknownError(
+                    "could not map any category keyword from the text to one of "
+                    f"the seeded slugs: {', '.join(CATEGORY_SLUGS)} — ask the user",
+                    partial_draft=partial,
+                ) from None
+
+        return ShipmentDraft(
+            product_category=category,
+            quantity=quantity,
+            weight_grams=weight_grams,
+            destination_country=country,
+            consignee=consignee,
+            value_minor=value_minor,
+            confidence=_draft_confidence(
+                sum(
+                    (
+                        category is not None,
+                        quantity != QUANTITY_UNSTATED,
+                        weight_grams != WEIGHT_UNSTATED,
+                        country != DESTINATION_UNSTATED,
+                        consignee != CONSIGNEE_UNSTATED,
+                        value_minor != VALUE_UNSTATED,
+                    )
+                )
+            ),
+            raw_transcript=original,
+        )
+
+
+# Prompts for the draft LLM adapter — the transcript is NEVER part of a
+# re-prompt: the model sees only the schema and (on a re-prompt) the prior
+# draft with raw_transcript stripped.
+_DRAFT_FIRST_PROMPT = (
+    "Extract the export shipment described in the transcript into the "
+    "response_schema. Reply with ONLY JSON that validates against the "
+    "response_schema. For any field you cannot determine, use the contract "
+    "sentinels (None for product_category, -1 for quantity, weight_grams and "
+    "value_minor, 'unknown' for destination_country and consignee).\n\n"
+    "To pick product_category: if the user's words do not map clearly to one "
+    "of the schema's category enum values, call the search_categories tool "
+    "with the product word (Hindi or English) to see the seeded category "
+    "catalog, then choose the best match. If several categories plausibly "
+    "fit and the user did not specify, set product_category to null — the "
+    "assistant will ask. Never invent a slug that is not in the schema enum."
+)
+
+_DRAFT_REPROMPT_PROMPT = (
+    "Your previous response failed schema validation. "
+    "Reply with ONLY JSON that validates against the response_schema. "
+    "You may use the prior draft for consistency, but never invent fields "
+    "you do not know — use the contract sentinels."
+)
+
+
+def _clean_schema(schema: dict) -> dict:
+    """Drop ``title``/``default`` keys recursively — the model must fill every
+    field from the enum/type only, never from a default value.
+
+    Also rewrites Pydantic v2's ``X | None`` encoding (``anyOf`` with a
+    ``{"type": "null"}`` branch) into the SDK Schema's ``nullable: true`` —
+    the google.generativeai proto rejects ``anyOf`` (``ValueError: Unknown
+    field for Schema: anyOf``), so the live path needs this conversion.
+    """
+    cleaned: dict[str, object] = {}
+    for key, value in schema.items():
+        if key in ("title", "default"):
+            continue
+        if key == "anyOf" and isinstance(value, list):
+            non_null = [item for item in value if isinstance(item, dict) and item.get("type") != "null"]
+            if len(non_null) == 1 and isinstance(non_null[0], dict):
+                cleaned.update({k: _clean_schema(v) if isinstance(v, dict) else v for k, v in non_null[0].items() if k not in ("title", "default")})
+                cleaned["nullable"] = True
+                continue
+        cleaned[key] = _clean_schema(value) if isinstance(value, dict) else value
+    return cleaned
+
+
+class _GenaiModelAdapter:
+    """Translate the (config, contents) call shape to the real genai SDK.
+
+    Supports function calling: when ``tools`` is given (a list of
+    ``(name, callable)`` pairs), a model function_call is executed and its
+    result is fed back in the SDK-native Content/Part format until the model
+    returns plain text.  ``search_categories`` is the one tool the draft
+    extractor registers — it lets the model resolve an ambiguous spoken
+    category ("कपड़ा") against the seeded catalog instead of the hardcoded
+    rule gate blocking it.
+    """
+
+    def __init__(self, model: Any, tools: list[tuple[str, object]] | None = None) -> None:
+        self._model = model
+        self._tools = dict(tools or [])
+
+    @staticmethod
+    def _render_prompt(contents: list[dict]) -> str:
+        """Flatten mock-shaped content dicts into one plain-text prompt.
+
+        Each dict carries one role: ``instruction`` (+ optional
+        ``response_schema``) is the task text, ``transcript`` the current
+        utterance, ``prior_draft``/``prior_shipment`` a prior-state dump.
+        The real SDK rejects bare dict contents, so the adapter joins the
+        parts into a single prompt string.
+        """
+        sections: list[str] = []
+        for item in contents:
+            instruction = item.get("instruction")
+            if instruction:
+                sections.append(instruction)
+            transcript = item.get("transcript")
+            if transcript:
+                sections.append(f"Transcript: {transcript}")
+            prior = item.get("prior_draft") or item.get("prior_shipment")
+            if prior is not None:
+                sections.append(f"Prior state: {json.dumps(prior, ensure_ascii=False)}")
+        return "\n\n".join(sections)
+
+    def generate_content(self, config: dict, contents: list[dict]) -> Any:
+        generation_config: dict[str, object] = {
+            "response_mime_type": "application/json",
+            "response_schema": config["response_schema"],
+        }
+        # The google-generativeai 0.8.x GenerationConfig has no thinking field;
+        # the schema validation + reprompt loop enforces correctness instead.
+        prompt = self._render_prompt(contents)
+        if not self._tools:
+            return self._model.generate_content(
+                prompt,
+                generation_config=generation_config,
+            )
+        return self._generate_with_tools(prompt, generation_config)
+
+    def _generate_with_tools(self, prompt: str, generation_config: dict[str, object]) -> Any:
+        """Run the function-calling loop: model → tool call → tool result →
+        model, until the model returns plain text (max 3 rounds)."""
+        try:
+            from google.generativeai import protos
+        except ImportError:  # pragma: no cover — SDK present whenever tools are
+            return self._model.generate_content(
+                prompt, generation_config=generation_config
+            )
+        declarations = [
+            protos.FunctionDeclaration(
+                name=name,
+                description=f"Call {name} to look up the answer.",
+                parameters=protos.Schema(
+                    type=protos.Type.OBJECT,
+                    properties={
+                        "query": protos.Schema(type=protos.Type.STRING)
+                    },
+                    required=["query"],
+                ),
+            )
+            for name in self._tools
+        ]
+        tool = protos.Tool(function_declarations=declarations)
+        conversation = [protos.Content(role="user", parts=[protos.Part(text=prompt)])]
+        for _ in range(3):
+            response = self._model.generate_content(
+                conversation,
+                generation_config=generation_config,
+                tools=[tool],
+            )
+            function_calls = [
+                p.function_call for p in response.parts if getattr(p, "function_call", None)
+            ]
+            if not function_calls:
+                return response
+            conversation.append(protos.Content(role="model", parts=response.parts))
+            tool_parts = []
+            for call in function_calls:
+                executor = self._tools.get(call.name)
+                if executor is None:
+                    tool_parts.append(
+                        protos.Part(
+                            function_response=protos.FunctionResponse(
+                                name=call.name,
+                                response={"error": f"unknown tool {call.name}"},
+                            )
+                        )
+                    )
+                    continue
+                result = executor(call.args.get("query", ""))
+                tool_parts.append(
+                    protos.Part(
+                        function_response=protos.FunctionResponse(
+                            name=call.name,
+                            response={"results": result},
+                        )
+                    )
+                )
+            conversation.append(
+                protos.Content(role="user", parts=tool_parts)
+            )
+        return response
+
+
+def _build_genai_client() -> Any:
+    """The real genai model wrapper from the env key, built lazily.
+
+    Raises ``RuntimeError`` when GEMINI_API_KEY is absent — checked BEFORE the
+    optional import so tests pass without the package or a key.
+    """
+    key = os.environ.get("GEMINI_API_KEY")
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+    from google.generativeai.client import configure
+    from google.generativeai.generative_models import GenerativeModel
+
+    configure(api_key=key)
+    model = GenerativeModel(os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite"))
+    from app.services.db_tools import search_categories
+
+    return _GenaiModelAdapter(
+        model,
+        tools=[("search_categories", search_categories)],
+    )
+
+
+class GeminiDraftExtractor(DraftExtractor):
+    """LLM adapter over the draft contract (Wave 1).
+
+    Guardrails (mirror ``GeminiExtractor``):
+    - the transcript appears ONLY as the initial model content — it is never
+      stored on the produced draft (``raw_transcript`` stays None) and never
+      included in a re-prompt (re-prompts carry only the schema + the prior
+      draft with ``raw_transcript`` stripped);
+    - ``response_schema=ShipmentDraft.model_json_schema()`` (title/default
+      keys stripped) with thinking disabled;
+    - schema ValidationError -> re-prompt (max ``max_reprompts``); business
+      validation stays in app.services.validate — the model never validates.
+    """
+
+    def __init__(self, client: Any | None = None, max_reprompts: int = 2):
+        self._client = client
+        self._max_reprompts = max_reprompts
+
+    def extract(
+        self, transcript: str, previous: ShipmentDraft | None, lang: str
+    ) -> ShipmentDraft:
+        client = self._client
+        if client is None:
+            client = _build_genai_client()
+        schema = _clean_schema(ShipmentDraft.model_json_schema())
+        config = {"response_schema": schema, "thinking_config": {"thinking_budget": 0}}
+        response = client.generate_content(
+            config=config,
+            contents=[
+                {
+                    "instruction": _DRAFT_FIRST_PROMPT,
+                    "response_schema": schema,
+                    "transcript": transcript,
+                }
+            ],
+        )
+        last_error: Exception | None = None
+        for _ in range(self._max_reprompts + 1):
+            draft, last_error = _try_parse_draft(response)
+            if draft is not None:
+                return draft
+            prior = _prior_draft_without_transcript(previous)
+            response = client.generate_content(
+                config=config,
+                contents=[
+                    {"instruction": _DRAFT_REPROMPT_PROMPT, "response_schema": schema},
+                    {"prior_draft": prior},
+                ],
+            )
+        raise ValueError(
+            "GeminiDraftExtractor could not produce a schema-valid ShipmentDraft "
+            f"after {self._max_reprompts + 1} attempt(s): {last_error}"
+        )
+
+
+def _try_parse_draft(response: Any) -> tuple[ShipmentDraft | None, Exception | None]:
+    """Parse a model response into a ShipmentDraft (schema-only validation).
+
+    Same as ``_try_parse`` but over the draft schema, with the transcript
+    guarantee enforced: whatever the model echoed, the produced draft's
+    ``raw_transcript`` stays None.
+
+    The model may answer a country as a free-form name ("United States",
+    "अमेरिका") rather than the ISO2 the validation contract requires — it is
+    normalized through ``_COUNTRY_ALIASES`` at this boundary so the merged
+    draft never carries a value ``validate_shipment`` would reject.
+    """
+    try:
+        text = _non_thinking_text(response)
+        data = json.loads(_strip_code_fence(text)) if isinstance(text, str) else text
+        if isinstance(data, dict):
+            country = data.get("destination_country")
+            if isinstance(country, str) and country not in ("unknown",):
+                normalized = _COUNTRY_ALIASES.get(country.strip().lower())
+                if normalized is not None:
+                    data["destination_country"] = normalized
+        draft = ShipmentDraft.model_validate(data)
+        return draft.model_copy(update={"raw_transcript": None}), None
+    except (ValidationError, ValueError) as exc:
+        return None, exc
+
+
+def _prior_draft_without_transcript(previous: ShipmentDraft | None) -> dict | None:
+    """The prior draft as the model may see it — raw_transcript stripped."""
+    if previous is None:
+        return None
+    return previous.model_dump(exclude={"raw_transcript"})
+
+
 __all__ = [
     "CategoryUnknownError",
+    "DraftExtractor",
     "Extractor",
+    "GeminiDraftExtractor",
     "GeminiExtractor",
+    "RuleDraftExtractor",
     "RuleExtractor",
+    "draft_confidence",
 ]

@@ -90,11 +90,7 @@ def validate_e_fira_reconciliation(
         return errors  # cannot compare if remitter IFSC is malformed
 
     # ── IFSC mismatch check ──
-    if (
-        remitter_ifsc is not None
-        and order.ifsc is not None
-        and remitter_ifsc != order.ifsc
-    ):
+    if remitter_ifsc is not None and order.ifsc is not None and remitter_ifsc != order.ifsc:
         errors.append(
             ErrorEntry(
                 field="ifsc",
@@ -170,10 +166,7 @@ def validate_exporter_binding(order: Order) -> list[ErrorEntry]:
             ErrorEntry(
                 field="ifsc",
                 severity="error",
-                message=(
-                    f"invalid IFSC format: {_ifsc!r} "
-                    f"(expect 4alpha+0+6alphanumeric)"
-                ),
+                message=(f"invalid IFSC format: {_ifsc!r} (expect 4alpha+0+6alphanumeric)"),
                 action="blocking",
             )
         )
@@ -203,8 +196,7 @@ def validate_exporter_binding(order: Order) -> list[ErrorEntry]:
                 field="bank_name",
                 severity="warning",
                 message=(
-                    f"bank_name {_bank_name!r} not found in DGFT "
-                    f"registered banks (mock lookup)"
+                    f"bank_name {_bank_name!r} not found in DGFT registered banks (mock lookup)"
                 ),
                 action="check_input",
             )
@@ -219,10 +211,7 @@ def validate_exporter_binding(order: Order) -> list[ErrorEntry]:
                 ErrorEntry(
                     field="version",
                     severity="block",
-                    message=(
-                        f"invalid version {order.version} for confirmed order "
-                        f"(expect >= 1)"
-                    ),
+                    message=(f"invalid version {order.version} for confirmed order (expect >= 1)"),
                     action="blocking",
                 )
             )

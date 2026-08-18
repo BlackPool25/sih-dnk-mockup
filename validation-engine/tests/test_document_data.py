@@ -129,6 +129,7 @@ def test_iec_gstin_derived_into_field_values() -> None:
 
 # --- missing_required (wave 2: completeness against ALL 7 DB-required keys) ---
 
+
 def test_missing_required_reports_assessable_value() -> None:
     """F3: a document without a declared value reports assessable_value."""
     data = _build(consignee=None, value_minor=None)

@@ -142,10 +142,19 @@ def _row_count_gates(session) -> list[Gate]:
     )
 
     states = _count(session, StateSalesTax)
-    gates.append(Gate("G4 state_sales_tax", states == STATES_EXPECTED, str(states), str(STATES_EXPECTED)))
+    gates.append(
+        Gate("G4 state_sales_tax", states == STATES_EXPECTED, str(states), str(STATES_EXPECTED))
+    )
 
     cats = _count(session, ProductCategory)
-    gates.append(Gate("G5 product_categories", cats == CATEGORIES_EXPECTED, str(cats), str(CATEGORIES_EXPECTED)))
+    gates.append(
+        Gate(
+            "G5 product_categories",
+            cats == CATEGORIES_EXPECTED,
+            str(cats),
+            str(CATEGORIES_EXPECTED),
+        )
+    )
 
     per_cat = dict(
         session.execute(
@@ -176,9 +185,7 @@ def _row_count_gates(session) -> list[Gate]:
     gates.append(Gate("G8 pbe_field_schemas", pbe >= PBE_MIN, str(pbe), f">= {PBE_MIN}"))
 
     null_iso2 = _count(session, Lane, Lane.lane == "ITPS", Lane.country_iso2.is_(None))
-    gates.append(
-        Gate("G9 ITPS NULL country_iso2", null_iso2 == 0, str(null_iso2), "0")
-    )
+    gates.append(Gate("G9 ITPS NULL country_iso2", null_iso2 == 0, str(null_iso2), "0"))
     return gates
 
 
@@ -236,9 +243,7 @@ def _spot_check_gate(session) -> list[Gate]:
             str(US_CAP_G),
         )
     )
-    transit_ok = us is not None and (
-        us.transit_min_days, us.transit_max_days
-    ) == US_TRANSIT
+    transit_ok = us is not None and (us.transit_min_days, us.transit_max_days) == US_TRANSIT
     gates.append(
         Gate(
             "G11 US ITPS transit 18..28 days",
@@ -299,7 +304,9 @@ def _auth_gate() -> Gate:
     try:
         with SessionLocal() as session:
             session.execute(select(1))  # trivial SELECT 1 via the engine
-        return Gate("G12 psql auth SELECT 1", True, "engine SELECT 1 ok (no psql on PATH)", "exit 0")
+        return Gate(
+            "G12 psql auth SELECT 1", True, "engine SELECT 1 ok (no psql on PATH)", "exit 0"
+        )
     except Exception as exc:  # noqa: BLE001 — gate must report ANY auth failure
         return Gate("G12 psql auth SELECT 1", False, f"engine SELECT 1 failed: {exc}", "exit 0")
 
@@ -312,159 +319,223 @@ STATIC_CONFLICT_NOTES: list[tuple[str, list[str]]] = [
     (
         "C-5 MPF wording contradiction — INVERTED wording between the two US files",
         [
-            ("- data/01-countries/USA/duties-taxes.md §4.2: *\"EMS (Express Mail Service) parcels from "
-            "India are subject to MPF\"* (header: \"MPF — **exempt for postal mail, EXCEPT Inbound EMS**\")."),
-            ("- data/01-countries/USA/shipping.md §9:232: *\"Merchandise Processing Fee (MPF) | "
-            "**Exempt for inbound EMS** (\\\"Inbound Express Mail service\\\" / \\\"Inbound EMS\\\")\"*."),
-            ("- Both cite the same CBP E-Commerce FAQ yet reach inverted conclusions. DB flag "
-            "`us.mpf.postal` = \"exempt_itps_liable_ems\" records the duties-taxes.md reading; "
-            "resolve per item at build."),
+            (
+                '- data/01-countries/USA/duties-taxes.md §4.2: *"EMS (Express Mail Service) parcels from '
+                'India are subject to MPF"* (header: "MPF — **exempt for postal mail, EXCEPT Inbound EMS**").'
+            ),
+            (
+                '- data/01-countries/USA/shipping.md §9:232: *"Merchandise Processing Fee (MPF) | '
+                '**Exempt for inbound EMS** (\\"Inbound Express Mail service\\" / \\"Inbound EMS\\")"*.'
+            ),
+            (
+                "- Both cite the same CBP E-Commerce FAQ yet reach inverted conclusions. DB flag "
+                '`us.mpf.postal` = "exempt_itps_liable_ems" records the duties-taxes.md reading; '
+                "resolve per item at build."
+            ),
         ],
     ),
     (
         "C-6/C-7 US ITPS cap — RESOLVED 5 kg (overrides the stale table-file note)",
         [
-            ("- DoP OM CF-71/17/2025-CF-DOP, 01-Jan-2026 (L1): *\"maximum permissible weight limit for "
-            "the United States of America under the ITPS mail category has also been increased from "
-            "2 kg to 5 kg\"* (USA shipping.md §1.3; data/README.md freshness note; Shiprocket "
-            "21-Jan-2026 corroborates)."),
-            ("- Overrides the STALE note at data/05-itps-ems-lanes/itps-full-rate-table-s0659e.md "
-            "line 147: *\"Weight caps: 2 kg for USA/Australia/Canada (top markets); 5 kg for ~29 "
-            "destinations; per-table otherwise. O10 open question: US cap may have risen to 5 kg "
-            "(Shiprocket Jan-2026 note) — verify at build.\"*"),
-            ("- DB: US ITPS weight_cap_g = 5000; AU/CA/GB = 2000; AE/SG = 5000 (convert.py "
-            "ITPS_WEIGHT_CAP_G)."),
+            (
+                '- DoP OM CF-71/17/2025-CF-DOP, 01-Jan-2026 (L1): *"maximum permissible weight limit for '
+                "the United States of America under the ITPS mail category has also been increased from "
+                '2 kg to 5 kg"* (USA shipping.md §1.3; data/README.md freshness note; Shiprocket '
+                "21-Jan-2026 corroborates)."
+            ),
+            (
+                "- Overrides the STALE note at data/05-itps-ems-lanes/itps-full-rate-table-s0659e.md "
+                'line 147: *"Weight caps: 2 kg for USA/Australia/Canada (top markets); 5 kg for ~29 '
+                "destinations; per-table otherwise. O10 open question: US cap may have risen to 5 kg "
+                '(Shiprocket Jan-2026 note) — verify at build."*'
+            ),
+            (
+                "- DB: US ITPS weight_cap_g = 5000; AU/CA/GB = 2000; AE/SG = 5000 (convert.py "
+                "ITPS_WEIGHT_CAP_G)."
+            ),
         ],
     ),
     (
         "C-8 UK EMS 1 kg upper bound untraceable",
         [
-            ("- data/01-countries/UK/duties-taxes.md (worked example): *\"postage EMS 1 kg ≈ "
-            "₹1,165–₹2,275 (see shipping.md)\"*."),
-            ("- UK shipping.md computes 1 kg EMS = ₹1,165 and 2 kg = ₹2,665 — the ₹2,275 upper bound "
-            "matches NO arithmetic in either file. Untraceable; treat as a typo until re-checked."),
+            (
+                '- data/01-countries/UK/duties-taxes.md (worked example): *"postage EMS 1 kg ≈ '
+                '₹1,165–₹2,275 (see shipping.md)"*.'
+            ),
+            (
+                "- UK shipping.md computes 1 kg EMS = ₹1,165 and 2 kg = ₹2,665 — the ₹2,275 upper bound "
+                "matches NO arithmetic in either file. Untraceable; treat as a typo until re-checked."
+            ),
         ],
     ),
     (
         "C-9 AU EMS confidence-tier conflict",
         [
-            ("- Working figure ₹630 + ₹155/250 g stored from PO Rules §225 (statutory mirror — L1-text) "
-            "and indiapost.org (L5)."),
-            ("- ClickPost 2026 quotes ₹1,125 + ₹230/250 g (AU shipping.md §2.1) — 1.8× higher; no "
-            "authoritative Schedule I public (C11). Stored confidence=low, is_estimate=true."),
+            (
+                "- Working figure ₹630 + ₹155/250 g stored from PO Rules §225 (statutory mirror — L1-text) "
+                "and indiapost.org (L5)."
+            ),
+            (
+                "- ClickPost 2026 quotes ₹1,125 + ₹230/250 g (AU shipping.md §2.1) — 1.8× higher; no "
+                "authoritative Schedule I public (C11). Stored confidence=low, is_estimate=true."
+            ),
         ],
     ),
     (
         "C-10 USPS $9.35 clearance fee — L1 partial",
         [
-            ("- Federal Register 91:603, 8-Jan-2026 (L1) sets the **competitive** customs clearance & "
-            "delivery fee at $9.35 per dutiable item (USA shipping.md §9)."),
-            ("- The amount applicable to the postal-inbound class (India Post parcels) is NOT "
-            "L1-confirmed — shipping.md §9: \"Whether the $9.35 or the older ~$5 level applies to a "
-            "given India Post parcel is not L1-confirmed for the postal-inbound class.\" "
-            "DB flag `us.usps_clearance_fee_minor` = 935, confidence=high (fee level flagged at build)."),
+            (
+                "- Federal Register 91:603, 8-Jan-2026 (L1) sets the **competitive** customs clearance & "
+                "delivery fee at $9.35 per dutiable item (USA shipping.md §9)."
+            ),
+            (
+                "- The amount applicable to the postal-inbound class (India Post parcels) is NOT "
+                'L1-confirmed — shipping.md §9: "Whether the $9.35 or the older ~$5 level applies to a '
+                'given India Post parcel is not L1-confirmed for the postal-inbound class." '
+                "DB flag `us.usps_clearance_fee_minor` = 935, confidence=high (fee level flagged at build)."
+            ),
         ],
     ),
     (
         "C-11 volumetric divisor — no official international figure",
         [
-            ("- ÷6000 (courierbook Oct-2025; shipmozo; singhxpress) · ÷5000 (clickpost; courierbook "
-            "Jan-2026 \"UPU standard alignment\"; costcalculator) · ÷4000 (smartfree) — corpus F-H5-c, "
-            "82% High no-official-figure (ems-lane.md §5; USA shipping.md §4)."),
-            ("- Domestic reference ÷5000 (DoP OM 11-Dec-2025, L1) sometimes misapplied to "
-            "international. DB flag `volumetric.divisors` = [4000, 5000, 6000], "
-            "confidence=unverified, is_estimate=true; EMS lanes divisor=NULL."),
+            (
+                "- ÷6000 (courierbook Oct-2025; shipmozo; singhxpress) · ÷5000 (clickpost; courierbook "
+                'Jan-2026 "UPU standard alignment"; costcalculator) · ÷4000 (smartfree) — corpus F-H5-c, '
+                "82% High no-official-figure (ems-lane.md §5; USA shipping.md §4)."
+            ),
+            (
+                "- Domestic reference ÷5000 (DoP OM 11-Dec-2025, L1) sometimes misapplied to "
+                "international. DB flag `volumetric.divisors` = [4000, 5000, 6000], "
+                "confidence=unverified, is_estimate=true; EMS lanes divisor=NULL."
+            ),
         ],
     ),
     (
         "C-12 EMS weight caps 20/30/35 — unresolved claims",
         [
             "- Corpus C16 RESOLVED: Air Parcel 20 kg general (destination governs).",
-            ("- 30 kg claims (indiapost.org 2026; ClickPost \"up to 30 kg\") vs legacy official table "
-            "31.5 kg for a few (Barbados, Kenya, Macao, Nepal, Romania, USA, Vietnam) and 20 kg for "
-            "some (Bahrain, Belarus, Iceland, Iran, Israel, Mexico, Mongolia, Nauru, Pakistan, "
-            "Poland, Spain, Taiwan, Thailand, Tunisia, Ukraine, Yemen) (ems-lane.md §6)."),
+            (
+                '- 30 kg claims (indiapost.org 2026; ClickPost "up to 30 kg") vs legacy official table '
+                "31.5 kg for a few (Barbados, Kenya, Macao, Nepal, Romania, USA, Vietnam) and 20 kg for "
+                "some (Bahrain, Belarus, Iceland, Iran, Israel, Mexico, Mongolia, Nauru, Pakistan, "
+                "Poland, Spain, Taiwan, Thailand, Tunisia, Ukraine, Yemen) (ems-lane.md §6)."
+            ),
             "- No authoritative per-market EMS ceiling fetched → EMS weight_cap_g = NULL (never guessed).",
         ],
     ),
     (
         "C-13 counter practice unverified",
         [
-            ("- Whether India Post counters actually apply volumetric to bulky crafts is UNVERIFIED "
-            "(corpus 60% Moderate; field instrument O4 settles it)."),
-            ("- ClickPost (Jul-2026) counter-claim: \"India Post EMS charges on actual weight only…\" — "
-            "a direct contradiction of PO Regs 2024 clause (r) (ems-lane.md §5). EMS lanes "
-            "divisor=NULL until verified."),
+            (
+                "- Whether India Post counters actually apply volumetric to bulky crafts is UNVERIFIED "
+                "(corpus 60% Moderate; field instrument O4 settles it)."
+            ),
+            (
+                '- ClickPost (Jul-2026) counter-claim: "India Post EMS charges on actual weight only…" — '
+                "a direct contradiction of PO Regs 2024 clause (r) (ems-lane.md §5). EMS lanes "
+                "divisor=NULL until verified."
+            ),
         ],
     ),
     (
         "Postage-row data-quality flags (category docs vs gazette Table VIII)",
         [
-            ("- jute-products/category-doc.md: \"300 g → USA ₹505\" — the gazette formula value at "
-            "**200 g** (₹400 + 3×₹35 = ₹505); the 300 g row should be ₹575. Row mislabelled one slab "
-            "(jute 300 g ≈ formula-200 g)."),
-            ("- imitation-artisan-jewellery/category-doc.md: \"200 g → USA ₹470\" — the formula value "
-            "at **150 g**; correct 200 g = ₹505. Row mislabelled one slab down (jewellery 200 g)."),
-            ("- Both docs' UK columns shift the same way (jewellery UK 200 g ₹250 vs formula ₹275). "
-            "Cosmetic examples only — the gazette formula in the DB is the source of truth."),
+            (
+                '- jute-products/category-doc.md: "300 g → USA ₹505" — the gazette formula value at '
+                "**200 g** (₹400 + 3×₹35 = ₹505); the 300 g row should be ₹575. Row mislabelled one slab "
+                "(jute 300 g ≈ formula-200 g)."
+            ),
+            (
+                '- imitation-artisan-jewellery/category-doc.md: "200 g → USA ₹470" — the formula value '
+                "at **150 g**; correct 200 g = ₹505. Row mislabelled one slab down (jewellery 200 g)."
+            ),
+            (
+                "- Both docs' UK columns shift the same way (jewellery UK 200 g ₹250 vs formula ₹275). "
+                "Cosmetic examples only — the gazette formula in the DB is the source of truth."
+            ),
         ],
     ),
     (
         "IEC application fee ₹500-vs-free",
         [
-            ("- data/02-dnk-documents/onboarding/onboarding-guide.md: \"₹500 application fee; e-Sign "
-            "via Aadhaar (free) or DSC (vendor-priced)\"."),
-            ("- data/02-dnk-documents/document-stack.md (flags): \"IEC fee 'free vs ₹500' (both appear "
-            "in official sources)\". Both values logged; no DB flag pinned (council-set fee, "
-            "re-check at build)."),
+            (
+                '- data/02-dnk-documents/onboarding/onboarding-guide.md: "₹500 application fee; e-Sign '
+                'via Aadhaar (free) or DSC (vendor-priced)".'
+            ),
+            (
+                "- data/02-dnk-documents/document-stack.md (flags): \"IEC fee 'free vs ₹500' (both appear "
+                'in official sources)". Both values logged; no DB flag pinned (council-set fee, '
+                "re-check at build)."
+            ),
         ],
     ),
     (
         "Brass 8306.29 MFN Free-vs-not",
         [
-            ("- small-brass-metalware/category-doc.md §3.4: \"8306.29.00.00 other statuettes = Free "
-            "(MFN)\" — htshub shows Free; wove shows only China S.301 10%."),
-            ("- Same section: \"The 8306.29 MFN = Free result is worth a build-time re-check (two "
-            "aggregators conflict on effective vs statutory).\" Logged, not shipped as fact."),
+            (
+                '- small-brass-metalware/category-doc.md §3.4: "8306.29.00.00 other statuettes = Free '
+                '(MFN)" — htshub shows Free; wove shows only China S.301 10%.'
+            ),
+            (
+                '- Same section: "The 8306.29 MFN = Free result is worth a build-time re-check (two '
+                'aggregators conflict on effective vs statutory)." Logged, not shipped as fact.'
+            ),
         ],
     ),
     (
         "GSTIN hard-block H2 — contested",
         [
-            ("- On paper no hard-block (70% Moderate): DGFT issues IEC without GSTIN (\"GSTIN … if "
-            "applicable\", IEC Manual v2.0); PBE forms read \"GSTIN or as applicable\"; DNK SOP KYC "
-            "Note-1 allows booking with IEC alone (document-stack.md)."),
-            ("- BUT the DNK SOP business-details table marks GSTIN \"Mandatory\", and whether the "
-            "migrated portal (app.indiapost.gov.in/customer-selfservice) honours the escape hatch "
-            "is UNTESTED — if it diverges, the hard-block branch is restored (findings H2)."),
+            (
+                '- On paper no hard-block (70% Moderate): DGFT issues IEC without GSTIN ("GSTIN … if '
+                'applicable", IEC Manual v2.0); PBE forms read "GSTIN or as applicable"; DNK SOP KYC '
+                "Note-1 allows booking with IEC alone (document-stack.md)."
+            ),
+            (
+                '- BUT the DNK SOP business-details table marks GSTIN "Mandatory", and whether the '
+                "migrated portal (app.indiapost.gov.in/customer-selfservice) honours the escape hatch "
+                "is UNTESTED — if it diverges, the hard-block branch is restored (findings H2)."
+            ),
         ],
     ),
     (
         "FEMA 9-vs-15 month realisation",
         [
-            ("- `fema.realisation_months` = 9: FEMA (Export of Goods and Services) (First Amendment) "
-            "Regulations 2026, 5-Jun-2026 (taxguru)."),
-            ("- `fema.relaxation_months` = 15: RBI press release 31-Mar-2026 relaxation window. Both "
-            "live flags coexist; the 15-month window is the relaxation, not the base rule."),
+            (
+                "- `fema.realisation_months` = 9: FEMA (Export of Goods and Services) (First Amendment) "
+                "Regulations 2026, 5-Jun-2026 (taxguru)."
+            ),
+            (
+                "- `fema.relaxation_months` = 15: RBI press release 31-Mar-2026 relaxation window. Both "
+                "live flags coexist; the 15-month window is the relaxation, not the base rule."
+            ),
         ],
     ),
     (
         "Wise e-FIRC $2-vs-$2.50",
         [
-            ("- payment-rails.md §2.4: \"~US$2–2.50 e-FIRC fee\" vs \"the equivalent of US$2 in the "
-            "requested currency per transfer (US$2.50 for USD)\"."),
-            ("- DB flag `wise.efirc_fee_minor` = 200 ($2.00, non-USD corridors); USD transfers cost "
-            "$2.50 — difference logged, not averaged."),
+            (
+                '- payment-rails.md §2.4: "~US$2–2.50 e-FIRC fee" vs "the equivalent of US$2 in the '
+                'requested currency per transfer (US$2.50 for USD)".'
+            ),
+            (
+                "- DB flag `wise.efirc_fee_minor` = 200 ($2.00, non-USD corridors); USD transfers cost "
+                "$2.50 — difference logged, not averaged."
+            ),
         ],
     ),
     (
         "Magnet threshold 4.6 m-vs-4.5 m",
         [
-            ("- jewellery/category-doc.md §4.2: \"≤ 0.418 A/m (≈0.00525 gauss) **at 4.6 m**\" "
-            "(radialmagnet, IATA PI 953) vs \"0.00525 gauss **at 4.5 m**\" (FAA PackSafe) — the same "
-            "field limit quoted at two measurement distances."),
-            ("- Neither blocks a magnet-free parcel; both cited in the doc; flagged as an open "
-            "measurement discrepancy."),
+            (
+                '- jewellery/category-doc.md §4.2: "≤ 0.418 A/m (≈0.00525 gauss) **at 4.6 m**" '
+                '(radialmagnet, IATA PI 953) vs "0.00525 gauss **at 4.5 m**" (FAA PackSafe) — the same '
+                "field limit quoted at two measurement distances."
+            ),
+            (
+                "- Neither blocks a magnet-free parcel; both cited in the doc; flagged as an open "
+                "measurement discrepancy."
+            ),
         ],
     ),
 ]
@@ -496,9 +567,7 @@ def _ems_conflict_log(session) -> list[str]:
         lines.append(f"  - `alternatives`: {json.dumps(alternatives, sort_keys=True)}")
         for alt in alternatives or []:
             addl = f"+ ₹{alt['addl'] / 100:g}/250 g" if alt.get("addl") else "(addl n/a)"
-            lines.append(
-                f"    - {alt['source']}: first 250 g ₹{alt['first'] / 100:g} {addl}"
-            )
+            lines.append(f"    - {alt['source']}: first 250 g ₹{alt['first'] / 100:g} {addl}")
     return lines
 
 
@@ -550,9 +619,8 @@ def _render(gates: list[Gate], ems_log: list[str], flagged: list[str]) -> str:
         "|---|---|---|---|",
         *[g.line() for g in gates],
         "",
-        f"**{passed}/{total} gates PASS** — " + (
-            "ALL GATES PASS" if passed == total else f"{total - passed} GATE(S) FAIL"
-        ),
+        f"**{passed}/{total} gates PASS** — "
+        + ("ALL GATES PASS" if passed == total else f"{total - passed} GATE(S) FAIL"),
         "",
         "## Conflicts log (C-1..C-13 + data-quality flags)",
         "",
@@ -578,11 +646,7 @@ def _render(gates: list[Gate], ems_log: list[str], flagged: list[str]) -> str:
 def main(argv: list[str] | None = None) -> int:
     del argv  # no CLI args today — gates are fixed by the todo-8 spec
     with SessionLocal() as session:
-        gates = (
-            _row_count_gates(session)
-            + _source_url_gate(session)
-            + _spot_check_gate(session)
-        )
+        gates = _row_count_gates(session) + _source_url_gate(session) + _spot_check_gate(session)
         ems_log = _ems_conflict_log(session)
         flagged = _flagged_rows(session)
         rules_gate = _rules_gate(session)
@@ -598,7 +662,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"verification report written: {REPORT_PATH}")
     for gate in gates:
         print(f"  {'PASS' if gate.passed else 'FAIL'}  {gate.name}  (actual={gate.actual})")
-    print(f"{passed}/{len(gates)} gates passed — " + ("ALL PASS" if failed == 0 else f"{failed} FAILED"))
+    print(
+        f"{passed}/{len(gates)} gates passed — "
+        + ("ALL PASS" if failed == 0 else f"{failed} FAILED")
+    )
     return 0 if failed == 0 else 1
 
 

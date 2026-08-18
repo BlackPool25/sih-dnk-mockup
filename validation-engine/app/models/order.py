@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, Integer, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -41,9 +41,7 @@ class ValidationState(enum.StrEnum):
 class Order(Base):
     __tablename__ = "orders"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     status: Mapped[OrderStatus] = mapped_column(
         Enum(OrderStatus, name="order_status"),
         nullable=False,
@@ -76,10 +74,17 @@ class Order(Base):
     exporter_address: Mapped[str | None] = mapped_column(String(512), nullable=True)
     state_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
 
-    # ── versioning & JSONB ─────────────────────────────────────────
-    version: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default="1"
+    # ── ownership ──────────────────────────────────────────────────
+    seller_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
+    buyer_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    qr_token_jti: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # ── versioning & JSONB ─────────────────────────────────────────
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     last_report: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
 
     # ── timestamps ─────────────────────────────────────────────────

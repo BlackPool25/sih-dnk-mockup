@@ -123,9 +123,7 @@ def _summary_rows(data: DocumentData) -> list[dict]:
         {"label": "Weight (g)", "value": f"{data.weight_grams} g"},
     ]
     if data.form_type == "CN22":
-        return common + [
-            {"label": "Destination country", "value": data.destination_country}
-        ]
+        return common + [{"label": "Destination country", "value": data.destination_country}]
     rows: list[dict] = [
         {"label": "Consignee", "value": data.consignee or "—"},
         {"label": "Destination country", "value": data.destination_country},
@@ -227,9 +225,7 @@ def sdr_info(value_minor: int | None) -> dict:
 
 def _cn_switch_note(requested: str, resolved: str, value_minor: int) -> str:
     """Human note for an SDR-driven CN22/CN23 auto-switch (never user-picked)."""
-    relation = (
-        "exceeds 300 SDR" if resolved == "CN23" else "is within 300 SDR"
-    )
+    relation = "exceeds 300 SDR" if resolved == "CN23" else "is within 300 SDR"
     return f"value {_money(value_minor)} {relation} — using {resolved} instead of {requested}"
 
 
@@ -354,13 +350,10 @@ def build_html(
     """
     data = DocumentData.model_validate(document_data)
     if doc_type not in _TEMPLATE_FILE:
-        raise ValueError(
-            f"unknown doc_type {doc_type!r} — expected one of {list(FORM_TYPES)}"
-        )
+        raise ValueError(f"unknown doc_type {doc_type!r} — expected one of {list(FORM_TYPES)}")
     if data.form_type != doc_type:
         raise ValueError(
-            f"doc_type {doc_type!r} does not match DocumentData.form_type "
-            f"{data.form_type!r}"
+            f"doc_type {doc_type!r} does not match DocumentData.form_type {data.form_type!r}"
         )
     # SDR enforcement gate (todo-14 fix): the CN22/CN23 label is derived from
     # the declared value, never user-picked — a CN22 request for a >300-SDR
@@ -442,6 +435,20 @@ def _checksum(pdf_bytes: bytes) -> str:
     return hashlib.sha256(pdf_bytes).hexdigest()
 
 
+def _order_id_kwargs(order: Order | None) -> dict[str, object]:
+    """order_id kwargs for a new Document row — only when the column exists.
+
+    W2-T5 adds ``documents.order_id`` via migration; the Document model file
+    is deliberately not edited here, so rows written pre-migration must not
+    reference the column.  ``getattr`` on the mapped class resolves to the
+    InstrumentedAttribute once the model declares it, None before — the
+    guard works both ways.
+    """
+    if order is None or getattr(Document, "order_id", None) is None:
+        return {}
+    return {"order_id": order.id}
+
+
 def _next_version(doc_type: str) -> tuple[int, int | None]:
     """Immutable versioning: max(version)+1, superseding the previous max id.
 
@@ -481,9 +488,7 @@ def render_line_items(
         one for PBE/CN forms.
     """
     if doc_type not in _TEMPLATE_FILE:
-        raise ValueError(
-            f"unknown doc_type {doc_type!r} — expected one of {list(FORM_TYPES)}"
-        )
+        raise ValueError(f"unknown doc_type {doc_type!r} — expected one of {list(FORM_TYPES)}")
     if not order.line_items:
         raise ValueError("order has no line_items")
     destination = order.destination_country or "US"
@@ -517,14 +522,16 @@ def render_line_items(
                 net_weight_g=order.net_weight_g,
             )
             hs = data.hs_codes[0] if data.hs_codes else None
-            line_docs.append({
-                "si_no": str(idx),
-                "description": hs["description"] if hs else (li.category_slug or "—"),
-                "quantity": f"{qty} Nos",
-                "weight_grams": f"{wgt} g",
-                "hs_code": li.hs_code or (hs["hs6"] if hs else "—"),
-                "value": _money(li.value_minor or order.value_minor),
-            })
+            line_docs.append(
+                {
+                    "si_no": str(idx),
+                    "description": hs["description"] if hs else (li.category_slug or "—"),
+                    "quantity": f"{qty} Nos",
+                    "weight_grams": f"{wgt} g",
+                    "hs_code": li.hs_code or (hs["hs6"] if hs else "—"),
+                    "value": _money(li.value_minor or order.value_minor),
+                }
+            )
 
         # ── overall DocumentData for the summary rows ──
         first_li = order.line_items[0]
@@ -574,6 +581,7 @@ def render_line_items(
                     structured_json=total_data.model_dump(mode="json"),
                     file_path=str(path),
                     supersedes_doc_id=supersedes,
+                    **_order_id_kwargs(order),
                 )
                 session.add(row)
                 documents.append(row)
@@ -585,9 +593,7 @@ def render_line_items(
     cat = first_li.category_slug or "embroidered-home-textiles"
     total_qty = sum(li.quantity or 1 for li in order.line_items)
     total_weight = sum(li.weight_g or 100 for li in order.line_items)
-    total_value = sum(
-        (li.value_minor or order.value_minor or 0) for li in order.line_items
-    )
+    total_value = sum((li.value_minor or order.value_minor or 0) for li in order.line_items)
 
     shipment = Shipment(
         product_category=cat,
@@ -637,6 +643,7 @@ def render_line_items(
             structured_json=data.model_dump(mode="json"),
             file_path=str(path),
             supersedes_doc_id=supersedes,
+            **_order_id_kwargs(order),
         )
         session.add(row)
         session.commit()
@@ -672,23 +679,16 @@ def render(
     """
     # Multi-product delegation: when an Order with multiple line items is
     # supplied for INVOICE/PACKING_LIST, build per-line documents.
-    if (
-        order is not None
-        and len(order.line_items) > 1
-        and doc_type in ("INVOICE", "PACKING_LIST")
-    ):
+    if order is not None and len(order.line_items) > 1 and doc_type in ("INVOICE", "PACKING_LIST"):
         results = render_line_items(order, doc_type, out_dir=out_path)
         return results[0] if results else render(document_data, doc_type, out_path)
 
     data = DocumentData.model_validate(document_data)
     if doc_type not in _TEMPLATE_FILE:
-        raise ValueError(
-            f"unknown doc_type {doc_type!r} — expected one of {list(FORM_TYPES)}"
-        )
+        raise ValueError(f"unknown doc_type {doc_type!r} — expected one of {list(FORM_TYPES)}")
     if data.form_type != doc_type:
         raise ValueError(
-            f"doc_type {doc_type!r} does not match DocumentData.form_type "
-            f"{data.form_type!r}"
+            f"doc_type {doc_type!r} does not match DocumentData.form_type {data.form_type!r}"
         )
     # Official filling-rule gate (todo 14): reject with the portal's exact
     # strings BEFORE WeasyPrint; restricted-policy ITCH codes warn, never block.
@@ -711,11 +711,7 @@ def render(
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     checksum = _checksum(pdf_bytes)
     version, supersedes = _next_version(doc_type)
-    path = (
-        Path(out_path)
-        if out_path is not None
-        else DOCS_OUT / f"{doc_type}-v{version}.pdf"
-    )
+    path = Path(out_path) if out_path is not None else DOCS_OUT / f"{doc_type}-v{version}.pdf"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(pdf_bytes)
 
@@ -727,6 +723,7 @@ def render(
             structured_json=data.model_dump(mode="json"),
             file_path=str(path),
             supersedes_doc_id=supersedes,
+            **_order_id_kwargs(order),
         )
         session.add(row)
         session.commit()

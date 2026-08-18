@@ -44,6 +44,40 @@ def test_search_categories_unknown_query_empty() -> None:
     assert search_categories("zzzz-no-such-category") == []
 
 
+def test_search_categories_hindi_keyword_finds_category() -> None:
+    """Spoken Hindi product words must resolve through the keyword index —
+    this is what lets the Gemini tool-calling path answer 'मुझे कपड़ा भी
+    यू एस पी ओ' instead of the hardcoded rule gate blocking the model."""
+    rows = search_categories("कपड़ा")
+    slugs = {r["slug"] for r in rows}
+    # कपड़ा (cloth) is ambiguous — it must surface the textile family so the
+    # model can pick the best match or ask the user.
+    assert "block-printed-textiles" in slugs
+    assert "handloom-scarves-stoles" in slugs
+    for row in rows:
+        assert row["source_url"]
+
+
+def test_search_categories_hindi_keyword_jute() -> None:
+    rows = search_categories("जूट")
+    assert any(r["slug"] == "jute-products" for r in rows)
+
+
+def test_search_categories_garment_words_find_textiles() -> None:
+    """Garment words users actually say ('शर्ट' shirt, 'शॉर्ट्स' shorts) must
+    surface the textile family so the model can decide or ask."""
+    for word in ("शर्ट", "शॉर्ट्स", "shirt", "shorts"):
+        slugs = {r["slug"] for r in search_categories(word)}
+        assert "block-printed-textiles" in slugs, f"{word} -> {slugs}"
+
+
+def test_search_categories_short_is_textile_family() -> None:
+    """'शॉर्ट' (STT for shorts) must resolve — the user's real utterance
+    'शॉर्ट पिंक्स नया यूएस' depends on this."""
+    slugs = {r["slug"] for r in search_categories("शॉर्ट")}
+    assert "block-printed-textiles" in slugs
+
+
 # --- lookup_hs_codes --------------------------------------------------------
 
 
@@ -135,10 +169,7 @@ def test_quote_lane_below_first_slab_charges_first_slab() -> None:
 
 
 def test_quote_lane_default_lane_is_itps() -> None:
-    assert (
-        quote_lane("US", 100)["cost_minor"]
-        == quote_lane("US", 100, "ITPS")["cost_minor"]
-    )
+    assert quote_lane("US", 100)["cost_minor"] == quote_lane("US", 100, "ITPS")["cost_minor"]
 
 
 def test_quote_lane_over_cap_raises_value_error() -> None:

@@ -142,7 +142,11 @@ def validate_line_items(order: Order) -> list[ErrorEntry]:
                     )
 
         # ── Cross-item: Σ line values ≤ order value ─────────────────
-        if order.value_minor is not None and order.value_minor > 0 and sum_values > order.value_minor:
+        if (
+            order.value_minor is not None
+            and order.value_minor > 0
+            and sum_values > order.value_minor
+        ):
             entries.append(
                 ErrorEntry(
                     field="line_items.value_minor",
@@ -156,7 +160,11 @@ def validate_line_items(order: Order) -> list[ErrorEntry]:
             )
 
         # ── Cross-item: Σ line weights ≤ parcel gross weight ────────
-        if order.gross_weight_g is not None and order.gross_weight_g > 0 and sum_weights > order.gross_weight_g:
+        if (
+            order.gross_weight_g is not None
+            and order.gross_weight_g > 0
+            and sum_weights > order.gross_weight_g
+        ):
             entries.append(
                 ErrorEntry(
                     field="line_items.weight_g",

@@ -158,11 +158,11 @@ def generate_onboarding_kit(
         "has_pan": pan is not None,
         "has_bank_account": has_bank_account,
         "path": path,
-        "explanation_hi": (
-            "व्यक्तिगत पथ" if path == "individual" else "सामूहिक पथ (SHG/सहकारी)"
-        ),
+        "explanation_hi": ("व्यक्तिगत पथ" if path == "individual" else "सामूहिक पथ (SHG/सहकारी)"),
         "explanation_en": (
-            "Individual exporter path" if path == "individual" else "Collective path (SHG/Co-operative)"
+            "Individual exporter path"
+            if path == "individual"
+            else "Collective path (SHG/Co-operative)"
         ),
     }
 
