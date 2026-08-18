@@ -39,6 +39,7 @@ def _make_app(*, exploding: bool = False) -> FastAPI:
         raise ValueError("something went very wrong")
 
     if exploding:
+
         @app.get("/type-error")
         async def type_error() -> None:
             raise TypeError("unhashable type")  # pragma: no cover

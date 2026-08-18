@@ -1,4 +1,9 @@
-"""Tests for key rotation CLI — decrypt-and-re-encrypt with new master key."""
+"""Tests for key rotation CLI — decrypt-and-re-encrypt with new master key.
+
+Orders were deleted from backend-core (moved to validation-engine); rotation
+now covers SellerProfile + ProfileDocument rows only.  The Order-specific
+``_rotate_snapshot``/``_rotate_orders`` helpers no longer exist.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +11,10 @@ from unittest.mock import patch
 
 import pytest
 from app.cli.__main__ import (
+    _async_main,
     _looks_encrypted,
+    _parse_args,
     _re_encrypt,
-    _rotate_snapshot,
     _validate_hex_key,
 )
 
@@ -24,7 +30,7 @@ USER_UUID = "00000000-0000-0000-0000-000000000001"
 NEW_VERSION = 2
 
 
-def _encrypt(plaintext: str, key: bytes = OLD_KEY, version: int = 1) -> dict:
+def _encrypt(plaintext: str, key: bytes = OLD_KEY, version: int = 1) -> dict[str, object]:
     """Encrypt *plaintext* using storage.crypto.encrypt_field."""
     from storage.crypto import encrypt_field
 
@@ -127,58 +133,12 @@ def test_re_encrypt_fails_with_wrong_old_key() -> None:
 
 
 # ---------------------------------------------------------------------------
-# _rotate_snapshot
-# ---------------------------------------------------------------------------
-
-
-def test_rotate_snapshot_encrypts_all_sub_fields() -> None:
-    """Encrypted sub-fields in snapshot are rotated; plain fields untouched."""
-    pan_enc = _encrypt("ABCDE1234F")
-    bank_enc = _encrypt("12345678901")
-
-    snapshot = {
-        "firm_name": "Test Exports",
-        "iec": "1234567890",
-        "pan_encrypted": pan_enc,
-        "bank_account_encrypted": bank_enc,
-        "ad_code_encrypted": None,
-        "gstin_encrypted": None,
-    }
-
-    result = _rotate_snapshot(snapshot, USER_UUID, OLD_KEY, NEW_KEY, NEW_VERSION)
-
-    # Plain fields unchanged
-    assert result["firm_name"] == "Test Exports"
-    assert result["iec"] == "1234567890"
-
-    # Encrypted fields rotated
-    assert result["pan_encrypted"]["key_version"] == NEW_VERSION
-    assert result["bank_account_encrypted"]["key_version"] == NEW_VERSION
-    assert result["ad_code_encrypted"] is None
-    assert result["gstin_encrypted"] is None
-
-    # Verify recoverability
-    from storage.crypto import decrypt_field
-
-    assert decrypt_field(result["pan_encrypted"], USER_UUID, NEW_KEY) == "ABCDE1234F"
-    assert decrypt_field(result["bank_account_encrypted"], USER_UUID, NEW_KEY) == "12345678901"
-
-
-def test_rotate_snapshot_no_encrypted_fields() -> None:
-    """Snapshot with no encrypted sub-fields is returned unchanged."""
-    snapshot = {"firm_name": "Test", "iec": "foo"}
-    result = _rotate_snapshot(snapshot, USER_UUID, OLD_KEY, NEW_KEY, NEW_VERSION)
-    assert result == snapshot
-
-
-# ---------------------------------------------------------------------------
 # CLI — argument parsing
 # ---------------------------------------------------------------------------
 
 
 def test_cli_parses_rotate_keys_command() -> None:
     """rotate-keys subcommand is recognised."""
-    from app.cli.__main__ import _parse_args
 
     args = _parse_args(["rotate-keys"])
     assert args.command == "rotate-keys"
@@ -187,7 +147,6 @@ def test_cli_parses_rotate_keys_command() -> None:
 
 def test_cli_parses_dry_run_flag() -> None:
     """--dry-run flag is recognised."""
-    from app.cli.__main__ import _parse_args
 
     args = _parse_args(["rotate-keys", "--dry-run"])
     assert args.command == "rotate-keys"
@@ -201,7 +160,6 @@ def test_cli_parses_dry_run_flag() -> None:
 
 def test_cli_missing_old_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing ENCRYPTION_MASTER_KEY → SystemExit."""
-    from app.cli.__main__ import _async_main
 
     monkeypatch.delenv("ENCRYPTION_MASTER_KEY", raising=False)
     monkeypatch.setenv("NEW_ENCRYPTION_MASTER_KEY", NEW_KEY_HEX)
@@ -215,7 +173,6 @@ def test_cli_missing_old_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_cli_missing_new_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Missing NEW_ENCRYPTION_MASTER_KEY → SystemExit."""
-    from app.cli.__main__ import _async_main
 
     monkeypatch.setenv("ENCRYPTION_MASTER_KEY", OLD_KEY_HEX)
     monkeypatch.delenv("NEW_ENCRYPTION_MASTER_KEY", raising=False)
@@ -229,7 +186,6 @@ def test_cli_missing_new_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_cli_identical_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """Identical old and new keys → SystemExit."""
-    from app.cli.__main__ import _async_main
 
     monkeypatch.setenv("ENCRYPTION_MASTER_KEY", OLD_KEY_HEX)
     monkeypatch.setenv("NEW_ENCRYPTION_MASTER_KEY", OLD_KEY_HEX)
@@ -247,10 +203,7 @@ def test_cli_identical_keys(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_dry_run_reports_counts(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Dry-run iterates all rows and reports counts without writing."""
-    from app.cli.__main__ import (
-        _async_main,
-    )
+    """Dry-run iterates profiles + documents and reports counts without writing."""
 
     monkeypatch.setenv("ENCRYPTION_MASTER_KEY", OLD_KEY_HEX)
     monkeypatch.setenv("NEW_ENCRYPTION_MASTER_KEY", NEW_KEY_HEX)
@@ -263,15 +216,68 @@ async def test_dry_run_reports_counts(monkeypatch: pytest.MonkeyPatch) -> None:
         assert dry_run is True
         return 2
 
-    async def fake_rotate_orders(old_key, new_key, new_version, *, dry_run):
-        assert dry_run is True
-        return 3
-
-    with patch(
-        "app.cli.__main__._rotate_profiles", fake_rotate_profiles
-    ), patch(
-        "app.cli.__main__._rotate_documents", fake_rotate_documents
-    ), patch(
-        "app.cli.__main__._rotate_orders", fake_rotate_orders
+    with (
+        patch("app.cli.__main__._rotate_profiles", fake_rotate_profiles),
+        patch("app.cli.__main__._rotate_documents", fake_rotate_documents),
     ):
         await _async_main(dry_run=True)
+
+
+# ---------------------------------------------------------------------------
+# CLI — real rotation against the live DB
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_rotate_profiles_reencrypts_with_new_key(
+    test_seller: dict[str, str],
+) -> None:
+    """A profile encrypted under the old key decrypts under the new key."""
+    from app.cli.__main__ import _rotate_profiles
+    from app.main import app
+    from httpx import ASGITransport, AsyncClient
+    from storage.crypto import decrypt_field
+    from storage.db import get_session
+
+    payload = {
+        "firm_name": "Rotation Test Exports",
+        "pan": "ABCDE1234F",
+        "bank_account": "12345678901",
+        "ad_code": "9876543",
+        "gstin": "22AAAAA0000A1Z5",
+        "state": "Maharashtra",
+    }
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/profile",
+            json=payload,
+            headers={"Authorization": f"Bearer {test_seller['token']}"},
+        )
+    assert resp.status_code == 201, resp.text
+
+    # Encrypted with the test master key ("ab"*32) at key_version 1
+    old_key = bytes.fromhex("ab" * 32)
+    new_key = bytes.fromhex("cd" * 32)
+
+    count = await _rotate_profiles(old_key, new_key, 2, dry_run=False)
+    assert count >= 1
+
+    from app.models.profile import SellerProfile
+    from sqlalchemy import select
+    from uuid import UUID
+
+    async with get_session()() as session:
+        result = await session.execute(
+            select(SellerProfile).where(
+                SellerProfile.user_id == UUID(resp.json()["user_id"])
+            )
+        )
+        profile = result.scalar_one()
+
+    assert profile.pan_encrypted is not None
+    assert profile.ad_code_encrypted is not None
+    assert profile.pan_encrypted["key_version"] == 2
+    assert decrypt_field(profile.pan_encrypted, test_seller["user_id"], new_key) == "ABCDE1234F"
+    assert decrypt_field(profile.ad_code_encrypted, test_seller["user_id"], new_key) == "9876543"

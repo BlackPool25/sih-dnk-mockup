@@ -19,15 +19,17 @@ rotate-keys
     The script:
     1. Prints a backup warning and exits immediately if confirmation is declined
        (unless ``--dry-run`` is passed).
-    2. Iterates every row in ``SellerProfile``, ``ProfileDocument``, and ``Order``
-       that carries encrypted fields.
+    2. Iterates every row in ``SellerProfile`` and ``ProfileDocument`` that
+       carries encrypted fields.  Orders no longer live in backend-core — the
+       unified ``orders`` table is owned by validation-engine.
     3. Decrypts each field with the **old** key (using ``key_version`` embedded in
        the stored ciphertext), re-encrypts with the **new** key (bumped
        ``key_version``), and updates the row.
     4. In dry-run mode only reports counts — no writes are performed.
 
 seed-demo
-    Pre-seed a complete demo scenario (idempotent).
+    Pre-seed a complete demo scenario (idempotent) by driving validation-engine
+    over HTTP via ``val_client`` (backend-core no longer owns an Order row).
 
     Reads credentials from ``storage.config.settings`` (``DEMO_SELLER_*`` /
     ``DEMO_BUYER_*`` env vars or ``.env``).  Creates:
@@ -35,10 +37,10 @@ seed-demo
     - Seller ``sunita@handicrafts.in`` + full profile (PAN encrypted, IEC,
       SBI bank, AD code encrypted, Kanchipuram address)
     - Buyer ``weber@example.com``
-    - Order: 5 silk sarees → Chicago, ₹10 000, profile auto-filled,
-      status ``qr_generated``
-    - DocPack: CI, PL, CN, PBE
-    - QR code PNG
+    - Order in validation-engine: 5 silk sarees → Chicago, ₹10 000, profile
+      auto-filled
+    - Documents via ``generate_docs_all``
+    - QR code PNG + ``set_qr_token``
     - Placeholder profile documents (encrypted)
 """
 
@@ -48,7 +50,6 @@ import argparse
 import asyncio
 import base64
 import hashlib
-import json
 import logging
 import os
 import sys
@@ -64,23 +65,20 @@ if _PROJECT_ROOT not in sys.path:
 
 import jwt
 import qrcode
-from sqlalchemy import Column, Table, select
-from sqlalchemy.dialects.postgresql import UUID
+from qrcode.constants import ERROR_CORRECT_L
+from sqlalchemy import select
 
-from app.models import Base as CoreBase
-from app.models import DocPack, Order, OrderStatus, ProfileDocument, SellerProfile
+from app.models.profile import SellerProfile
+from app.models.profile_document import ProfileDocument
+from app.services.val_client import (
+    InvalidInputError,
+    NotFoundError,
+    ServiceUnavailable,
+    val_client,
+)
 from storage.config import settings
 from storage.crypto import DecryptionError, decrypt_field, encrypt_field
 from storage.db import get_session
-
-# Register the 'users' table from auth's DeclarativeBase into app.models.Base
-# so that ForeignKey('users.id') on SellerProfile/Order resolves correctly.
-Table(
-    "users",
-    CoreBase.metadata,
-    Column("id", UUID(as_uuid=True), primary_key=True),
-    extend_existing=True,
-)
 
 logger = logging.getLogger("backend-core.key-rotation")
 
@@ -96,19 +94,26 @@ _PROFILE_ENCRYPTED_FIELDS: list[str] = [
     "gstin_encrypted",
 ]
 
-# Order encrypted fields (JSONB columns)
-_ORDER_ENCRYPTED_FIELDS: list[str] = [
-    "ad_code_encrypted",
-    "bank_account_encrypted",
-]
-
-# Sub-keys inside Order.profile_snapshot_encrypted that may be encrypted dicts
-_SNAPSHOT_ENCRYPTED_KEYS: list[str] = [
-    "pan_encrypted",
-    "bank_account_encrypted",
-    "ad_code_encrypted",
-    "gstin_encrypted",
-]
+# Indian state name → 2-char ISO 3166-2 subdiv code (PBE state_code).
+_STATE_CODES: dict[str, str] = {
+    "Maharashtra": "MH",
+    "Karnataka": "KA",
+    "Tamil Nadu": "TN",
+    "Uttar Pradesh": "UP",
+    "Delhi": "DL",
+    "Gujarat": "GJ",
+    "Rajasthan": "RJ",
+    "West Bengal": "WB",
+    "Kerala": "KL",
+    "Telangana": "TS",
+    "Andhra Pradesh": "AP",
+    "Madhya Pradesh": "MP",
+    "Punjab": "PB",
+    "Haryana": "HR",
+    "Bihar": "BR",
+    "Odisha": "OD",
+    "Assam": "AS",
+}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -135,38 +140,27 @@ def _re_encrypt(
     return encrypt_field(plaintext, user_uuid, new_key, new_key_version)
 
 
-def _rotate_snapshot(
-    snapshot: dict,
-    user_uuid: str,
-    old_key: bytes,
-    new_key: bytes,
-    new_key_version: int,
-) -> dict:
-    """Rotate every encrypted sub-field inside a profile snapshot dict.
-
-    Non-encrypted keys (e.g. ``firm_name``, ``address_line1``) are left alone.
-    """
-    for key in _SNAPSHOT_ENCRYPTED_KEYS:
-        value = snapshot.get(key)
-        if not _looks_encrypted(value):
-            continue
-        snapshot[key] = _re_encrypt(value, user_uuid, old_key, new_key, new_key_version)
-    return snapshot
-
-
 def _validate_hex_key(env_var: str, value: str) -> bytes:
     """Validate a 64-char hex key and return its bytes form."""
     if len(value) != 64:
-        raise SystemExit(
-            f"{env_var} must be exactly 64 hex characters, got {len(value)}"
-        )
+        raise SystemExit(f"{env_var} must be exactly 64 hex characters, got {len(value)}")
     if not all(c in "0123456789abcdefABCDEF" for c in value):
         raise SystemExit(f"{env_var} must contain only hex characters")
     return bytes.fromhex(value)
 
 
+def _decrypt_or(encrypted_value: dict | None, user_uuid: str, master_key: bytes) -> str:
+    """Decrypt a field; empty string when missing or on DecryptionError."""
+    if encrypted_value is None:
+        return ""
+    try:
+        return decrypt_field(encrypted_value, user_uuid, master_key)
+    except DecryptionError:
+        return ""
+
+
 # ---------------------------------------------------------------------------
-# Core rotation logic
+# Core rotation logic (SellerProfile + ProfileDocument only)
 # ---------------------------------------------------------------------------
 
 
@@ -182,7 +176,7 @@ async def _rotate_profiles(
 
     async with get_session()() as session:
         result = await session.execute(select(SellerProfile))
-        profiles: list[SellerProfile] = list((await result.scalars()).all())
+        profiles: list[SellerProfile] = list(result.scalars().all())
 
     for profile in profiles:
         user_uuid = str(profile.user_id)
@@ -193,9 +187,7 @@ async def _rotate_profiles(
             if not _looks_encrypted(encrypted):
                 continue
             try:
-                new_encrypted = _re_encrypt(
-                    encrypted, user_uuid, old_key, new_key, new_version
-                )
+                new_encrypted = _re_encrypt(encrypted, user_uuid, old_key, new_key, new_version)
             except DecryptionError:
                 logger.error(
                     "Decryption failed for SellerProfile %s field %s — skipping",
@@ -237,7 +229,7 @@ async def _rotate_documents(
                 ProfileDocument.profile_id == SellerProfile.id,
             )
         )
-        rows = list((await result.scalars()).all())
+        rows = list(result.scalars().all())
 
     for doc in rows:
         if not _looks_encrypted(doc.encrypted_content):
@@ -266,68 +258,6 @@ async def _rotate_documents(
             async with get_session()() as session:
                 await session.merge(doc)
                 await session.commit()
-
-    return count
-
-
-async def _rotate_orders(
-    old_key: bytes,
-    new_key: bytes,
-    new_version: int,
-    *,
-    dry_run: bool,
-) -> int:
-    """Rotate encrypted fields on every Order row.  Returns count."""
-    count = 0
-
-    async with get_session()() as session:
-        result = await session.execute(select(Order))
-        orders: list[Order] = list((await result.scalars()).all())
-
-    for order in orders:
-        user_uuid = str(order.seller_id)
-        row_touched = False
-
-        # 1. Direct encrypted fields
-        for field_name in _ORDER_ENCRYPTED_FIELDS:
-            encrypted = getattr(order, field_name)
-            if not _looks_encrypted(encrypted):
-                continue
-            try:
-                new_encrypted = _re_encrypt(
-                    encrypted, user_uuid, old_key, new_key, new_version
-                )
-            except DecryptionError:
-                logger.error(
-                    "Decryption failed for Order %s field %s — skipping",
-                    order.id,
-                    field_name,
-                )
-                continue
-            setattr(order, field_name, new_encrypted)
-            row_touched = True
-
-        # 2. Profile snapshot sub-fields
-        snapshot = order.profile_snapshot_encrypted
-        if isinstance(snapshot, dict):
-            try:
-                _rotate_snapshot(snapshot, user_uuid, old_key, new_key, new_version)
-            except DecryptionError:
-                logger.error(
-                    "Decryption failed for Order %s profile_snapshot — skipping",
-                    order.id,
-                )
-                continue
-            order.profile_snapshot_encrypted = snapshot
-            row_touched = True
-
-        if row_touched:
-            count += 1
-            logger.debug("Rotated Order %s (seller %s)", order.id, user_uuid)
-            if not dry_run:
-                async with get_session()() as session:
-                    await session.merge(order)
-                    await session.commit()
 
     return count
 
@@ -472,9 +402,7 @@ async def _ensure_profile(user_id: uuid.UUID) -> uuid.UUID:
             user_id=user_id,
             firm_name="Sunita Handicrafts",
             owner_name="Sunita Devi",
-            pan_encrypted=encrypt_field(
-                "ABCDE1234F", user_uuid_str, _mk_key(), _KEY_VERSION
-            ),
+            pan_encrypted=encrypt_field("ABCDE1234F", user_uuid_str, _mk_key(), _KEY_VERSION),
             bank_name="State Bank of India",
             bank_account_encrypted=encrypt_field(
                 "SBIN0001234567", user_uuid_str, _mk_key(), _KEY_VERSION
@@ -483,7 +411,7 @@ async def _ensure_profile(user_id: uuid.UUID) -> uuid.UUID:
             bank_branch="Kanchipuram Main Branch",
             iec="0123456789",
             ad_code_encrypted=encrypt_field(
-                "AD1234567", user_uuid_str, _mk_key(), _KEY_VERSION
+                "12345678901234", user_uuid_str, _mk_key(), _KEY_VERSION
             ),
             gstin_encrypted=encrypt_field(
                 "33ABCDE1234F1ZP", user_uuid_str, _mk_key(), _KEY_VERSION
@@ -541,167 +469,77 @@ async def _ensure_profile_docs(profile_id: uuid.UUID, user_id: uuid.UUID) -> Non
         print(f"  Created {len(doc_types)} placeholder profile documents")
 
 
-async def _ensure_order(
+def _build_demo_payload(
+    profile: SellerProfile,
     seller_user_id: uuid.UUID,
-    seller_profile: SellerProfile,
     buyer_user_id: uuid.UUID,
-) -> Order:
-    """Create a demo order if none exist for this seller.  Idempotent."""
+) -> dict[str, object]:
+    """Build the validation-engine OrderPayload for the demo silk-saree order."""
     user_uuid_str = str(seller_user_id)
+    master_key = _mk_key()
 
-    async with get_session()() as session:
-        result = await session.execute(
-            select(Order).where(Order.seller_id == seller_user_id),
-        )
-        existing = result.scalars().all()
-        if len(existing) > 0:
-            print(f"  {len(existing)} order(s) already exist for seller — skipping")
-            return existing[0]
+    addr_parts = [
+        profile.address_line1,
+        profile.address_line2,
+        profile.city,
+        profile.state,
+        profile.pincode,
+    ]
+    exporter_address = ", ".join(p for p in addr_parts if p)
 
-        snapshot = {
-            "firm_name": seller_profile.firm_name,
-            "owner_name": seller_profile.owner_name,
-            "pan_encrypted": seller_profile.pan_encrypted,
-            "bank_name": seller_profile.bank_name,
-            "bank_account_encrypted": seller_profile.bank_account_encrypted,
-            "ifsc": seller_profile.ifsc,
-            "bank_branch": seller_profile.bank_branch,
-            "iec": seller_profile.iec,
-            "ad_code_encrypted": seller_profile.ad_code_encrypted,
-            "gstin_encrypted": seller_profile.gstin_encrypted,
-            "address_line1": seller_profile.address_line1,
-            "address_line2": seller_profile.address_line2,
-            "city": seller_profile.city,
-            "state": seller_profile.state,
-            "pincode": seller_profile.pincode,
-            "phone": seller_profile.phone,
-            "is_verified": seller_profile.is_verified,
-        }
-        snapshot_json = json.dumps(snapshot, default=str)
-        encrypted_snapshot = encrypt_field(
-            snapshot_json, user_uuid_str, _mk_key(), _KEY_VERSION
-        )
-
-        addr_parts = [
-            seller_profile.address_line1,
-            seller_profile.address_line2,
-            seller_profile.city,
-            seller_profile.state,
-            seller_profile.pincode,
-        ]
-        exporter_address = ", ".join(p for p in addr_parts if p)
-
-        # 5 silk sarees @ ₹2,000 each → ₹10,000 total = 1,000,000 paise
-        line_items: list[dict] = [
+    # 5 silk sarees @ ₹2,000 each → ₹10,000 total = 1,000,000 paise
+    return {
+        "seller_id": str(seller_user_id),
+        "buyer_id": str(buyer_user_id),
+        "destination_country": "US",
+        "value_minor": 1_000_000,
+        "currency": "INR",
+        "consignee": "Weber Chicago",
+        "net_weight_g": 2500,
+        "gross_weight_g": 3000,
+        "article_id": "silk_saree",
+        "line_items": [
             {
-                "description": "Pure Kanchipuram Silk Saree",
-                "hsn_code": "500720",
-                "quantity": 1,
-                "unit_price_minor": 200_000,
-                "total_minor": 200_000,
+                "category_slug": "handloom-scarves-stoles",
+                "quantity": 5,
+                "weight_g": 2500,
+                "hs_code": "6214",
+                "value_minor": 1_000_000,
             }
-            for _ in range(5)
-        ]
-
-        order = Order(
-            seller_id=seller_user_id,
-            buyer_id=buyer_user_id,
-            status=OrderStatus.created,
-            profile_version=seller_profile.profile_version,
-            profile_snapshot_encrypted=encrypted_snapshot,
-            destination_country="US",
-            value_minor=1_000_000,
-            currency="INR",
-            consignee="Weber Chicago",
-            net_weight_g=2500.0,
-            gross_weight_g=3000.0,
-            article_id="silk_saree",
-            iec=seller_profile.iec or "",
-            ad_code_encrypted=seller_profile.ad_code_encrypted or {},
-            bank_name=seller_profile.bank_name or "",
-            ifsc=seller_profile.ifsc or "",
-            bank_account_encrypted=seller_profile.bank_account_encrypted or {},
-            exporter_name=seller_profile.firm_name,
-            exporter_address=exporter_address,
-            state_code=(seller_profile.state or "")[:10],
-            line_items=line_items,
-        )
-        session.add(order)
-        await session.commit()
-        await session.refresh(order)
-        print("  Created demo order: 5 Kanchipuram silk sarees → Chicago")
-        return order
-
-
-async def _attach_doc_pack(order: Order, seller_user_id: uuid.UUID) -> DocPack:
-    """Generate and attach a DocPack if none exists.  Idempotent."""
-    if order.doc_pack_id is not None:
-        print("  DocPack already attached — skipping")
-        async with get_session()() as session:
-            doc_pack = await session.get(DocPack, order.doc_pack_id)
-            return doc_pack
-
-    from app.services.doc_generator import (
-        generate_ci,
-        generate_cn,
-        generate_pbe,
-        generate_pl,
-    )
-
-    order_data = {
-        "exporter_name": order.exporter_name,
-        "exporter_address": order.exporter_address,
-        "iec": order.iec,
-        "consignee": order.consignee,
-        "destination_country": order.destination_country,
-        "currency": order.currency,
-        "value_minor": order.value_minor,
-        "net_weight_g": order.net_weight_g,
-        "gross_weight_g": order.gross_weight_g,
-        "line_items": order.line_items,
-        "state_code": order.state_code,
-        "article_id": order.article_id,
+        ],
+        "iec": profile.iec or "",
+        "gstin": _decrypt_or(profile.gstin_encrypted, user_uuid_str, master_key),
+        "ad_code": _decrypt_or(profile.ad_code_encrypted, user_uuid_str, master_key),
+        "bank_account": _decrypt_or(profile.bank_account_encrypted, user_uuid_str, master_key),
+        "bank_name": profile.bank_name or "",
+        "ifsc": profile.ifsc or "",
+        "exporter_name": profile.firm_name,
+        "exporter_address": exporter_address,
+        "state_code": _STATE_CODES.get(profile.state or "", ""),
     }
 
-    ci_doc = generate_ci(order_data)
-    pl_doc = generate_pl(order_data)
-    cn_doc = generate_cn(order_data)
-    pbe_doc = generate_pbe(order_data)
 
-    async with get_session()() as session:
-        doc_pack = DocPack(
-            order_id=order.id,
-            ci_json=ci_doc,
-            pl_json=pl_doc,
-            cn_json=cn_doc,
-            pbe_json=pbe_doc,
-        )
-        session.add(doc_pack)
-        await session.flush()
-
-        order = await session.get(Order, order.id)
-        order.status = OrderStatus.docs_generated
-        order.doc_pack_id = doc_pack.id
-
-        await session.commit()
-        await session.refresh(doc_pack)
-
-    print("  Generated DocPack: CI, PL, CN22, PBE-IV")
-    return doc_pack
+async def _existing_order_id(seller_user_id: uuid.UUID) -> str:
+    """Return the seller's first order id in validation-engine, or ''."""
+    data = await val_client.list_orders(seller_id=str(seller_user_id), limit=1)
+    orders = data.get("orders", [])
+    if not isinstance(orders, list) or not orders:
+        return ""
+    first = orders[0]
+    if isinstance(first, dict):
+        inner = first.get("order")
+        if isinstance(inner, dict):
+            return str(inner.get("id") or "")
+        return str(first.get("id") or "")
+    return ""
 
 
-async def _attach_qr(order: Order) -> None:
-    """Generate a QR code and attach to the order if none exists.  Idempotent."""
-    if order.qr_token_jti is not None:
-        print("  QR code already generated — skipping")
-        return
-
-    order_id_str = str(order.id)
+def _write_qr_png(order_id: str, jti: str) -> tuple[str, str]:
+    """Create a doc-access JWT, write the QR PNG, return (token, image_path)."""
+    order_id_str = str(order_id)
 
     now = datetime.now(UTC)
     expiry = now + timedelta(days=30)
-    jti = str(uuid.uuid4())
-
     payload = {
         "sub": order_id_str,
         "purpose": "doc_access",
@@ -709,36 +547,30 @@ async def _attach_qr(order: Order) -> None:
         "exp": expiry,
         "jti": jti,
     }
-    token = jwt.encode(
-        payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM
-    )
+    token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     qr_url = f"{settings.APP_BASE_URL}/orders/{order_id_str}/docs?token={token}"
 
     _QR_DIR.mkdir(exist_ok=True)
     image_path = _QR_DIR / f"{order_id_str}.png"
     qr_img = qrcode.QRCode(
         version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        error_correction=ERROR_CORRECT_L,
         box_size=10,
         border=4,
     )
     qr_img.add_data(qr_url)
     qr_img.make(fit=True)
     img = qr_img.make_image(fill_color="black", back_color="white")
-    img.save(str(image_path), dpi=(300, 300))
-
-    async with get_session()() as session:
-        order = await session.get(Order, order.id)
-        order.qr_token_jti = jti
-        order.status = OrderStatus.qr_generated
-        await session.commit()
+    with image_path.open("wb") as fh:
+        img.save(fh)
 
     print(f"  Generated QR code → {image_path}")
     print(f"  QR URL: {qr_url}")
+    return token, str(image_path)
 
 
 async def _seed_demo() -> None:
-    """Pre-seed a complete demo scenario.  Idempotent."""
+    """Pre-seed a complete demo scenario by driving validation-engine.  Idempotent."""
     seller_email = settings.DEMO_SELLER_EMAIL
     seller_password = settings.DEMO_SELLER_PASSWORD
     buyer_email = settings.DEMO_BUYER_EMAIL
@@ -763,34 +595,67 @@ async def _seed_demo() -> None:
     print("  DNK Demo Data Seed")
     print(f"{'=' * 60}\n")
 
-    print("[1/7] Seller user")
+    print("[1/6] Seller user")
     seller_user_id = await _ensure_user(seller_email, seller_password, "seller")
 
-    print("\n[2/7] Seller profile")
+    print("\n[2/6] Seller profile")
     profile_id = await _ensure_profile(seller_user_id)
 
-    print("\n[3/7] Buyer user")
+    print("\n[3/6] Buyer user")
     buyer_user_id = await _ensure_user(buyer_email, buyer_password, "buyer")
 
-    print("\n[4/7] Profile documents")
+    print("\n[4/6] Profile documents")
     await _ensure_profile_docs(profile_id, seller_user_id)
 
-    print("\n[5/7] Demo order")
+    print("\n[5/6] Demo order (validation-engine)")
     async with get_session()() as session:
         seller_profile = await session.get(SellerProfile, profile_id)
-    order = await _ensure_order(seller_user_id, seller_profile, buyer_user_id)
+    if seller_profile is None:
+        raise SystemExit("Seller profile not found — aborting seed")
 
-    print("\n[6/7] Document pack")
-    await _attach_doc_pack(order, seller_user_id)
+    order_id = await _existing_order_id(seller_user_id)
+    if order_id:
+        print(f"  Order already exists for seller — reusing {order_id}")
+    else:
+        payload = _build_demo_payload(seller_profile, seller_user_id, buyer_user_id)
+        try:
+            report = await val_client.create_order(payload)
+        except (NotFoundError, InvalidInputError, ServiceUnavailable) as exc:
+            raise SystemExit(f"validation-engine create_order failed: {exc}") from exc
+        order_id = str(report.get("order_id") or "")
+        if not order_id:
+            raise SystemExit("validation-engine did not return an order_id")
+        print(f"  Created demo order: 5 Kanchipuram silk sarees → Chicago ({order_id})")
 
-    print("\n[7/7] QR code")
-    await _attach_qr(order)
+    print("\n[6/6] Documents + QR")
+    docs = await val_client.get_order_documents(order_id)
+    existing_docs = docs.get("documents", [])
+    if not (isinstance(existing_docs, list) and existing_docs):
+        try:
+            result = await val_client.generate_docs_all(order_id)
+            print(f"  Generated documents: {result.get('status')}")
+        except (NotFoundError, InvalidInputError, ServiceUnavailable) as exc:
+            raise SystemExit(f"validation-engine generate_docs_all failed: {exc}") from exc
+    else:
+        print("  Documents already generated — skipping")
+
+    order_detail = await val_client.get_order(order_id)
+    order = order_detail.get("order")
+    order_dict = order if isinstance(order, dict) else {}
+    existing_jti = order_dict.get("qr_token_jti")
+    if existing_jti:
+        print("  QR code already generated — skipping")
+    else:
+        jti = str(uuid.uuid4())
+        try:
+            await val_client.set_qr_token(order_id, jti)
+        except (NotFoundError, InvalidInputError, ServiceUnavailable) as exc:
+            raise SystemExit(f"validation-engine set_qr_token failed: {exc}") from exc
+        _write_qr_png(order_id, jti)
 
     print(f"\n{'=' * 60}")
     print("  Seed complete. All demo data is ready.")
-    print(
-        f"  Sahayak access: {settings.APP_BASE_URL}/orders/{order.id}/docs?token=<qr_token>"
-    )
+    print(f"  Sahayak access: {settings.APP_BASE_URL}/orders/{order_id}/docs?token=<qr_token>")
     print(f"{'=' * 60}\n")
 
 
@@ -835,19 +700,15 @@ async def _async_main(dry_run: bool) -> None:
         print(">>> DRY RUN MODE — no writes will be performed. <<<\n")
 
     # ── Rotate ─────────────────────────────────────────────────────────
-    profile_count = await _rotate_profiles(
-        old_key, new_key, new_version, dry_run=dry_run
-    )
+    profile_count = await _rotate_profiles(old_key, new_key, new_version, dry_run=dry_run)
     doc_count = await _rotate_documents(old_key, new_key, new_version, dry_run=dry_run)
-    order_count = await _rotate_orders(old_key, new_key, new_version, dry_run=dry_run)
 
     # ── Summary ────────────────────────────────────────────────────────
-    total = profile_count + doc_count + order_count
+    total = profile_count + doc_count
     print()
     print("Key rotation summary:")
     print(f"  Seller profiles   : {profile_count}")
     print(f"  Profile documents : {doc_count}")
-    print(f"  Orders            : {order_count}")
     print("  ───────────────────────────")
     print(f"  Total rows rotated: {total}")
     print()
@@ -865,9 +726,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    rotate_parser = sub.add_parser(
-        "rotate-keys", help="Re-encrypt all fields with the new key"
-    )
+    rotate_parser = sub.add_parser("rotate-keys", help="Re-encrypt all fields with the new key")
     rotate_parser.add_argument(
         "--dry-run",
         action="store_true",

@@ -56,7 +56,7 @@ async def _create_second_seller() -> dict[str, str]:
 
 @pytest.mark.asyncio
 async def test_create_chat_201(test_seller: dict[str, str]) -> None:
-    """A new chat returns 201 with conv_id, step=init, empty fields."""
+    """A new chat returns 201 and runs the first turn (extract → validate)."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post(
@@ -71,12 +71,24 @@ async def test_create_chat_201(test_seller: dict[str, str]) -> None:
     assert len(data["conversation_id"]) == 32  # uuid4 hex
     assert data["user_id"] == test_seller["user_id"]
     assert data["language"] == "en"
-    assert data["current_step"] == "init"
+    # The first turn asks for the category (nothing extracted yet).
+    assert data["current_step"] == "product_category"
     assert data["filled_fields"] == {}
-    assert data["pending_fields"] == []
-    assert len(data["history"]) == 1
+    assert data["pending_fields"] == [
+        "product_category",
+        "destination_country",
+        "quantity",
+        "weight_grams",
+        "value_minor",
+        "consignee",
+    ]
+    assert len(data["history"]) == 2  # user + assistant
     assert data["history"][0]["role"] == "user"
-    assert data["history"][0]["content"] == "Hello, I want to create an order"
+    assert data["history"][1]["role"] == "assistant"
+    assert data["reply_text"]  # the assistant asked for the category
+    assert data["document_ready"] is False
+    assert data["validation_report"] is not None
+    assert data["tts_hint"]["enabled"] is False  # en → no TTS
 
 
 # ---------------------------------------------------------------------------
@@ -103,7 +115,7 @@ async def test_continue_chat_state_updates(test_seller: dict[str, str]) -> None:
             "/api/llm/chat",
             json={
                 "conversation_id": conv_id,
-                "message": "My firm is Acme Corp",
+                "message": "12 jute bags to Germany",
                 "language": "en",
             },
             headers=_auth_header(test_seller["token"]),
@@ -112,10 +124,11 @@ async def test_continue_chat_state_updates(test_seller: dict[str, str]) -> None:
     assert r2.status_code == 201
     data = r2.json()
     assert data["conversation_id"] == conv_id
-    assert len(data["history"]) == 2
-    assert data["history"][0]["content"] == "Start"
-    assert data["history"][1]["content"] == "My firm is Acme Corp"
-    assert data["current_step"] == "init"
+    assert len(data["history"]) == 4  # 2 turns × (user + assistant)
+    assert data["filled_fields"]["product_category"] == "jute-products"
+    assert data["filled_fields"]["quantity"] == 12
+    assert data["filled_fields"]["destination_country"] == "DE"
+    assert data["current_step"] == "weight_grams"
 
 
 # ---------------------------------------------------------------------------
@@ -125,21 +138,16 @@ async def test_continue_chat_state_updates(test_seller: dict[str, str]) -> None:
 
 @pytest.mark.asyncio
 async def test_get_session_correct_step(test_seller: dict[str, str]) -> None:
-    """GET returns the current conversation state including step."""
+    """GET returns the current conversation state including the step."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Create
+        # Create (runs one turn — the fake extractor yields nothing yet)
         r = await client.post(
             "/api/llm/chat",
             json={"message": "Create order", "language": "en"},
             headers=_auth_header(test_seller["token"]),
         )
         conv_id = r.json()["conversation_id"]
-
-        # Manually advance the step via Redis (simulating LLM backend update)
-        redis = get_redis()
-        await redis.hset(f"llm:conv:{conv_id}", "current_step", "firm_name")
-        await redis.hset(f"llm:conv:{conv_id}", "filled_fields", '{"firm_name":"Acme"}')
 
         # GET
         r = await client.get(
@@ -150,8 +158,9 @@ async def test_get_session_correct_step(test_seller: dict[str, str]) -> None:
     assert r.status_code == 200
     data = r.json()
     assert data["conversation_id"] == conv_id
-    assert data["current_step"] == "firm_name"
-    assert data["filled_fields"] == {"firm_name": "Acme"}
+    assert data["current_step"] == "product_category"
+    assert data["filled_fields"] == {}
+    assert len(data["history"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +183,7 @@ async def test_conversation_ttl_expiry(test_seller: dict[str, str]) -> None:
 
         # Force-expire the key
         redis = get_redis()
-        await redis.expire(f"llm:conv:{conv_id}", 1)
+        await redis.expire(f"chat_session:{conv_id}", 1)
 
         await asyncio.sleep(1.5)
 

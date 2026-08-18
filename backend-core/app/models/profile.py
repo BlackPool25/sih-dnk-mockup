@@ -127,7 +127,4 @@ class SellerProfile(Base):
     )
 
     def __repr__(self) -> str:
-        return (
-            f"<SellerProfile(id={self.id!r}, firm_name={self.firm_name!r}, "
-            f"iec={self.iec!r})>"
-        )
+        return f"<SellerProfile(id={self.id!r}, firm_name={self.firm_name!r}, iec={self.iec!r})>"

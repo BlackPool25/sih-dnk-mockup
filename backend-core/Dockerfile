@@ -1,6 +1,6 @@
 # sih-dnk-backend-core — FastAPI service built on top of the auth image.
 # Inherits Python 3.12, uv, storage + auth deps from sih-dnk-auth.
-FROM sih-dnk-auth
+FROM sih-dnk-auth AS runtime
 
 WORKDIR /opt/backend-core
 
@@ -22,3 +22,13 @@ ENV PYTHONPATH="/opt/backend-core:/opt"
 ENV PATH="/opt/backend-core/.venv/bin:/opt/auth/.venv/bin:/opt/storage/.venv/bin:$PATH"
 WORKDIR /app
 CMD ["sleep", "infinity"]
+
+# ---------------------------------------------------------------------------
+# Test stage — full dependency set (incl. dev groups) for running pytest in CI.
+# Build with: docker build --target test -t sih-dnk-backend-core:test .
+# ---------------------------------------------------------------------------
+FROM runtime AS test
+WORKDIR /opt/backend-core
+COPY uv.lock ./
+RUN uv sync --frozen
+CMD ["uv", "run", "pytest"]

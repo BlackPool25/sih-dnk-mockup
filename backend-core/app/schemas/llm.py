@@ -16,7 +16,9 @@ class ChatRequest(BaseModel):
         description="Existing conversation ID to continue; omit to start a new one",
     )
     message: str = Field(..., min_length=1, description="User message text")
-    language: str = Field(..., min_length=1, description="Preferred language code (e.g. 'en', 'hi')")
+    language: str = Field(
+        ..., min_length=1, description="Preferred language code (e.g. 'en', 'hi')"
+    )
 
 
 class ChatResponse(BaseModel):
@@ -40,6 +42,28 @@ class ChatResponse(BaseModel):
     history: list[dict[str, str]] = Field(
         default_factory=list,
         description="The message history (role/content pairs)",
+    )
+
+    # Turn-loop extras (defaults keep the legacy state-only path valid).
+    validation_report: dict[str, object] | None = Field(
+        default=None,
+        description="The deterministic ValidationTurnReport from validation-engine",
+    )
+    db_info: dict[str, object] | None = Field(
+        default=None,
+        description="Derived DB research (category, HS codes, duties, lane, landed cost)",
+    )
+    reply_text: str | None = Field(
+        default=None,
+        description="The assistant's reply for this turn (echo + next question)",
+    )
+    document_ready: bool = Field(
+        default=False,
+        description="True when validation passed and every required field is filled",
+    )
+    tts_hint: dict[str, object] = Field(
+        default_factory=lambda: {"enabled": False, "language": ""},
+        description="Hint for the frontend to play the reply via /api/voice/tts",
     )
 
 

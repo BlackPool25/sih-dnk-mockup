@@ -152,9 +152,7 @@ def _build_response(resp: httpx.Response) -> StreamingResponse:
             "upgrade",
         }
     )
-    resp_headers = {
-        k: v for k, v in resp.headers.items() if k.lower() not in resp_hop_by_hop
-    }
+    resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in resp_hop_by_hop}
 
     return StreamingResponse(
         _stream_response(resp),

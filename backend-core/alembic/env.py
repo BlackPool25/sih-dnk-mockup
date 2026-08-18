@@ -15,8 +15,9 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
+from alembic.script import ScriptDirectory
 from dotenv import load_dotenv
-from sqlalchemy import Table, engine_from_config, pool
+from sqlalchemy import Table, engine_from_config, inspect, pool, text
 from sqlalchemy.dialects.postgresql import UUID
 
 # Make the monorepo root importable so ``from app.models import Base`` resolves.
@@ -46,6 +47,8 @@ target_metadata = Base.metadata
 # Any table reflected into target_metadata for FK resolution will NOT appear
 # in the migration diff unless listed here.
 _CORE_TABLES = frozenset({"seller_profiles", "profile_documents", "orders", "doc_packs"})
+
+_VERSION_TABLE = "core_alembic_version"
 
 
 def include_object(
@@ -113,6 +116,36 @@ def _is_autogenerate() -> bool:
     return getattr(context.config.cmd_opts, "autogenerate", False)
 
 
+def _stamp_own_head_if_foreign(connection) -> None:
+    """Stamp backend-core's head when the version table holds a foreign stamp.
+
+    After the orders/doc_packs DDL moved into validation-engine's chain,
+    backend-core's version table may be stamped with a revision that no
+    longer exists in this chain (its old head was removed).  Treat the chain
+    as already satisfied and stamp its own head so ``alembic upgrade head``
+    exits 0 instead of erroring on an unknown revision.  Only backend-core's
+    own version table is touched — the shared alembic_version table (auth /
+    validation-engine) is left alone.  No-op on a fresh or cleanly-stamped DB.
+    """
+    if _VERSION_TABLE not in inspect(connection).get_table_names():
+        return
+    script = ScriptDirectory.from_config(config)
+    head = script.get_current_head()
+    current = connection.execute(
+        text(f"SELECT version_num FROM {_VERSION_TABLE}")
+    ).scalar()
+    if current is None or current == head:
+        return
+    known = {revision.revision for revision in script.walk_revisions()}
+    if current in known:
+        return
+    connection.execute(
+        text(f"UPDATE {_VERSION_TABLE} SET version_num = :head"),
+        {"head": head},
+    )
+    connection.commit()
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     if _is_autogenerate():
@@ -144,6 +177,10 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # Reconcile a foreign/stale version stamp before alembic inspects it.
+        if not _is_autogenerate():
+            _stamp_own_head_if_foreign(connection)
+
         # Reflect foreign-key targets only during autogenerate — otherwise
         # the reflected table would be added to metadata and autogenerate
         # would include it in the migration script (even with include_object

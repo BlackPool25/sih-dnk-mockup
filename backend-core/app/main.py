@@ -2,6 +2,7 @@
 
 Exposes a /health endpoint and includes the auth router with JWT middleware.
 """
+
 from __future__ import annotations
 
 from fastapi import FastAPI

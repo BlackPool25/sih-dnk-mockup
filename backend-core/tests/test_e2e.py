@@ -51,19 +51,20 @@ PROFILE_PAYLOAD: dict[str, str] = {
 ORDER_PAYLOAD: dict[str, object] = {
     "destination_country": "US",
     "value_minor": 50000,
+    "currency": "INR",
     "consignee": "Acme Corp, New York",
-    "net_weight_g": 1000.0,
-    "gross_weight_g": 1200.0,
+    "net_weight_g": 1000,
+    "gross_weight_g": 1200,
+    "article_id": "cotton-tshirts",
     "line_items": [
         {
-            "description": "Cotton T-Shirts",
-            "hsn_code": "61091000",
+            "category_slug": "cotton-apparel",
             "quantity": 100,
-            "unit_price_minor": 500,
-            "total_minor": 50000,
+            "weight_g": 1000,
+            "hs_code": "61091000",
+            "value_minor": 50000,
         },
     ],
-    "currency": "INR",
 }
 
 # ---------------------------------------------------------------------------
@@ -123,9 +124,7 @@ async def _create_profile(client: AsyncClient, token: str) -> dict:
     return resp.json()
 
 
-async def _create_order(
-    client: AsyncClient, token: str, payload: dict | None = None
-) -> str:
+async def _create_order(client: AsyncClient, token: str, payload: dict | None = None) -> str:
     resp = await client.post(
         "/orders",
         json=payload or ORDER_PAYLOAD,
@@ -275,9 +274,7 @@ async def test_e2e_01_register_seller_and_buyer(
     # Cleanup
     async with _db_get_session()() as session:
         for uid in [sdata["id"], bdata["id"]]:
-            result = await session.execute(
-                select(User).where(User.id == uuid.UUID(uid))
-            )
+            result = await session.execute(select(User).where(User.id == uuid.UUID(uid)))
             u = result.scalar_one_or_none()
             if u is not None:
                 await session.delete(u)
@@ -413,14 +410,14 @@ async def test_e2e_04_order_auto_fill_from_profile(
     assert odata["ad_code"] == "9876543"
     assert odata["exporter_name"] == "Test Exports Ltd"
     assert "Mumbai" in odata["exporter_address"]
-    assert odata["state_code"] == "Maharashtr"  # truncated to String(10)
+    assert odata["state_code"] == "MH"  # Maharashtra → 2-char ISO code
 
     # User-submitted
     assert odata["destination_country"] == "US"
     assert odata["value_minor"] == 50000
     assert odata["status"] == "created"
     assert odata["seller_id"] == test_seller["user_id"]
-    assert odata["line_items"][0]["description"] == "Cotton T-Shirts"
+    assert odata["line_items"][0]["category_slug"] == "cotton-apparel"
 
 
 # ===========================================================================
@@ -457,15 +454,17 @@ async def test_e2e_05_doc_pack_and_qr_generation(
         # Generate QR
         qr_resp = await _generate_qr(client, test_seller["token"], order_id)
 
-    # Doc pack assertions
+    # Doc generation assertions — 4 documents mapped to named keys
     assert docs_resp["order_id"] == order_id
-    assert "id" in docs_resp
     docs = docs_resp["documents"]
-    assert "commercial_invoice" in docs
-    assert "packing_list" in docs
-    assert "customs_declaration" in docs
-    assert "postal_bill_of_export" in docs
-    assert docs["commercial_invoice"]["exporter_name"] == "Test Exports Ltd"
+    assert set(docs) == {
+        "commercial_invoice",
+        "packing_list",
+        "customs_declaration",
+        "postal_bill_of_export",
+    }
+    assert docs["commercial_invoice"]["doc_type"] == "INVOICE"
+    assert docs["postal_bill_of_export"]["doc_type"] == "PBE_IV"
 
     # QR assertions
     assert qr_resp["order_id"] == order_id
@@ -496,9 +495,10 @@ async def test_e2e_06_sahayak_qr_access_decrypted_pan(
     test_sahayak: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Sahayak accesses order docs via QR token → 200 with decrypted PAN.
+    """Sahayak accesses order docs via QR token → 200 with plaintext order data.
 
-    Verifies sahayak can see sensitive fields (PAN, bank_account, ad_code)."""
+    Verifies sahayak can see sensitive fields (gstin, bank_account, ad_code)
+    but pan is dropped by the proxy contract."""
     dummy_redis = AsyncMock()
     dummy_redis.exists = AsyncMock(return_value=0)
     monkeypatch.setattr("storage.redis.get_redis", lambda: dummy_redis)
@@ -525,14 +525,15 @@ async def test_e2e_06_sahayak_qr_access_decrypted_pan(
 
     assert resp.status_code == 200, resp.text
     data = resp.json()
-    assert data["pan"] == "ABCDE1234F"
+    assert data["order_id"] == order_id
+    assert data["gstin"] == "22AAAAA0000A1Z5"
     assert data["bank_account"] is not None
     assert data["ad_code"] is not None
-    assert data["gstin"] is not None
     assert data["iec"] is not None
-    assert data["order_id"] == order_id
-    assert data["status"] in ("qr_generated", "docs_generated")
-    assert data["doc_pack"] is not None
+    assert data["status"] == "created"
+    assert len(data["documents"]) == 4
+    # Proxy contract: pan is dropped from the docs-access response
+    assert "pan" not in data
 
 
 # ===========================================================================
@@ -579,9 +580,7 @@ async def test_e2e_07_wrong_seller_qr_access_403(
     finally:
         # Cleanup second seller
         async with _db_get_session()() as session:
-            result = await session.execute(
-                select(User).where(User.email == second_email)
-            )
+            result = await session.execute(select(User).where(User.email == second_email))
             u = result.scalar_one_or_none()
             if u is not None:
                 await session.delete(u)
@@ -687,8 +686,9 @@ async def test_e2e_09_qr_regeneration_old_revoked_new_works(
     # New token works
     assert new_resp.status_code == 200, new_resp.text
     ndata = new_resp.json()
-    assert ndata["pan"] == "ABCDE1234F"
     assert ndata["order_id"] == order_id
+    assert ndata["gstin"] == "22AAAAA0000A1Z5"
+    assert "pan" not in ndata
 
     # Verify old jti was tracked as revoked
     assert qr1["token_jti"] in revoked_jtis

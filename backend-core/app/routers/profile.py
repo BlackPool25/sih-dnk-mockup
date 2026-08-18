@@ -181,9 +181,7 @@ async def get_profile(request: Request) -> dict[str, object]:
 
     async with get_session()() as session:
         result = await session.execute(
-            select(SellerProfile).where(
-                SellerProfile.user_id == uuid.UUID(user_id)
-            )
+            select(SellerProfile).where(SellerProfile.user_id == uuid.UUID(user_id))
         )
         profile = result.scalar_one_or_none()
 
@@ -217,9 +215,7 @@ async def update_profile(
 
     async with get_session()() as session:
         result = await session.execute(
-            select(SellerProfile).where(
-                SellerProfile.user_id == uuid.UUID(user_id)
-            )
+            select(SellerProfile).where(SellerProfile.user_id == uuid.UUID(user_id))
         )
         profile = result.scalar_one_or_none()
 

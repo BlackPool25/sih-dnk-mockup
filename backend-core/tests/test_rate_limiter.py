@@ -1,4 +1,5 @@
 """Tests for the Redis sliding-window rate limiter middleware."""
+
 from __future__ import annotations
 
 import math
@@ -66,10 +67,9 @@ def _patch_frozen_time(monkeypatch: pytest.MonkeyPatch, offset_s: float = 0.0) -
     return frozen_s
 
 
-def _patch_advancing_time(
-    monkeypatch: pytest.MonkeyPatch, base_s: float
-) -> type:
+def _patch_advancing_time(monkeypatch: pytest.MonkeyPatch, base_s: float) -> type:
     """Replace ``time`` with a class whose ``.offset_s`` allows advancing."""
+
     class _Advancing:
         offset_s: float = 0.0
 
@@ -116,7 +116,9 @@ def _patch_rate_limit_redis(
 class _FakeDBSession:
     def __init__(self) -> None:
         sess = MagicMock()
-        sess.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None)))
+        sess.execute = AsyncMock(
+            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
+        )
         sess.add = MagicMock()
         sess.commit = AsyncMock()
         sess.refresh = AsyncMock()

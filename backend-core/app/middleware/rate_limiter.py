@@ -144,9 +144,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         4. If Redis errors, log and continue (fail-open).
         """
         path = request.url.path
-        max_req, window_s = self._endpoint_limits.get(
-            path, settings.RATE_LIMIT_DEFAULT_TUPLE
-        )
+        max_req, window_s = self._endpoint_limits.get(path, settings.RATE_LIMIT_DEFAULT_TUPLE)
 
         ip = self._client_ip(request)
         key = self._build_key(ip, path)
@@ -156,9 +154,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         try:
             r = get_redis()
         except Exception:  # noqa: BLE001
-            logger.warning(
-                "Rate limiting skipped — Redis connection failed for %s", key
-            )
+            logger.warning("Rate limiting skipped — Redis connection failed for %s", key)
             return await call_next(request)
 
         try:
