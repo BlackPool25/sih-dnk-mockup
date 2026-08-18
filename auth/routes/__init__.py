@@ -156,9 +156,7 @@ async def _issue_token_pair(
 
 async def _revoke_refresh_in_db(jti: str) -> None:
     async with get_session()() as session:
-        result = await session.execute(
-            select(RefreshToken).where(RefreshToken.jti == jti)
-        )
+        result = await session.execute(select(RefreshToken).where(RefreshToken.jti == jti))
         rt = result.scalar_one_or_none()
         if rt is not None:
             rt.revoked = True
@@ -172,7 +170,7 @@ async def _revoke_all_refresh_tokens_for_user(user_id: str) -> None:
         result = await session.execute(
             select(RefreshToken).where(
                 RefreshToken.user_id == UUID(user_id),
-                RefreshToken.revoked == False,
+                not RefreshToken.revoked,
             )
         )
         for rt in result.scalars():
@@ -188,9 +186,7 @@ async def _revoke_all_refresh_tokens_for_user(user_id: str) -> None:
 @router.post("/register", status_code=201, response_model=RegisterResponse)
 async def register(body: RegisterRequest) -> dict[str, object]:
     if body.role not in ("seller", "buyer"):
-        raise HTTPException(
-            status_code=400, detail="Forbidden role: use 'seller' or 'buyer'"
-        )
+        raise HTTPException(status_code=400, detail="Forbidden role: use 'seller' or 'buyer'")
 
     async with get_session()() as session:
         existing = await session.execute(select(User).where(User.email == body.email))
@@ -256,15 +252,11 @@ async def refresh(body: RefreshRequest) -> dict[str, object]:
 
     jti = payload.get("jti")
     if not isinstance(jti, str):
-        raise HTTPException(
-            status_code=401, detail="Invalid refresh token: missing jti"
-        )
+        raise HTTPException(status_code=401, detail="Invalid refresh token: missing jti")
 
     # Look up DB row — must exist, not revoked, not expired
     async with get_session()() as session:
-        result = await session.execute(
-            select(RefreshToken).where(RefreshToken.jti == jti)
-        )
+        result = await session.execute(select(RefreshToken).where(RefreshToken.jti == jti))
         rt = result.scalar_one_or_none()
 
         if rt is None:
@@ -363,11 +355,7 @@ async def password_reset(body: PasswordResetBody) -> dict[str, str]:
     if user_id_bytes is None:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
-    user_id_str = (
-        user_id_bytes.decode()
-        if isinstance(user_id_bytes, bytes)
-        else str(user_id_bytes)
-    )
+    user_id_str = user_id_bytes.decode() if isinstance(user_id_bytes, bytes) else str(user_id_bytes)
 
     from uuid import UUID
 
@@ -375,9 +363,7 @@ async def password_reset(body: PasswordResetBody) -> dict[str, str]:
         result = await session.execute(select(User).where(User.id == UUID(user_id_str)))
         user = result.scalar_one_or_none()
         if user is None:
-            raise HTTPException(
-                status_code=400, detail="Invalid or expired reset token"
-            )
+            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
 
         user.password_hash = hash_password(body.new_password)
         await session.commit()

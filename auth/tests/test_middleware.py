@@ -200,7 +200,10 @@ class TestRevokedToken:
     async def test_revoked_token(self, client: AsyncClient) -> None:
         """Revoked JWT (jti='revoked-jti') → 401."""
         token = _make_token(
-            sub="user-1", role="buyer", email="buyer@test.com", jti="revoked-jti",
+            sub="user-1",
+            role="buyer",
+            email="buyer@test.com",
+            jti="revoked-jti",
         )
         response = await client.get(
             "/user-info",

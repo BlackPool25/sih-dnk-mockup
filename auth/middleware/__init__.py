@@ -129,14 +129,8 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         role = payload.get("role")
         email = payload.get("email")
 
-        if (
-            not isinstance(user_id, str)
-            or not isinstance(role, str)
-            or not isinstance(email, str)
-        ):
-            return _auth_error(
-                401, "Token payload missing required claims (sub, role, email)"
-            )
+        if not isinstance(user_id, str) or not isinstance(role, str) or not isinstance(email, str):
+            return _auth_error(401, "Token payload missing required claims (sub, role, email)")
 
         request.state.user = {
             "user_id": str(user_id),

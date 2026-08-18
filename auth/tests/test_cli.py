@@ -64,6 +64,7 @@ def test_seed_sahayak_first_run(capsys: pytest.CaptureFixture[str]) -> None:
 
     captured = capsys.readouterr()
     from storage.config import settings
+
     assert f"Sahayak account created: {settings.SAHAYAK_EMAIL}" in captured.out
 
 
@@ -81,6 +82,7 @@ def test_seed_sahayak_first_run_user_fields() -> None:
 
     added_user = mock_session.add.call_args[0][0]
     from storage.config import settings
+
     assert added_user.email == settings.SAHAYAK_EMAIL
     assert added_user.role.value == "sahayak"
     assert added_user.is_active is True
@@ -111,6 +113,7 @@ def test_seed_sahayak_already_exists(capsys: pytest.CaptureFixture[str]) -> None
 
     captured = capsys.readouterr()
     from storage.config import settings
+
     assert f"Sahayak account already exists: {settings.SAHAYAK_EMAIL}" in captured.out
 
 

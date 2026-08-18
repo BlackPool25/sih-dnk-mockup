@@ -176,7 +176,9 @@ class TestLogin:
         login_body = await _login(client, "claims@test.com", "pass")
 
         payload = pyjwt.decode(
-            login_body["access_token"], JWT_SECRET, algorithms=[JWT_ALGO],
+            login_body["access_token"],
+            JWT_SECRET,
+            algorithms=[JWT_ALGO],
         )
         assert payload["email"] == "claims@test.com"
         assert payload["role"] == "seller"
@@ -319,7 +321,9 @@ class TestPasswordResetRequest:
         assert "email" in r.json()["message"].lower()
 
     @pytest.mark.asyncio
-    async def test_request_for_nonexistent_user_still_returns_200(self, client: AsyncClient) -> None:
+    async def test_request_for_nonexistent_user_still_returns_200(
+        self, client: AsyncClient
+    ) -> None:
         r = await client.post(
             "/auth/password-reset-request",
             json={"email": "nobody@nowhere.com"},

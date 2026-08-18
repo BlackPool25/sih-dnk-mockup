@@ -1,6 +1,6 @@
 # sih-dnk-auth — auth service image built on top of the shared storage base.
 # Inherits Python 3.12, uv, and all storage dependencies from sih-dnk-storage-base.
-FROM sih-dnk-storage-base
+FROM sih-dnk-storage-base AS runtime
 
 WORKDIR /opt/auth
 
@@ -24,3 +24,13 @@ COPY tests/ tests/
 ENV PATH="/opt/auth/.venv/bin:/opt/storage/.venv/bin:$PATH"
 WORKDIR /app
 CMD ["sleep", "infinity"]
+
+# ---------------------------------------------------------------------------
+# Test stage — full dependency set (incl. dev groups) for running pytest in CI.
+# Build with: docker build --target test -t sih-dnk-auth:test .
+# ---------------------------------------------------------------------------
+FROM runtime AS test
+WORKDIR /opt/auth
+COPY uv.lock ./
+RUN uv sync --frozen
+CMD ["uv", "run", "pytest"]

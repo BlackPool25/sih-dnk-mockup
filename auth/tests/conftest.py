@@ -120,6 +120,7 @@ def _make_session_factory(store: InMemoryStore):
                     if rv is not None:
                         from sqlalchemy.sql.expression import False_ as SA_False
                         from sqlalchemy.sql.expression import True_ as SA_True
+
                         if isinstance(rv, SA_False):
                             revoked_val = False
                         elif isinstance(rv, SA_True):
@@ -129,7 +130,9 @@ def _make_session_factory(store: InMemoryStore):
             if jti_val is not None:
                 return store.refresh_tokens.get(jti_val)
             if user_id_val is not None:
-                results = [rt for rt in store.refresh_tokens.values() if str(rt.user_id) == user_id_val]
+                results = [
+                    rt for rt in store.refresh_tokens.values() if str(rt.user_id) == user_id_val
+                ]
                 if revoked_val is False:
                     results = [rt for rt in results if not rt.revoked]
                 return results
@@ -216,6 +219,7 @@ def _reset_store(store: InMemoryStore) -> None:
 def app() -> FastAPI:
     from auth.middleware import JWTAuthMiddleware
     from auth.routes import router
+
     application = FastAPI()
     application.add_middleware(JWTAuthMiddleware)
     application.include_router(router)
