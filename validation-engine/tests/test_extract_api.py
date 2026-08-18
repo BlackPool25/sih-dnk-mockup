@@ -171,3 +171,33 @@ def test_extract_gemini_still_ambiguous_asks_user(
     body = response.json()
     assert body["category_unknown"] is True
     assert body["draft"]["product_category"] is None
+
+
+def test_extract_degrades_to_rule_on_llm_api_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An LLM API error (quota 429 / 5xx — google.api_core GoogleAPICallError)
+    must NEVER 500 the extract endpoint: it degrades to the rule draft.
+
+    This pins the conversational guarantee that the pipeline stays up even
+    when the external LLM is unavailable (the LLM is an enhancer, never the
+    availability gate)."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+
+    import google.api_core.exceptions as api_exceptions
+
+    class _FailingGemini:
+        def extract(self, transcript: str, previous: ShipmentDraft, lang: str) -> ShipmentDraft:
+            raise api_exceptions.ResourceExhausted("quota exceeded")
+
+    monkeypatch.setattr("app.api.extract.GeminiDraftExtractor", lambda: _FailingGemini())
+    response = client.post(
+        "/api/extract",
+        json={"text": "मुझे कपड़ा भी यू एस पी ओ", "lang": "hi"},
+    )
+    assert response.status_code == 200  # never a 500 when the LLM is down
+    body = response.json()
+    assert body["extractor"] == "rule"  # graceful degradation to rule draft
+    # the rule draft for "कपड़ा" is category-unknown — degradation keeps it as-is
+    assert body["category_unknown"] is True
+    assert body["draft"]["product_category"] is None

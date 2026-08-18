@@ -44,6 +44,16 @@ from app.services.sanity import sanity_ok
 router = APIRouter(prefix="/api/extract", tags=["extract"])
 
 
+def _llm_api_errors() -> tuple[type[Exception], ...]:
+    """The google.api_core base exception for every LLM API failure (quota 429,
+    403, 5xx). Lazily imported so the rule-only path never needs the SDK."""
+    try:
+        from google.api_core.exceptions import GoogleAPICallError
+    except ImportError:  # pragma: no cover — google-api-core ships with genai
+        return ()
+    return (GoogleAPICallError,)
+
+
 class ExtractRequest(BaseModel):
     """One turn of spoken text, optionally with the accumulated draft.
 
@@ -100,8 +110,10 @@ def post_extract(payload: ExtractRequest) -> ExtractResponse:
             filled = GeminiDraftExtractor().extract(payload.text, draft, payload.lang)
             draft = _merge_filled(draft, filled, payload.previous)
             extractor = "gemini"
-        except (ImportError, RuntimeError, ValueError):
-            extractor = "rule"  # no package/key, or reprompt exhaustion — keep rule draft
+        except (ImportError, RuntimeError, ValueError, *_llm_api_errors()):
+            # no package/key, reprompt exhaustion, or LLM API error (quota 429 /
+            # 5xx) — keep the rule draft, never 500 the call.
+            extractor = "rule"
     category_unknown = rule_unknown and draft.product_category is None
     return ExtractResponse(
         draft=draft,

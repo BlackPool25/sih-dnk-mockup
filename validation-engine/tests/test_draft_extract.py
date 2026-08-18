@@ -584,3 +584,93 @@ def _clean_schema(schema: dict) -> dict:
                 continue
         cleaned[key] = _clean_schema(value) if isinstance(value, dict) else value
     return cleaned
+
+
+class _MultiToolCallingModel:
+    """Fake SDK model that emits a lookup_duty call (named args, not query),
+    then asserts the adapter built per-tool declarations (not the hardcoded
+    single-query schema) before returning a valid draft."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, dict]] = []
+        self.round = 0
+        self.declarations: list[object] = []
+
+    def generate_content(self, contents: object, **kwargs: object) -> _MockResponse:
+        from google.generativeai import protos
+
+        self.calls.append((contents, kwargs))
+        tools = kwargs.get("tools")
+        assert tools, "adapter must pass tools for function calling"
+        declaration_list = tools[0].function_declarations
+        self.declarations = list(declaration_list)
+        by_name = {d.name: d for d in declaration_list}
+        # Per-tool declarations must NOT all carry the hardcoded query:string.
+        assert set(by_name) == {"lookup_duty", "search_categories"}, (
+            f"registry must expose the curated tools: {sorted(by_name)}"
+        )
+        duty = by_name["lookup_duty"]
+        assert duty.parameters.properties.keys() >= {"country_iso2", "hs6"}, (
+            f"lookup_duty schema must be precise, got {list(duty.parameters.properties)}"
+        )
+        assert "country_iso2" in duty.parameters.required
+        if self.round == 0:
+            self.round += 1
+            return _MockResponse(
+                [
+                    protos.Part(
+                        function_call=protos.FunctionCall(
+                            name="lookup_duty",
+                            args={"country_iso2": "US", "hs6": "5310"},
+                        )
+                    )
+                ]
+            )
+        self.round += 1
+        payload = dict(_VALID_DRAFT_PAYLOAD, product_category="jute-products")
+        return _MockResponse([_MockPart(json.dumps(payload))])
+
+
+def test_gemini_adapter_builds_per_tool_declarations_and_named_args() -> None:
+    """The MCP registry must flow into the SDK function declarations verbatim:
+    precise per-tool parameter schemas and named-argument dispatch
+    (executor(**call.args)), not the legacy single-query:string schema."""
+    from app.services.extract import _GenaiModelAdapter
+    from app.services.mcp_tools import get_mcp_tools
+
+    sdk = _MultiToolCallingModel()
+    tool_results: list[dict] = []
+
+    def fake_lookup_duty(country_iso2: str, hs6: str | None = None) -> list[dict]:
+        tool_results.append({"country_iso2": country_iso2, "hs6": hs6})
+        return [{"country_iso2": "US", "hs6": "5310", "rate_type": "MFN", "rate_pct": 10.0}]
+
+    from app.services.mcp_tools import MCPTool
+
+    search_tool = next(t for t in get_mcp_tools() if t.name == "search_categories")
+    tools = [
+        search_tool,
+        MCPTool(
+            name="lookup_duty",
+            description="Look up duty.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "country_iso2": {"type": "string"},
+                    "hs6": {"type": "string"},
+                },
+                "required": ["country_iso2"],
+            },
+            handler=fake_lookup_duty,
+        ),
+    ]
+    adapter = _GenaiModelAdapter(sdk, tools=tools)
+    draft = GeminiDraftExtractor(adapter).extract(
+        "six jute bags to america", None, "hi"
+    )
+
+    assert draft.product_category == "jute-products"
+    assert tool_results == [{"country_iso2": "US", "hs6": "5310"}], (
+        f"named args must reach the handler: {tool_results}"
+    )
+    assert sdk.round == 2

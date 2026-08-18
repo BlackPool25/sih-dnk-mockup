@@ -28,7 +28,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any, Literal, Protocol
+from typing import Any, Callable, Literal, Protocol
 
 from pydantic import ValidationError
 
@@ -42,6 +42,7 @@ from app.schemas.shipment import (
     Shipment,
     ShipmentDraft,
 )
+from app.services.mcp_tools import MCPTool
 
 
 class Extractor(Protocol):
@@ -1213,21 +1214,83 @@ def _clean_schema(schema: dict) -> dict:
     return cleaned
 
 
+def _normalize_tools(
+    tools: list[MCPTool] | list[tuple[str, Callable[..., Any]]],
+) -> list[MCPTool]:
+    """Normalize the legacy ``(name, callable)`` tuple form to ``MCPTool``."""
+    normalized: list[MCPTool] = []
+    for entry in tools:
+        if isinstance(entry, MCPTool):
+            normalized.append(entry)
+        else:
+            name, handler = entry
+            normalized.append(
+                MCPTool(
+                    name=name,
+                    description=f"Call {name} to look up the answer.",
+                    parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+                    handler=handler,
+                )
+            )
+    return normalized
+
+
+def _schema_to_proto(schema: dict, protos: Any) -> Any:
+    """JSON-schema subset → ``protos.Schema``.
+
+    The google-generativeai SDK accepts a fixed Schema proto field set
+    (type, format, description, nullable, enum, items, properties, required);
+    anything else (title/default) is dropped.
+    """
+    type_map = {
+        "string": protos.Type.STRING,
+        "integer": protos.Type.INTEGER,
+        "number": protos.Type.NUMBER,
+        "boolean": protos.Type.BOOLEAN,
+        "array": protos.Type.ARRAY,
+        "object": protos.Type.OBJECT,
+    }
+    kwargs: dict[str, object] = {
+        "type": type_map.get(schema.get("type", "string"), protos.Type.STRING),
+    }
+    for key in ("format", "description", "enum", "nullable"):
+        if key in schema:
+            kwargs[key] = schema[key]
+    items = schema.get("items")
+    if isinstance(items, dict):
+        kwargs["items"] = _schema_to_proto(items, protos)
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        kwargs["properties"] = {
+            name: _schema_to_proto(prop, protos)
+            for name, prop in properties.items()
+            if isinstance(prop, dict)
+        }
+    required = schema.get("required")
+    if isinstance(required, list):
+        kwargs["required"] = [str(r) for r in required]
+    return protos.Schema(**kwargs)
+
+
 class _GenaiModelAdapter:
     """Translate the (config, contents) call shape to the real genai SDK.
 
-    Supports function calling: when ``tools`` is given (a list of
-    ``(name, callable)`` pairs), a model function_call is executed and its
-    result is fed back in the SDK-native Content/Part format until the model
-    returns plain text.  ``search_categories`` is the one tool the draft
-    extractor registers — it lets the model resolve an ambiguous spoken
-    category ("कपड़ा") against the seeded catalog instead of the hardcoded
-    rule gate blocking it.
+    Supports function calling: when ``tools`` is given (a list of ``MCPTool``
+    objects, or legacy ``(name, callable)`` pairs), a model function_call is
+    executed and its result is fed back in the SDK-native Content/Part format
+    until the model returns plain text.  The registry is the curated
+    model-facing surface from ``app.services.mcp_tools`` — precise per-tool
+    parameter schemas and named-argument dispatch (``executor(**call.args)``).
     """
 
-    def __init__(self, model: Any, tools: list[tuple[str, object]] | None = None) -> None:
+    def __init__(
+        self,
+        model: Any,
+        tools: list[MCPTool] | list[tuple[str, Callable[..., Any]]] | None = None,
+    ) -> None:
         self._model = model
-        self._tools = dict(tools or [])
+        self._tool_list = _normalize_tools(tools or [])
+        self._tools = {tool.name: tool.handler for tool in self._tool_list}
 
     @staticmethod
     def _render_prompt(contents: list[dict]) -> str:
@@ -1278,17 +1341,11 @@ class _GenaiModelAdapter:
             )
         declarations = [
             protos.FunctionDeclaration(
-                name=name,
-                description=f"Call {name} to look up the answer.",
-                parameters=protos.Schema(
-                    type=protos.Type.OBJECT,
-                    properties={
-                        "query": protos.Schema(type=protos.Type.STRING)
-                    },
-                    required=["query"],
-                ),
+                name=tool.name,
+                description=tool.description,
+                parameters=_schema_to_proto(tool.parameters, protos),
             )
-            for name in self._tools
+            for tool in self._tool_list
         ]
         tool = protos.Tool(function_declarations=declarations)
         conversation = [protos.Content(role="user", parts=[protos.Part(text=prompt)])]
@@ -1317,7 +1374,8 @@ class _GenaiModelAdapter:
                         )
                     )
                     continue
-                result = executor(call.args.get("query", ""))
+                args = dict(call.args or {})
+                result = executor(**args)
                 tool_parts.append(
                     protos.Part(
                         function_response=protos.FunctionResponse(
@@ -1346,12 +1404,9 @@ def _build_genai_client() -> Any:
 
     configure(api_key=key)
     model = GenerativeModel(os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite"))
-    from app.services.db_tools import search_categories
+    from app.services.mcp_tools import get_mcp_tools
 
-    return _GenaiModelAdapter(
-        model,
-        tools=[("search_categories", search_categories)],
-    )
+    return _GenaiModelAdapter(model, tools=get_mcp_tools())
 
 
 class GeminiDraftExtractor(DraftExtractor):
