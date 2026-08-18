@@ -1,0 +1,34 @@
+# Central ruff configuration — discovered by every service (ruff walks up).
+# Conservative start: ruff's default rule set (E4/E7/E9/F) + W605 (invalid
+# escape sequences — real bug risk). Extend `select` as the codebase matures.
+target-version = "py312"
+line-length = 100
+
+exclude = [
+    ".venv",
+    ".git",
+    ".ruff_cache",
+    "__pycache__",
+    "docs-out",
+    "seed",
+    "qr_codes",
+    "BULK_UPDATED_FILE",
+]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "W605"]
+
+[lint.per-file-ignores]
+# Auto-generated alembic migrations are not held to hand-written style.
+"*/alembic/versions/*" = ["E501"]
+# Deliberate sys.path/env setup before imports (local-dev importability,
+# module-level Settings() singleton, alembic env).
+"**/conftest.py" = ["E402"]
+"**/alembic/env.py" = ["E402"]
+"**/app/cli/__main__.py" = ["E402"]
+"storage/tests/test_config.py" = ["E402"]
+# Model registry re-exports must follow Base definition (circular imports).
+"**/models/__init__.py" = ["E402"]
+"**/app/models/__init__.py" = ["E402"]
+# FastAPI router registration after app construction.
+"**/app/api/__init__.py" = ["E402"]
