@@ -1,0 +1,80 @@
+============================= test session starts ==============================
+platform linux -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- /home/shreyas/projects/sih-dnk-mockup/pricing-engine/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/shreyas/projects/sih-dnk-mockup/pricing-engine
+configfile: pyproject.toml
+plugins: anyio-4.14.2
+collecting ... collected 32 items
+
+tests/test_pricing_matrix.py::test_itps_slab_exact_50 PASSED             [  3%]
+tests/test_pricing_matrix.py::test_itps_slab_51_requires_one_extra_slab_RED FAILED [  6%]
+tests/test_pricing_matrix.py::test_itps_slab_100 PASSED                  [  9%]
+tests/test_pricing_matrix.py::test_itps_slab_101 PASSED                  [ 12%]
+tests/test_pricing_matrix.py::test_ems_slab_exact_250 PASSED             [ 15%]
+tests/test_pricing_matrix.py::test_ems_slab_251 PASSED                   [ 18%]
+tests/test_pricing_matrix.py::test_ems_slab_500 PASSED                   [ 21%]
+tests/test_pricing_matrix.py::test_ems_slab_501 PASSED                   [ 25%]
+tests/test_pricing_matrix.py::test_volumetric_divisor_4000_blow_up PASSED [ 28%]
+tests/test_pricing_matrix.py::test_volumetric_divisor_5000 PASSED        [ 31%]
+tests/test_pricing_matrix.py::test_volumetric_divisor_6000_smaller_chargeable PASSED [ 34%]
+tests/test_pricing_matrix.py::test_volumetric_does_not_trigger_when_actual_heavier PASSED [ 37%]
+tests/test_pricing_matrix.py::test_itps_cap_us_5000_exact_feasible PASSED [ 40%]
+tests/test_pricing_matrix.py::test_itps_cap_us_5000_over_is_infeasible PASSED [ 43%]
+tests/test_pricing_matrix.py::test_itps_cap_au_2000_enforced PASSED      [ 46%]
+tests/test_pricing_matrix.py::test_ems_cap_with_volumetric_exceeds_cap_infeasible PASSED [ 50%]
+tests/test_pricing_matrix.py::test_cheapest_picks_cheaper_lane PASSED    [ 53%]
+tests/test_pricing_matrix.py::test_fastest_picks_ems_despite_higher_cost PASSED [ 56%]
+tests/test_pricing_matrix.py::test_balanced_mode_returns_both_cost_and_transit PASSED [ 59%]
+tests/test_pricing_matrix.py::test_cheapest_vs_fastest_different_selection_when_cost_and_speed_oppose PASSED [ 62%]
+tests/test_pricing_matrix.py::test_max_parcels_splitting_allows_two_parcels_for_large_order FAILED [ 65%]
+tests/test_pricing_matrix.py::test_max_parcels_one_forces_single_parcel_via_ems PASSED [ 68%]
+tests/test_pricing_matrix.py::test_max_parcels_none_defaults_to_at_least_one PASSED [ 71%]
+tests/test_pricing_matrix.py::test_landed_cost_cif_computation PASSED    [ 75%]
+tests/test_pricing_matrix.py::test_landed_cost_duty_is_ten_percent PASSED [ 78%]
+tests/test_pricing_matrix.py::test_landed_cost_preferential_reduces_duty PASSED [ 81%]
+tests/test_pricing_matrix.py::test_landed_cost_tax_includes_duty_when_flag_true PASSED [ 84%]
+tests/test_pricing_matrix.py::test_landed_cost_fees_and_platform_added PASSED [ 87%]
+tests/test_pricing_matrix.py::test_landed_cost_provenance_present_on_all_components PASSED [ 90%]
+tests/test_pricing_matrix.py::test_landed_cost_snapshot_json_comparison PASSED [ 93%]
+tests/test_pricing_matrix.py::test_post_pricing_contract_freeze_returns_all_required_fields PASSED [ 96%]
+tests/test_pricing_matrix.py::test_post_pricing_parcel_breakdown_has_complete_fields PASSED [100%]
+
+=================================== FAILURES ===================================
+________________ test_itps_slab_51_requires_one_extra_slab_RED _________________
+
+    def test_itps_slab_51_requires_one_extra_slab_RED():
+        """RED demo: intentionally expects 0 extra slabs for 51g (off-by-one) -> must FAIL."""
+        r = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=51)
+        # WRONG expectation (RED): 51g should NOT be 0 slabs — this will fail and prove RED
+>       assert r["additional_slabs"] == 0  # <-- RED: should be 1, demonstrates failing test
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       assert 1 == 0
+
+tests/test_pricing_matrix.py:219: AssertionError
+________ test_max_parcels_splitting_allows_two_parcels_for_large_order _________
+
+    def test_max_parcels_splitting_allows_two_parcels_for_large_order():
+        items = [make_item(weight_g=2000, quantity=2, splittable=True, item_id="A"), make_item(weight_g=2000, quantity=1, splittable=True, item_id="B")]
+        # product 6000g + tare 100 per parcel if split; ITPS cap 5000 forces 2 parcels
+        result = optimize_shipment(
+            items=items,
+            packages=[std_package()],
+            lanes=[itps_lane(weight_cap_g=5000), ems_lane(divisor=5000, weight_cap_g=20000)],
+            optimization_mode=OptimizationMode.CHEAPEST,
+            max_parcels=2,
+            landed_cost=default_landed_cost(),
+        )
+>       assert result["parcel_count"] == 2
+E       assert 1 == 2
+
+tests/test_pricing_matrix.py:375: AssertionError
+=============================== warnings summary ===============================
+.venv/lib/python3.13/site-packages/fastapi/testclient.py:1
+  /home/shreyas/projects/sih-dnk-mockup/pricing-engine/.venv/lib/python3.13/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_pricing_matrix.py::test_itps_slab_51_requires_one_extra_slab_RED
+FAILED tests/test_pricing_matrix.py::test_max_parcels_splitting_allows_two_parcels_for_large_order
+=================== 2 failed, 30 passed, 1 warning in 0.47s ====================

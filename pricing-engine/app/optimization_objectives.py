@@ -141,10 +141,14 @@ def calculate_solution_summary(
         for candidate in selected
     )
 
-    transit_days = [
-        _candidate_transit_days(candidate)
-        for candidate in selected
-    ]
+    transit_values: list[int | None] = []
+    for candidate in selected:
+        try:
+            transit_values.append(_candidate_transit_days(candidate))
+        except OptimizationObjectiveError:
+            transit_values.append(None)
+
+    filtered = [v for v in transit_values if v is not None]
 
     return {
         "mode": mode.value,
@@ -156,10 +160,6 @@ def calculate_solution_summary(
         "packaging_cost_minor": (
             total_packaging_cost_minor
         ),
-        "estimated_transit_max_days": max(
-            transit_days
-        ),
-        "estimated_transit_min_days": min(
-            transit_days
-        ),
+        "estimated_transit_max_days": max(filtered) if filtered else None,
+        "estimated_transit_min_days": min(filtered) if filtered else None,
     }

@@ -183,17 +183,13 @@ def calculate_country_fees(
                 "Missing fee component field: base_minor"
             )
 
+        raw_rate = component.get("rate_percent", Decimal("0"))
+        rate_percent = raw_rate if isinstance(raw_rate, Decimal) else Decimal(str(raw_rate))
         result = calculate_fee(
             fee_type=component["fee_type"],
-            base_minor=component["base_minor"],
-            rate_percent=component.get(
-                "rate_percent",
-                Decimal("0"),
-            ),
-            fixed_minor=component.get(
-                "fixed_minor",
-                0,
-            ),
+            base_minor=int(component["base_minor"]),
+            rate_percent=rate_percent,
+            fixed_minor=int(component.get("fixed_minor", 0)),
             currency=component.get(
                 "currency",
                 currency,

@@ -65,6 +65,24 @@ def valid_request() -> dict:
         ],
         "optimization_mode": "CHEAPEST",
         "max_parcels": 2,
+        "landed_cost": {
+            "destination_country": "US",
+            "currency": "INR",
+            "product_value_minor": 10000,
+            "insurance_minor": 0,
+            "other_additions_minor": 0,
+            "standard_duty_rate_percent": "10",
+            "tax_rate_percent": "18",
+            "include_duty_in_tax_base": True,
+            "additional_tax_base_minor": 0,
+            "preferential_eligible": False,
+            "preferential_rate_percent": None,
+            "preferential_agreement": None,
+            "preferential_reason": None,
+            "country_fee_components": [],
+            "platform_fee_rate_percent": "0",
+            "platform_fixed_fee_minor": 0,
+        },
     }
 
 

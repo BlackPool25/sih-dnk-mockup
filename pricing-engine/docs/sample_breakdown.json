@@ -1,0 +1,126 @@
+{
+  "status": "OPTIMAL",
+  "optimization_mode": "CHEAPEST",
+  "shipment": {
+    "parcel_count": 1,
+    "product_weight_g": 1600,
+    "packaging_weight_g": 100,
+    "actual_weight_g": 1700
+  },
+  "cost": {
+    "shipping_cost_minor": 33000,
+    "packaging_cost_minor": 5000,
+    "total_cost_minor": 38000,
+    "currency": "INR"
+  },
+  "lane_breakdown": {
+    "EMS": 1
+  },
+  "estimated_transit": {
+    "min_days": 14,
+    "max_days": 14
+  },
+  "parcels": [
+    {
+      "parcel_id": "parcel-1",
+      "lane": "EMS",
+      "package_id": "BOX-STD",
+      "item_quantities": {
+        "ITEM-1": 2
+      },
+      "product_weight_g": 1600,
+      "packaging_weight_g": 100,
+      "actual_weight_g": 1700,
+      "volumetric_weight_g": 1600,
+      "chargeable_weight_g": 1700,
+      "shipping_cost_minor": 33000,
+      "packaging_cost_minor": 5000,
+      "total_cost_minor": 38000,
+      "transit_min_days": 7,
+      "transit_max_days": 14,
+      "objective_value": 38000
+    }
+  ],
+  "landed_cost": {
+    "currency": "INR",
+    "destination_country": "US",
+    "product_value_minor": 100000,
+    "shipping_cost_minor": 33000,
+    "insurance_minor": 5000,
+    "other_additions_minor": 0,
+    "customs_value": {
+      "basis": "CIF",
+      "product_value_minor": 100000,
+      "shipping_cost_minor": 33000,
+      "insurance_minor": 5000,
+      "other_additions_minor": 0,
+      "customs_value_minor": 138000,
+      "currency": "INR",
+      "provenance": {}
+    },
+    "preferential": {
+      "eligible": false,
+      "standard_rate_percent": "10",
+      "preferential_rate_percent": null,
+      "effective_rate_percent": "10",
+      "rate_type": "STANDARD",
+      "agreement": null,
+      "reason": null,
+      "provenance": {}
+    },
+    "duty": {
+      "customs_value_minor": 138000,
+      "duty_rate_percent": "10",
+      "duty_minor": 13800,
+      "currency": "INR",
+      "basis": "CIF",
+      "provenance": {},
+      "standard_duty_rate_percent": "10",
+      "preferential_duty_rate_percent": null,
+      "rate_type": "STANDARD"
+    },
+    "tax": {
+      "tax_type": "IMPORT_TAX",
+      "tax_base_minor": 151800,
+      "tax_rate_percent": "18",
+      "tax_minor": 27324,
+      "currency": "INR",
+      "destination_country": "US",
+      "provenance": {},
+      "customs_value_minor": 138000,
+      "duty_minor": 13800,
+      "include_duty_in_tax_base": true,
+      "additional_tax_base_minor": 0
+    },
+    "fees": {
+      "country_code": "US",
+      "components": [
+        {
+          "fee_type": "CUSTOMS_PROCESSING",
+          "base_minor": 105000,
+          "rate_percent": "1",
+          "percentage_fee_minor": 1050,
+          "fixed_fee_minor": 100,
+          "total_fee_minor": 1150,
+          "currency": "INR",
+          "provenance": {}
+        }
+      ],
+      "total_fee_minor": 1150,
+      "currency": "INR"
+    },
+    "platform_fee": {
+      "fee_type": "PLATFORM_FEE",
+      "fee_base_minor": 180274,
+      "rate_percent": "2",
+      "percentage_fee_minor": 3605,
+      "fixed_fee_minor": 1000,
+      "total_fee_minor": 4605,
+      "currency": "INR",
+      "provenance": {}
+    },
+    "pre_platform_total_minor": 180274,
+    "landed_cost_minor": 184879,
+    "provenance": {}
+  }
+}

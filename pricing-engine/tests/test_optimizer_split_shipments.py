@@ -112,6 +112,27 @@ def make_item(
     )
 
 
+def make_landed_cost() -> dict:
+    return {
+        "destination_country": "US",
+        "currency": "INR",
+        "product_value_minor": 10000,
+        "insurance_minor": 0,
+        "other_additions_minor": 0,
+        "standard_duty_rate_percent": Decimal("10"),
+        "tax_rate_percent": Decimal("18"),
+        "include_duty_in_tax_base": True,
+        "additional_tax_base_minor": 0,
+        "preferential_eligible": False,
+        "preferential_rate_percent": None,
+        "preferential_agreement": None,
+        "preferential_reason": None,
+        "country_fee_components": [],
+        "platform_fee_rate_percent": Decimal("0"),
+        "platform_fixed_fee_minor": 0,
+    }
+
+
 def test_six_kg_order_can_be_split_between_itps_and_ems():
     """
     Core business scenario.
@@ -158,6 +179,7 @@ def test_six_kg_order_can_be_split_between_itps_and_ems():
         ],
         optimization_mode=OptimizationMode.CHEAPEST,
         max_parcels=2,
+        landed_cost=make_landed_cost(),
     )
 
     assert result["status"] == "OPTIMAL"
@@ -222,6 +244,7 @@ def test_non_splittable_four_kg_item_is_not_split():
         ],
         optimization_mode=OptimizationMode.CHEAPEST,
         max_parcels=2,
+        landed_cost=make_landed_cost(),
     )
 
     item_a_parcels = []
@@ -280,6 +303,7 @@ def test_packaging_weight_is_included_in_each_parcel():
         ],
         optimization_mode=OptimizationMode.CHEAPEST,
         max_parcels=2,
+        landed_cost=make_landed_cost(),
     )
 
     total_product_weight = sum(
@@ -340,6 +364,7 @@ def test_each_itps_parcel_stays_within_weight_cap():
         ],
         optimization_mode=OptimizationMode.CHEAPEST,
         max_parcels=2,
+        landed_cost=make_landed_cost(),
     )
 
     for parcel in result["parcels"]:
@@ -375,6 +400,7 @@ def test_selected_parcels_have_complete_cost_breakdown():
         ],
         optimization_mode=OptimizationMode.CHEAPEST,
         max_parcels=2,
+        landed_cost=make_landed_cost(),
     )
 
     required_fields = {
@@ -429,6 +455,7 @@ def test_total_cost_equals_sum_of_parcel_costs():
         ],
         optimization_mode=OptimizationMode.CHEAPEST,
         max_parcels=2,
+        landed_cost=make_landed_cost(),
     )
 
     parcel_total = sum(
