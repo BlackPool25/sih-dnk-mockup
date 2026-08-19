@@ -74,6 +74,10 @@ class OrderPayload(BaseModel):
     exporter_name: str | None = None
     exporter_address: str | None = None
     state_code: str | None = None
+    pricing_breakdown: dict | None = None
+    parcels: list[dict] | None = None
+    qr_tokens: list[str] | None = None
+    qr_token_jti: str | None = None
     line_items: list[LineItemPayload] | None = None
 
 

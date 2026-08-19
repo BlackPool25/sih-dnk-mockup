@@ -83,6 +83,11 @@ class Order(Base):
     )
     qr_token_jti: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # ── pricing / parcel / QR batch (nullable for backfill) ──────────────
+    pricing_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
+    parcels: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
+    qr_tokens: Mapped[list | None] = mapped_column(JSONB, nullable=True, default=None)
+
     # ── versioning & JSONB ─────────────────────────────────────────
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     last_report: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)

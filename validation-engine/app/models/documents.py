@@ -27,6 +27,7 @@ class Document(Base):
     supersedes_doc_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("documents.id"), nullable=True
     )
+    parcel_id: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

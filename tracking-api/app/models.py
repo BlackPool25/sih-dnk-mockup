@@ -13,6 +13,8 @@ class Shipment(Base):
     tracking_number: Mapped[str] = mapped_column(String, unique=True, index=True)
     carrier: Mapped[str] = mapped_column(String)
     status: Mapped[str] = mapped_column(String, default="Booked")
+    order_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    parcel_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now())
 

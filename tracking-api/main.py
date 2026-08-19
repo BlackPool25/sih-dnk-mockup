@@ -12,11 +12,9 @@ from app.cache import (
     invalidate_shipment_cache,
     set_cached_shipment,
 )
-from app.database import Base, SessionLocal, engine
+from app.database import SessionLocal
 from app.providers import get_provider
 from app.tracking_simulator import start_scheduler
-
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="tracking-api", version="0.1.0")
 
