@@ -73,16 +73,16 @@ export default function PricingTable({ orderId, order }) {
       category_slug: cat,
       value_minor: val,
     };
+    const t = localStorage.getItem("token") || localStorage.getItem("access_token") || "";
     try {
-      const data = await calculatePricing(payload);
+      const data = await calculatePricing(payload, t);
       setPreview(data);
+      setPreviewError(null);
     } catch (e) {
       setPreviewError(e.message || "Preview failed");
       try {
-        const token = localStorage.getItem("token") || localStorage.getItem("access_token") || "";
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        const qs = new URLSearchParams({ destination_country: dest, weight_g: String(weight), category_slug: cat, value_minor: String(val) });
-        const res = await fetch(`/pricing/calculate?${qs.toString()}`, { method: "POST", headers });
+        const headers = t ? { Authorization: `Bearer ${t}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+        const res = await fetch(`/pricing/calculate`, { method: "POST", headers, body: JSON.stringify(payload) });
         if (res.ok) {
           const j = await res.json();
           setPreview(j);
@@ -240,11 +240,38 @@ export default function PricingTable({ orderId, order }) {
       )}
 
       {(preview || previewError || previewLoading) && (
-        <div className="mt-4 rounded-lg border border-[#E1E7DF] bg-[#F8FAF7] p-4">
+        <div className="mt-4 rounded-lg border border-[#E1E7DF] bg-[#F8FAF7] p-4 text-left">
           <p className="font-['Figtree'] text-xs font-semibold text-[#6B7568] uppercase mb-2">Preview — POST /pricing/calculate</p>
-          {previewLoading && <p className="font-['Figtree'] text-xs text-[#6B7568]">Calculating…</p>}
+          {previewLoading && <p className="font-['Figtree'] text-xs text-[#6B7568]">Calculating quote…</p>}
           {previewError && <p className="font-['Figtree'] text-xs text-red-700">{previewError}</p>}
-          {preview && <pre className="font-mono text-xs text-[#1B2E1B] whitespace-pre-wrap break-all max-h-64 overflow-auto">{JSON.stringify(preview, null, 2)}</pre>}
+          {preview && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="bg-white p-2.5 rounded border border-[#E5EAE3]">
+                  <span className="text-[11px] uppercase tracking-wider text-gray-500 block">Destination & Weight</span>
+                  <span className="text-xs font-medium text-gray-900">{preview.destination} · {preview.weight_g}g</span>
+                </div>
+                <div className="bg-white p-2.5 rounded border border-[#E5EAE3]">
+                  <span className="text-[11px] uppercase tracking-wider text-gray-500 block">ITPS Lane Quote</span>
+                  <span className="text-xs font-medium text-emerald-700">
+                    {preview.itps?.available ? `${preview.itps.cost_inr} (${preview.itps.transit_days} days)` : "Unavailable"}
+                  </span>
+                </div>
+                <div className="bg-white p-2.5 rounded border border-[#E5EAE3]">
+                  <span className="text-[11px] uppercase tracking-wider text-gray-500 block">EMS Lane Quote</span>
+                  <span className="text-xs font-medium text-gray-700">
+                    {preview.ems?.available ? `${preview.ems.cost_inr} (${preview.ems.transit_days} days)` : (preview.ems?.error || "Unavailable")}
+                  </span>
+                </div>
+              </div>
+              <details className="mt-2 text-xs">
+                <summary className="cursor-pointer text-gray-500 hover:text-gray-800 font-medium">View raw JSON response</summary>
+                <pre className="font-mono text-[11px] text-[#1B2E1B] bg-white p-2 mt-1 rounded border border-[#E5EAE3] whitespace-pre-wrap break-all max-h-48 overflow-auto">
+                  {JSON.stringify(preview, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
         </div>
       )}
     </div>
