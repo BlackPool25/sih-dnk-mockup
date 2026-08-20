@@ -1,6 +1,6 @@
 // src/pages/SignIn.jsx
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
   Mail,
@@ -11,9 +11,12 @@ import {
   ShoppingBag,
   Building2,
 } from "lucide-react";
+import { useData } from "../context/DataContext";
 
 function SignIn() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { signIn } = useData();
   const [showPassword, setShowPassword] = useState(false);
   const [userType, setUserType] = useState("seller");
   const [formData, setFormData] = useState({
@@ -21,6 +24,8 @@ function SignIn() {
     password: "",
     rememberMe: false,
   });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const backgroundImageUrl = "https://plus.unsplash.com/premium_photo-1679811672048-9d4b810a7588?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
 
@@ -32,24 +37,43 @@ function SignIn() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    const mockUser = {
-      name: userType === "seller" ? "Aarav" : userType === "buyer" ? "Priya" : "DNK Admin",
-      email: formData.email,
-      userType: userType,
-    };
-
-    localStorage.setItem("user", JSON.stringify(mockUser));
-    localStorage.setItem("token", "mock-jwt-token");
-
-    if (userType === "seller") {
-      navigate("/seller/voice");
-    } else if (userType === "buyer") {
-      navigate("/marketplace");
-    } else if (userType === "dnk") {
-      navigate("/dnk/dashboard");
+    setError("");
+    setLoading(true);
+    try {
+      // POST /auth/login {email,password} via api.js login/signIn - role comes from server
+      const result = await signIn({
+        email: formData.email.trim(),
+        password: formData.password,
+        userType,
+      });
+      const next = new URLSearchParams(location.search).get("next");
+      if (next) {
+        navigate(next);
+        return;
+      }
+      const actualType = result?.user?.userType || result?.user?.role || userType;
+      const norm = actualType === "sahayak" ? "dnk" : actualType;
+      if (norm === "seller") {
+        navigate("/seller/voice");
+      } else if (norm === "buyer") {
+        navigate("/marketplace");
+      } else if (norm === "dnk") {
+        navigate("/dnk/dashboard");
+      } else {
+        navigate("/");
+      }
+    } catch (err) {
+      const status = err?.status;
+      const msg = err?.detail || err?.message || "Sign in failed";
+      if (status === 401) {
+        setError("Invalid email or password. Please try again.");
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -184,6 +208,12 @@ function SignIn() {
               </div>
             </div>
 
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm font-['Figtree'] text-red-700" role="alert">
+                {error}
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Email */}
               <div>
@@ -253,9 +283,10 @@ function SignIn() {
               {/* Sign In Button */}
               <button
                 type="submit"
-                className="w-full px-6 py-3 bg-[#A8C3A0] text-[#1B2E1B] font-['Figtree'] font-medium rounded-lg hover:bg-[#98B890] transition-colors"
+                disabled={loading}
+                className="w-full px-6 py-3 bg-[#A8C3A0] text-[#1B2E1B] font-['Figtree'] font-medium rounded-lg hover:bg-[#98B890] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Sign In
+                {loading ? "Signing in..." : "Sign In"}
               </button>
 
               {/* Divider */}

@@ -8,11 +8,13 @@ import {
   Package,
   User,
   Settings,
-  Mic, // ✅ Add Mic for Voice Dashboard
+  Mic,
+  Inbox,
 } from "lucide-react";
 
 const navigation = [
-  { name: "Voice Dashboard", icon: Mic, path: "/seller/voice" }, // ✅ Changed from Home to Voice Dashboard
+  { name: "Voice Dashboard", icon: Mic, path: "/seller/voice" },
+  { name: "Inbox", icon: Inbox, path: "/inbox" },
   { name: "Orders", icon: ShoppingBag, path: "/seller/orders" },
   { name: "Messages", icon: MessageSquare, path: "/seller/messages" },
   { name: "Leads", icon: Users, path: "/seller/leads" },

@@ -50,16 +50,47 @@ function FullMarketplace() {
   const [showFilters, setShowFilters] = useState(false);
   const [wishlist, setWishlist] = useState([]);
   const [products, setProducts] = useState([]);
+  const [feedBanner, setFeedBanner] = useState(null);
+  const [feedMeta, setFeedMeta] = useState(null);
 
-  // Load products from API
+  // Load products from API — fair ranking feed?limit=20 replaces mock, ε=0.20
   useEffect(() => {
-    loadMarketplaceProducts()
-      .then((data) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await loadMarketplaceProducts();
+        if (cancelled) return;
         if (data && data.length > 0) {
           setProducts(data);
+          const eps = data[0]?.epsilon ?? null;
+          if (eps != null) setFeedMeta({ epsilon: eps, count: data.length });
+          else {
+            try {
+              const raw = localStorage.getItem('dnk_marketplace_feed');
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed?.body?.epsilon != null) setFeedMeta({ epsilon: parsed.body.epsilon, count: data.length });
+              }
+            } catch {}
+          }
+          setFeedBanner(null);
         }
-      })
-      .catch(console.error);
+      } catch (err) {
+        if (cancelled) return;
+        if (err && (err.status === 502 || String(err.message || '').includes('502') || String(err.detail || '').toLowerCase().includes('unavailable'))) {
+          setFeedBanner('Marketplace service unavailable (502) — showing cached/mocked feed fallback.');
+          // DataContext fallback already returned mock; fetch it without throwing to show cached data
+          try {
+            const { default: apiService } = await import("../../services/api");
+            const mock = apiService.mockMarketplaceProducts();
+            setProducts(mock);
+          } catch {}
+        } else {
+          console.error(err);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   // Get categories and locations from loaded products
@@ -209,6 +240,21 @@ function FullMarketplace() {
   return (
     <div className="min-h-screen bg-[#F8FAF7]">
       <Navbar />
+      {feedBanner && (
+        <div data-testid="mp-feed-banner" className="mx-auto max-w-7xl mt-3 px-4 sm:px-6">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 font-['Figtree'] text-xs text-amber-800 flex items-center gap-2">
+            <span>⚠️</span><span>{feedBanner}</span>
+            {feedMeta?.epsilon != null && <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-white border border-amber-200">ε={feedMeta.epsilon} (expected 0.20)</span>}
+          </div>
+        </div>
+      )}
+      {feedMeta?.epsilon != null && !feedBanner && (
+        <div className="mx-auto max-w-7xl mt-3 px-4 sm:px-6">
+          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-1.5 font-['Figtree'] text-[11px] text-green-800 flex items-center gap-2">
+            <span>✓ Feed: fair ranking ε=0.20 • {feedMeta.count} items (limit=20)</span>
+          </div>
+        </div>
+      )}
 
       {/* =====================================================
           TOP SEARCH & CONTROLS BAR

@@ -159,7 +159,14 @@ async def create_profile(request: Request, body: ProfileCreateRequest) -> dict[s
     async with get_session()() as session:
         profile = SellerProfile(**model_kwargs)
         session.add(profile)
-        await session.commit()
+        try:
+            await session.commit()
+        except Exception as exc:
+            await session.rollback()
+            msg = str(exc).lower()
+            if "iec" in msg or "seller_profiles_iec_key" in msg or "unique" in msg or "duplicate" in msg:
+                raise HTTPException(status_code=409, detail="IEC already exists — demo retry with unique IEC") from exc
+            raise
         await session.refresh(profile)
         _BINDING_SNAPSHOT[user_id] = {"ad_code": ad_plain, "ifsc": ifsc_plain}
         crypto_dict_out = _extract_encrypted(profile)

@@ -200,6 +200,17 @@ async def proxy_tracking(request: Request, path: str = "") -> StreamingResponse 
 
 
 @router.api_route(
+    "/voice/tts/public",
+    methods={"POST", "OPTIONS"},
+    response_model=None,
+)
+async def proxy_voice_public(request: Request) -> StreamingResponse | JSONResponse:
+    """Public TTS — no auth, proxies to voice-pipeline /tts, falls back to 503 soft."""
+    # Directly proxy POST body to voice-pipeline /tts (public, no auth)
+    return await _proxy(request, settings.VOICE_PIPELINE_URL, "tts", "Voice")
+
+
+@router.api_route(
     "/voice/{path:path}",
     methods=_ALL_METHODS,
     response_model=None,
@@ -207,4 +218,5 @@ async def proxy_tracking(request: Request, path: str = "") -> StreamingResponse 
 )
 async def proxy_voice(request: Request, path: str = "") -> StreamingResponse | JSONResponse:
     """Proxy to the Voice Pipeline."""
+    # Avoid shadowing the public route — if path is tts/public, the public handler already matched via exact route
     return await _proxy(request, settings.VOICE_PIPELINE_URL, path, "Voice")

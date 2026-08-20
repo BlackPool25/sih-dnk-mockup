@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Send, User, Bot, FileText, CheckCircle2, Package, LogOut, Mic, Square, Loader2, X, ChevronDown, ChevronUp, Sparkles, Globe, Info, ShieldCheck, Volume2, VolumeX } from 'lucide-react';
 import { chat, getOrders, createOrder, transcribeAudio, synthesizeSpeech, downloadOrderPdf } from '../services/api';
 
@@ -157,6 +158,7 @@ function formatCurrency(minor) {
 }
 
 function VoiceChatbot() {
+  const navigate = useNavigate();
   const token = localStorage.getItem('token');
   const user = JSON.parse(localStorage.getItem('user')) || null;
   
@@ -861,6 +863,14 @@ function VoiceChatbot() {
                   <FileText size={16} />
                   <span>{t.btnDownloadPdf}</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/seller/order/${completedOrder.id}`)}
+                  className="w-full mt-2 text-xs font-semibold text-[#6FAF6F] hover:text-[#5A9A5A] hover:underline inline-flex items-center justify-center gap-1 font-['Figtree']"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0' }}
+                >
+                  View full breakdown & 4 docs →
+                </button>
               </div>
             )}
           </>
@@ -893,14 +903,32 @@ function VoiceChatbot() {
                   <div className="text-[11px] text-muted mb-2">
                     To: <strong>{formatCountry(o.destination_country)}</strong> · Weight: <strong>{o.net_weight_g}g</strong> · Value: <strong>{formatCurrency(o.value_minor)}</strong>
                   </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadPdf(o.id)}
+                      className="text-xs text-accent font-semibold hover:underline inline-flex items-center gap-1"
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
+                      <FileText size={13} />
+                      <span>{t.btnDownloadPdf}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/seller/order/${o.id}`)}
+                      className="text-xs font-semibold text-[#6FAF6F] hover:text-[#5A9A5A] hover:underline inline-flex items-center gap-1"
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                    >
+                      View Details
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => handleDownloadPdf(o.id)}
-                    className="text-xs text-accent font-semibold hover:underline inline-flex items-center gap-1"
+                    onClick={() => navigate(`/seller/order/${o.id}`)}
+                    className="mt-1 text-[11px] font-medium text-[#6B7568] hover:text-[#1B2E1B] hover:underline font-['Figtree']"
                     style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                   >
-                    <FileText size={13} />
-                    <span>{t.btnDownloadPdf}</span>
+                    View full breakdown & 4 docs →
                   </button>
                 </div>
               ))}

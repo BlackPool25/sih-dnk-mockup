@@ -26,6 +26,47 @@ export default defineConfig({
         target: 'http://localhost:8006',
         changeOrigin: true,
       },
+      '/pricing': {
+        target: 'http://localhost:8006',
+        changeOrigin: true,
+      },
+      '/messages': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+        ws: true,
+      },
+      '/quotes': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/verify': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/trust': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/bindings': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/profile': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/guidance': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/tracking': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/payments': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
     }
   }
 })

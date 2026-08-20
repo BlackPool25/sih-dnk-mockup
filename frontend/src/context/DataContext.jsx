@@ -1,11 +1,12 @@
 // src/context/DataContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import apiService from '../services/api';
+import apiService, { getMe as fetchMe, getAccessToken, getRefreshToken, refreshToken as refreshTokenFn, clearAuthStorage } from '../services/api';
 
 const DataContext = createContext();
 
 export function DataProvider({ children }) {
   const [loading, setLoading] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -16,11 +17,97 @@ export function DataProvider({ children }) {
   const [dashboardStats, setDashboardStats] = useState({});
   const [profile, setProfile] = useState(null);
 
+  // Hydrate user via GET /auth/me on app load; try refresh once on 401
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    let cancelled = false;
+    async function hydrate() {
+      const token = getAccessToken();
+      if (!token) {
+        if (!cancelled) {
+          const stored = (() => {
+            try {
+              const u = localStorage.getItem('user');
+              return u ? JSON.parse(u) : null;
+            } catch {
+              return null;
+            }
+          })();
+          // if token missing but user in storage is stale, clear it
+          if (stored) {
+            try {
+              localStorage.removeItem('user');
+            } catch {}
+          }
+          setAuthLoading(false);
+        }
+        return;
+      }
+      try {
+        const me = await fetchMe(token);
+        if (cancelled) return;
+        const frontType = me.role === 'sahayak' ? 'dnk' : me.role;
+        let name = me.email?.split('@')[0] || 'User';
+        try {
+          const stored = localStorage.getItem('user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed?.name) name = parsed.name;
+          }
+        } catch {}
+        const hydrated = {
+          id: me.id,
+          email: me.email,
+          role: me.role,
+          userType: frontType,
+          name,
+          token,
+          refresh_token: getRefreshToken(),
+        };
+        setUser(hydrated);
+        try {
+          localStorage.setItem('user', JSON.stringify(hydrated));
+        } catch {}
+      } catch (err) {
+        // try refresh once before giving up
+        const status = err?.status;
+        if (status === 401) {
+          const rt = getRefreshToken();
+          if (rt) {
+            try {
+              const refreshed = await refreshTokenFn(rt);
+              const me2 = await fetchMe(refreshed.access_token);
+              if (cancelled) return;
+              const frontType2 = me2.role === 'sahayak' ? 'dnk' : me2.role;
+              const hydrated2 = {
+                id: me2.id,
+                email: me2.email,
+                role: me2.role,
+                userType: frontType2,
+                name: me2.email?.split('@')[0] || 'User',
+                token: refreshed.access_token,
+                refresh_token: refreshed.refresh_token,
+              };
+              setUser(hydrated2);
+              try {
+                localStorage.setItem('user', JSON.stringify(hydrated2));
+              } catch {}
+              setAuthLoading(false);
+              return;
+            } catch {}
+          }
+        }
+        if (!cancelled) {
+          clearAuthStorage();
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) setAuthLoading(false);
+      }
     }
+    hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const fetchData = async (fetchFn, onSuccess) => {
@@ -31,7 +118,8 @@ export function DataProvider({ children }) {
       if (onSuccess) onSuccess(result);
       return result;
     } catch (err) {
-      setError(err.message || 'Something went wrong');
+      const msg = err?.detail || err?.message || 'Something went wrong';
+      setError(msg);
       throw err;
     } finally {
       setLoading(false);
@@ -42,9 +130,21 @@ export function DataProvider({ children }) {
   const signIn = async (credentials) => {
     const result = await fetchData(() => apiService.signIn(credentials));
     if (result?.success) {
-      localStorage.setItem('user', JSON.stringify(result.user));
-      localStorage.setItem('token', result.user.token);
-      setUser(result.user);
+      const toStore = { ...result.user };
+      try {
+        localStorage.setItem('user', JSON.stringify(toStore));
+        if (result.access_token) {
+          localStorage.setItem('token', result.access_token);
+          localStorage.setItem('access_token', result.access_token);
+        } else if (result.user?.token) {
+          localStorage.setItem('token', result.user.token);
+          localStorage.setItem('access_token', result.user.token);
+        }
+        if (result.refresh_token || result.user?.refresh_token) {
+          localStorage.setItem('refresh_token', result.refresh_token || result.user.refresh_token);
+        }
+      } catch {}
+      setUser(toStore);
     }
     return result;
   };
@@ -52,16 +152,36 @@ export function DataProvider({ children }) {
   const signUp = async (userData) => {
     const result = await fetchData(() => apiService.signUp(userData));
     if (result?.success) {
-      localStorage.setItem('user', JSON.stringify(result.user));
-      localStorage.setItem('token', result.user.token);
-      setUser(result.user);
+      const toStore = { ...result.user };
+      try {
+        localStorage.setItem('user', JSON.stringify(toStore));
+        if (result.access_token) {
+          localStorage.setItem('token', result.access_token);
+          localStorage.setItem('access_token', result.access_token);
+        } else if (result.user?.token) {
+          localStorage.setItem('token', result.user.token);
+          localStorage.setItem('access_token', result.user.token);
+        }
+        if (result.refresh_token || result.user?.refresh_token) {
+          localStorage.setItem('refresh_token', result.refresh_token || result.user.refresh_token);
+        }
+      } catch {}
+      setUser(toStore);
     }
     return result;
   };
 
-  const logout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('token');
+  const logout = async () => {
+    const token = getAccessToken();
+    if (token) {
+      try {
+        await fetch('/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {}
+    }
+    clearAuthStorage();
     setUser(null);
   };
 
@@ -151,6 +271,7 @@ export function DataProvider({ children }) {
 
   const value = {
     loading,
+    authLoading,
     error,
     user,
     orders,

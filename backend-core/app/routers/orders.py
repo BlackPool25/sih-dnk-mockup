@@ -211,7 +211,11 @@ def _coerce_order_entry(entry: object) -> tuple[dict[str, object], list[object]]
 
 
 def _build_order_response(order: dict[str, object], line_items: list[object]) -> dict[str, object]:
-    """Map a validation-engine order dict + line items into OrderResponse fields."""
+    """Map a validation-engine order dict + line items into OrderResponse fields.
+
+    Includes pricing_breakdown/parcels so frontend PricingTable can fallback to
+    order.pricing_breakdown when GET /orders/{id}/pricing returns 404 for legacy orders.
+    """
     return {
         "id": str(order.get("id") or ""),
         "seller_id": str(order["seller_id"]) if order.get("seller_id") else None,
@@ -242,6 +246,10 @@ def _build_order_response(order: dict[str, object], line_items: list[object]) ->
         "line_items": line_items,
         "created_at": order.get("created_at"),
         "updated_at": order.get("updated_at"),
+        "pricing_breakdown": order.get("pricing_breakdown"),
+        "parcels": order.get("parcels"),
+        "last_report": order.get("last_report"),
+        "qr_tokens": order.get("qr_tokens"),
     }
 
 

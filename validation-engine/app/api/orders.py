@@ -258,6 +258,50 @@ def get_pricing(order_id: str) -> dict:
         }
 
 
+@router.post("/{order_id}/pricing")
+def trigger_pricing(order_id: str) -> dict:
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"invalid order_id {order_id!r}") from None
+    with SessionLocal.begin() as session:
+        order = session.execute(select(Order).where(Order.id == oid).options(selectinload(Order.line_items))).scalar_one_or_none()
+        if order is None:
+            raise HTTPException(status_code=404, detail=f"order {order_id!r} not found")
+        if not order.line_items:
+            raise HTTPException(status_code=422, detail="order has no line_items — cannot price empty order")
+        try:
+            from app.services.pricing_client import query_optimal_assignment_sync
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail=f"pricing client import failed: {exc}") from exc
+        try:
+            pricing_resp = query_optimal_assignment_sync(order, order.line_items)
+        except Exception as exc:
+            msg = str(exc)
+            if "422" in msg or "Invalid" in msg or "OPTIMIZATION" in msg:
+                raise HTTPException(status_code=422, detail=msg) from exc
+            if "timeout" in msg.lower() or "connect" in msg.lower() or "unreachable" in msg.lower() or "503" in msg:
+                raise HTTPException(status_code=503, detail=msg) from exc
+            raise HTTPException(status_code=502, detail=msg) from exc
+        order.pricing_breakdown = pricing_resp
+        order.parcels = pricing_resp.get("parcels", []) or []
+        try:
+            from app.services.tracking_client import register_shipments_for_order
+
+            register_shipments_for_order(order, order.parcels or [])
+        except Exception:
+            pass
+        pb = pricing_resp
+        return {
+            "order_id": order_id,
+            "pricing_breakdown": pb,
+            "parcels": order.parcels or pb.get("parcels", []),
+            "lane_breakdown": pb.get("lane_breakdown"),
+            "cost": pb.get("cost"),
+            "landed_cost": pb.get("landed_cost"),
+        }
+
+
 @router.get("/{order_id}/documents")
 def list_order_documents(order_id: str, parcel_id: str | None = Query(None)) -> dict:
     order_uuid = uuid.UUID(order_id)

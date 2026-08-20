@@ -1,9 +1,21 @@
 // src/components/seller/Header.jsx
-import { Bell } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { HindiToggle } from "../../context/HindiContext";
+import { useData } from "../../context/DataContext";
+import VerificationBadge from "../VerificationBadge";
+import InboxBell from "../inbox/InboxBell";
 
 function Header({ title, subtitle }) {
   const navigate = useNavigate();
+  const { logout } = useData();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      navigate("/signin");
+    }
+  };
 
   return (
     <header className="bg-white border-b border-[#E5EAE3] px-4 lg:px-8 py-3 shrink-0">
@@ -20,15 +32,21 @@ function Header({ title, subtitle }) {
           )}
         </div>
 
-        {/* Right side - Notification Bell */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap justify-end">
+          <VerificationBadge compact className="" />
+          <HindiToggle />
+          <InboxBell />
           <button
             onClick={() => navigate("/seller/notifications")}
-            className="relative p-2 rounded-lg hover:bg-[#F0F5EE] transition-colors"
+            className="hidden font-['Figtree'] text-xs text-[#6B7568] hover:text-[#1B2E1B] underline"
           >
-            <Bell className="w-5 h-5 text-[#1B2E1B]" />
-            {/* Notification dot */}
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#6FAF6F] rounded-full"></span>
+            Notifications
+          </button>
+          <button
+            onClick={handleLogout}
+            className="font-['Figtree'] text-xs font-semibold px-3 py-1.5 rounded-lg border border-[#E1E7DF] bg-[#F8FAF7] text-[#1B2E1B] hover:bg-[#E8F0E6] hover:border-[#A8C3A0] transition-colors"
+          >
+            Logout
           </button>
         </div>
       </div>

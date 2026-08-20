@@ -164,7 +164,10 @@ services:
     ports:
       - "127.0.0.1:8003:8000"
     env_file:
-      - ./.env
+      - path: .env
+        required: false
+      - path: .env.example
+        required: false
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -236,12 +239,15 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8005:80"
+    depends_on:
+      backend-core:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      test: ["CMD-SHELL", "curl -f http://localhost:80/ || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 10s
     networks:
       - dbnet
 
@@ -264,7 +270,10 @@ services:
       redis:
         condition: service_healthy
     env_file:
-      - ./.env
+      - path: .env
+        required: false
+      - path: .env.example
+        required: false
     environment:
       - PYTHONPATH=/opt/backend-core:/opt
       - DATABASE_URL=postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
@@ -282,6 +291,7 @@ services:
       - SARVAM_ENABLED=${SARVAM_ENABLED:-false}
       - MARKETPLACE_URL=http://marketplace:8000
       - MESSAGING_SERVICE_URL=http://messaging-service:8000
+      - VERIFICATION_SERVICE_URL=http://verification-service:8000
     volumes:
       - .:/app
     working_dir: /opt/backend-core

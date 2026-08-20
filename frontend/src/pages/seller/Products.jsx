@@ -3,23 +3,28 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../../context/DataContext";
 import Layout from "../../components/seller/Layout";
-import { 
-  Search, 
-  Plus, 
-  Eye, 
-  Package, 
-  ShoppingBag, 
+import {
+  Search,
+  Plus,
+  Eye,
+  Package,
+  ShoppingBag,
   AlertCircle
 } from "lucide-react";
+import InlineFallback from "../../components/InlineFallback";
 
 // Status color mapping
 const statusStyles = {
   "Active": "bg-green-100 text-green-700 border-green-200",
   "Out of Stock": "bg-red-100 text-red-700 border-red-200",
   "Low Stock": "bg-amber-100 text-amber-700 border-amber-200",
+  "Draft": "bg-amber-100 text-amber-700 border-amber-200",
+  "Published": "bg-green-100 text-green-700 border-green-200",
   "active": "bg-green-100 text-green-700 border-green-200",
   "out of stock": "bg-red-100 text-red-700 border-red-200",
   "low stock": "bg-amber-100 text-amber-700 border-amber-200",
+  "draft": "bg-amber-100 text-amber-700 border-amber-200",
+  "published": "bg-green-100 text-green-700 border-green-200",
 };
 
 // Format status for display
@@ -106,6 +111,7 @@ function Products() {
 
   return (
     <Layout pageTitle="Products" pageSubtitle="Manage your products and listings.">
+      <InlineFallback message="Demo Mode — backend unavailable, showing mock products." />
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-[#E1E7DF] p-5">

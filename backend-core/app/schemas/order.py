@@ -50,9 +50,11 @@ class OrderResponse(BaseModel):
 
     Fields are nullable to match the engine's sparse/partial order rows;
     ``validation_report`` is populated only on POST /orders.
+    Includes pricing_breakdown/parcels so legacy orders with embedded pricing
+    render even when GET /orders/{id}/pricing returns 404.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     id: str
     seller_id: str | None = None
@@ -82,6 +84,10 @@ class OrderResponse(BaseModel):
     created_at: str | None = None
     updated_at: str | None = None
     validation_report: dict | None = None
+    pricing_breakdown: dict | None = None
+    parcels: list[dict] | None = None
+    last_report: dict | None = None
+    qr_tokens: list[dict] | None = None
 
 
 class OrderListResponse(BaseModel):

@@ -116,8 +116,10 @@ async def _proxy_post(
     if x_seller_id:
         extra["X-Seller-Id"] = x_seller_id
     headers = _forward_headers(request, extra)
-    # ensure content-type json if not present
-    if "content-type" not in {k.lower() for k in headers}:
+    incoming_ct = request.headers.get("content-type") or request.headers.get("Content-Type")
+    if incoming_ct:
+        headers["Content-Type"] = incoming_ct
+    elif "content-type" not in {k.lower() for k in headers}:
         headers["Content-Type"] = "application/json"
     try:
         body_bytes = await request.body()

@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { useData } from "../../context/DataContext";
 import Layout from "../../components/seller/Layout";
 import { Search, Plus, ChevronRight } from "lucide-react";
+import InlineFallback from "../../components/InlineFallback";
+import { isDemoMode } from "../../utils/demoMode";
 
 // Status color mapping
 const statusStyles = {
@@ -95,6 +97,7 @@ function Orders() {
 
   return (
     <Layout pageTitle="Orders" pageSubtitle="Track and manage all your shipments.">
+      <InlineFallback message="Demo Mode — backend unavailable, showing mock orders." />
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-[#E1E7DF] p-6">

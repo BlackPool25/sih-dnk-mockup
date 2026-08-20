@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useData } from "../../context/DataContext";
+import { HindiToggle } from "../../context/HindiContext";
 import {
   QrCode,
   Package,
@@ -9,7 +10,6 @@ import {
   XCircle,
   Clock,
   Search,
-  Bell,
   LogOut,
   Menu,
   X,
@@ -20,6 +20,7 @@ import {
   MapPin,
   LayoutDashboard,
 } from "lucide-react";
+import InboxBell from "../../components/inbox/InboxBell";
 
 function DNKDashboard() {
   const navigate = useNavigate();
@@ -183,9 +184,7 @@ function DNKDashboard() {
             NiryatSaathi
           </h1>
           <div className="flex items-center gap-3">
-            <button className="relative p-2 rounded-lg hover:bg-[#F0F4EE] transition-colors">
-              <Bell className="w-5 h-5 text-[#6B7568]" />
-            </button>
+            <InboxBell />
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="p-2 rounded-lg hover:bg-[#F0F4EE] transition-colors"
@@ -272,9 +271,13 @@ function DNKDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <button className="relative p-2 rounded-lg hover:bg-[#F0F4EE] transition-colors">
-              <Bell className="w-5 h-5 text-[#6B7568]" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+            <HindiToggle />
+            <InboxBell />
+            <button
+              onClick={() => navigate("/inbox")}
+              className="hidden sm:inline-flex px-3 py-1.5 bg-[#A8C3A0] text-[#1B2E1B] rounded-lg font-['Figtree'] text-xs font-medium hover:bg-[#98B890]"
+            >
+              Inbox
             </button>
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-[#A8C3A0] flex items-center justify-center text-[#1B2E1B] font-['Fraunces'] font-semibold">

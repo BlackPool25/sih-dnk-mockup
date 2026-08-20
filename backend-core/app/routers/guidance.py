@@ -7,9 +7,16 @@ Hinglish simple_words are class-5 level (short, spoken Hindi).
 
 from __future__ import annotations
 
+import io
+import math
+import os
+import struct
+import wave
 from typing import Final
 
-from fastapi import APIRouter, Query
+import httpx
+from fastapi import APIRouter, Body, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.services.sarvam import tts_url_for_field
@@ -252,3 +259,135 @@ async def get_signup_guidance(
             source=meta.source,
             upfront_order=_UPFRONT_ORDER,
         )
+
+
+# ---------------------------------------------------------------------------
+# Public TTS fallback — POST /guidance/tts (no auth, always audible)
+# Proxies to voice-pipeline /tts or Sarvam live; on 401/missing key returns
+# a generated WAV beep so signup Play is never silent.
+# ---------------------------------------------------------------------------
+
+
+class TTSBody(BaseModel):
+    text: str = ""
+    language: str = "hi"
+    field: str | None = None
+
+
+def _mock_wav_bytes(text: str = "beep") -> bytes:
+    """Generate a short audible WAV beep (guaranteed audible offline).
+
+    Two-tone pattern 880Hz(0.35s) + silence(0.05s) + 660Hz(0.3s) + fade,
+    16kHz mono 16-bit PCM. Duration ~0.7s, ~22kB, loud enough on any speaker.
+    """
+    sr = 16000
+    dur = 0.70
+    samples = int(sr * dur)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        for i in range(samples):
+            t = i / sr
+            if t < 0.35:
+                f = 880.0
+                if t < 0.02:
+                    env = t / 0.02
+                elif t < 0.33:
+                    env = 1.0
+                else:
+                    env = (0.35 - t) / 0.02
+            elif t < 0.40:
+                f = 0.0
+                env = 0.0
+            else:
+                f = 660.0
+                if t < 0.42:
+                    env = (t - 0.40) / 0.02
+                elif t < 0.68:
+                    env = 1.0
+                else:
+                    env = (0.70 - t) / 0.02
+            if f == 0.0 or env <= 0:
+                v = 0
+            else:
+                v = int(14000 * env * math.sin(2 * math.pi * f * t))
+            w.writeframes(struct.pack("<h", int(max(-32767, min(32767, v)))))
+    return buf.getvalue()
+
+
+@router.post("/tts")
+async def guidance_tts(body: dict = Body(...)) -> Response:  # type: ignore[no-untyped-def]
+    """Public TTS — no auth required. Proxies to voice-pipeline, falls back to mock WAV."""
+    raw_text = str(body.get("text") or body.get("input") or body.get("hint") or "").strip()
+    language = str(body.get("language") or "hi").strip().lower()
+    # Normalize language code for downstream
+    lang_code = "hi-IN" if language.startswith("hi") else "en-IN"
+    # Ensure non-empty text so downstream never rejects with 400
+    text = raw_text if raw_text else "नमस्ते"
+    # Truncate to voice-pipeline limit
+    if len(text) > 400:
+        text = text[:400]
+
+    # Try live voice-pipeline if reachable (internal docker dns)
+    voice_url = os.getenv("VOICE_PIPELINE_URL", "http://voice-pipeline:8000")
+    # In docker compose, settings may not be loaded here; also try storage.config
+    try:
+        from storage.config import settings as _s
+
+        voice_url = _s.VOICE_PIPELINE_URL
+    except Exception:
+        pass
+
+    # Attempt live TTS via voice-pipeline
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(
+                f"{voice_url.rstrip('/')}/tts",
+                json={"text": text, "language": lang_code.split("-")[0]},
+            )
+            if resp.status_code < 400 and resp.content and len(resp.content) > 200:
+                # voice-pipeline returns audio/wav bytes
+                ctype = resp.headers.get("content-type", "audio/wav")
+                return Response(content=resp.content, media_type=ctype)
+    except Exception:
+        pass
+
+    # Try direct Sarvam live call if key present
+    try:
+        sarvam_key = os.getenv("SARVAM_API_KEY", "")
+        if sarvam_key:
+            import base64 as _b64
+
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                r = await client.post(
+                    "https://api.sarvam.ai/text-to-speech",
+                    headers={"api-subscription-key": sarvam_key},
+                    json={
+                        "text": text,
+                        "model": "bulbul:v2",
+                        "target_language_code": lang_code,
+                        "speaker": "anushka",
+                    },
+                )
+                if r.status_code < 400:
+                    data = r.json()
+                    audios = data.get("audios") or []
+                    if audios and isinstance(audios[0], str):
+                        wav_bytes = _b64.b64decode(audios[0])
+                        if len(wav_bytes) > 200:
+                            return Response(content=wav_bytes, media_type="audio/wav")
+                    # Also handle audio_url case
+                    url = data.get("audio_url") or data.get("url")
+                    if isinstance(url, str) and url.startswith("http"):
+                        async with httpx.AsyncClient(timeout=8.0) as c2:
+                            r2 = await c2.get(url)
+                            if r2.status_code < 400 and len(r2.content) > 200:
+                                return Response(content=r2.content, media_type="audio/wav")
+    except Exception:
+        pass
+
+    # Fallback: generated beep WAV (always audible, no auth, no network)
+    wav = _mock_wav_bytes(text)
+    return Response(content=wav, media_type="audio/wav", headers={"X-Mock-TTS": "beep-fallback", "X-Text-Len": str(len(text))})

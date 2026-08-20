@@ -2,6 +2,8 @@
 import { useNavigate } from "react-router-dom";
 import { ShoppingBag, User, LogOut, Settings, Package, MessageCircle, Compass } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+import { HindiToggle } from "../../context/HindiContext";
+import InboxBell from "../inbox/InboxBell";
 
 function Navbar() {
   const navigate = useNavigate();
@@ -91,8 +93,9 @@ function Navbar() {
           </div>
         )}
 
-        {/* Right Navigation - No Search */}
         <div className="flex items-center gap-4">
+          <HindiToggle />
+          {isAuthenticated ? <InboxBell className="bg-white/20 hover:bg-white/30" /> : null}
           {isAuthenticated ? (
             <div className="relative" ref={dropdownRef}>
               <button
