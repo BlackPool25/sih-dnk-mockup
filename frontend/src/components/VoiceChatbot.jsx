@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Send, User, Bot, FileText, CheckCircle2, Package, LogOut, Mic, Square, Loader2, X, ChevronDown, ChevronUp, Sparkles, Globe, Info, ShieldCheck, Volume2, VolumeX } from 'lucide-react';
-import { chat, getOrders, createOrder, transcribeAudio, synthesizeSpeech, downloadOrderPdf } from '../services/api';
+import { chat, getOrders, createOrder, generateDocs, transcribeAudio, synthesizeSpeech, downloadOrderPdf } from '../services/api';
 
 // Localization Dictionary (en, hi only — the backend supports exactly these)
 const I18N = {
@@ -425,6 +425,13 @@ function VoiceChatbot() {
 
       setCompletedOrder(created);
       fetchOrdersList();
+
+      // Immediately generate official export documents
+      try {
+        await generateDocs(created.id, token);
+      } catch (docErr) {
+        console.warn('Document generation notice:', docErr);
+      }
     } catch (err) {
       alert(`Error creating order: ${err.message}`);
     }
@@ -432,6 +439,11 @@ function VoiceChatbot() {
 
   const handleDownloadPdf = async (orderId) => {
     try {
+      try {
+        await generateDocs(orderId, token);
+      } catch {
+        // Continue if already generated
+      }
       const blob = await downloadOrderPdf(token, orderId);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');

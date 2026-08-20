@@ -537,6 +537,18 @@ async def get_order_pdf(
         target_types.add("PACKING")
     has_doc = any(str(d.get("doc_type") or "").upper() in target_types for d in doc_list)
 
+    if not has_doc and is_ready:
+        try:
+            gen_res = await val_client.generate_docs_all(order_id)
+            raw_docs = gen_res.get("documents", [])
+            if isinstance(raw_docs, dict):
+                doc_list = list(raw_docs.values())
+            elif isinstance(raw_docs, list):
+                doc_list = [d for d in raw_docs if isinstance(d, dict)]
+            has_doc = any(str(d.get("doc_type") or "").upper() in target_types for d in doc_list)
+        except Exception:
+            pass
+
     if not has_doc or not is_ready:
         raise HTTPException(
             status_code=422,
