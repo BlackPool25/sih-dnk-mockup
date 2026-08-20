@@ -278,7 +278,9 @@ def test_volumetric_does_not_trigger_when_actual_heavier():
 
 
 # ---------------------------------------------------------------------------
-# 13-16 : cap enforcement per country (US 5000, AU 2000 etc)
+# 13-16 : cap enforcement per country — updated caps (S.O. gazette + EMS Schedule I)
+# ITPS 5kg (5000g) for US/GB/AE/AU; EMS 31.5kg US, 30kg GB/AE, 20kg AU
+# Source: validation-engine/app/services/seed/lanes.py + DB lanes table (migration c9e8f1a2b3c4)
 # ---------------------------------------------------------------------------
 
 def test_itps_cap_us_5000_exact_feasible():
@@ -290,17 +292,69 @@ def test_itps_cap_us_5000_over_is_infeasible():
     assert r["feasible"] is False
     assert r["shipping_cost_minor"] is None
 
-def test_itps_cap_au_2000_enforced():
-    r = calculate_itps(itps_lane(weight_cap_g=2000).lane_data, actual_weight_g=2000)
+def test_itps_cap_gb_5000_enforced():
+    r = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=5000)
     assert r["feasible"] is True
-    r2 = calculate_itps(itps_lane(weight_cap_g=2000).lane_data, actual_weight_g=2001)
+    r2 = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=5001)
+    assert r2["feasible"] is False
+
+def test_itps_cap_ae_5000_enforced():
+    r = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=5000)
+    assert r["feasible"] is True
+    r2 = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=5001)
+    assert r2["feasible"] is False
+
+def test_itps_cap_au_5000_enforced():
+    r = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=5000)
+    assert r["feasible"] is True
+    r2 = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=5001)
+    assert r2["feasible"] is False
+
+# Backwards-compat alias: previously AU cap was 2000, now unified to 5000
+def test_itps_cap_au_2000_enforced():
+    r = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=5000)
+    assert r["feasible"] is True
+    r2 = calculate_itps(itps_lane(weight_cap_g=5000).lane_data, actual_weight_g=5001)
     assert r2["feasible"] is False
 
 def test_ems_cap_with_volumetric_exceeds_cap_infeasible():
-    # volumetric 18750 > cap 5000 -> infeasible even though actual 1500 < cap
     r = calculate_ems(ems_lane(divisor=4000, weight_cap_g=5000).lane_data, actual_weight_g=1500, length_cm=Decimal("50"), width_cm=Decimal("50"), height_cm=Decimal("30"))
     assert r["feasible"] is False
     assert r["chargeable_weight_g"] == 18750
+
+def test_ems_cap_us_31500_feasible_31501_infeasible():
+    assert calculate_ems(ems_lane(divisor=5000, weight_cap_g=31500).lane_data, actual_weight_g=31500, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"))["feasible"] is True
+    assert calculate_ems(ems_lane(divisor=5000, weight_cap_g=31500).lane_data, actual_weight_g=31501, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"))["feasible"] is False
+
+def test_ems_cap_gb_30000_feasible_30001_infeasible():
+    assert calculate_ems(ems_lane(divisor=5000, weight_cap_g=30000).lane_data, actual_weight_g=30000, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"))["feasible"] is True
+    assert calculate_ems(ems_lane(divisor=5000, weight_cap_g=30000).lane_data, actual_weight_g=30001, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"))["feasible"] is False
+
+def test_ems_cap_ae_30000_feasible_30001_infeasible():
+    assert calculate_ems(ems_lane(divisor=5000, weight_cap_g=30000).lane_data, actual_weight_g=30000, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"))["feasible"] is True
+    assert calculate_ems(ems_lane(divisor=5000, weight_cap_g=30000).lane_data, actual_weight_g=30001, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"))["feasible"] is False
+
+def test_ems_cap_au_20000_feasible_20001_infeasible():
+    assert calculate_ems(ems_lane(divisor=5000, weight_cap_g=20000).lane_data, actual_weight_g=20000, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"))["feasible"] is True
+    assert calculate_ems(ems_lane(divisor=5000, weight_cap_g=20000).lane_data, actual_weight_g=20001, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"))["feasible"] is False
+
+def test_ems_chargeable_weight_uses_volumetric_vs_cap():
+    r = calculate_ems(ems_lane(divisor=5000, weight_cap_g=20000).lane_data, actual_weight_g=1500, length_cm=Decimal("50"), width_cm=Decimal("50"), height_cm=Decimal("30"))
+    assert r["volumetric_weight_g"] == 15000
+    assert r["chargeable_weight_g"] == 15000
+    assert r["feasible"] is True
+    r2 = calculate_ems(ems_lane(divisor=4000, weight_cap_g=20000).lane_data, actual_weight_g=1500, length_cm=Decimal("50"), width_cm=Decimal("50"), height_cm=Decimal("30"))
+    assert r2["chargeable_weight_g"] == 18750
+    assert r2["feasible"] is True
+    r3 = calculate_ems(ems_lane(divisor=4000, weight_cap_g=15000).lane_data, actual_weight_g=1500, length_cm=Decimal("50"), width_cm=Decimal("50"), height_cm=Decimal("30"))
+    assert r3["feasible"] is False
+
+def test_itps_uses_actual_weight_not_volumetric():
+    lane = itps_lane(weight_cap_g=5000).lane_data
+    r = calculate_itps(lane, actual_weight_g=5000)
+    assert r["feasible"] is True
+    assert r["chargeable_weight_g"] == 5000
+    assert r["volumetric_weight_g"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -596,3 +650,146 @@ def test_post_pricing_parcel_breakdown_has_complete_fields():
     parcel = resp.json()["parcels"][0]
     for field in ("parcel_id","lane","package_id","item_quantities","product_weight_g","packaging_weight_g","actual_weight_g","chargeable_weight_g","shipping_cost_minor","packaging_cost_minor","total_cost_minor","transit_min_days","transit_max_days","objective_value"):
         assert field in parcel
+
+
+# ---------------------------------------------------------------------------
+# 33-40 : optimizer respects caps — split via max_parcels, chargeable vs actual
+# ---------------------------------------------------------------------------
+
+def test_optimizer_6kg_usa_itps_infeasible_must_split_or_use_ems():
+    # 6kg product weight -> ITPS 5kg cap infeasible for single parcel, EMS 31.5kg feasible
+    # optimizer with both lanes should pick EMS single parcel when max_parcels allows it
+    item = make_item(weight_g=6000, quantity=1, splittable=True, item_id="HEAVY6K")
+    result = optimize_shipment(
+        items=[item],
+        packages=[Package(package_id="BOX-STD", name="Standard Box", tare_weight_g=100, length_cm=Decimal("20"), width_cm=Decimal("20"), height_cm=Decimal("20"), cost_minor=5000, max_product_weight_g=10000)],
+        lanes=[itps_lane(weight_cap_g=5000), ems_lane(divisor=5000, weight_cap_g=31500)],
+        optimization_mode=OptimizationMode.CHEAPEST,
+        max_parcels=1,
+        landed_cost=default_landed_cost(),
+    )
+    assert result["parcel_count"] == 1
+    assert result["parcels"][0]["lane"] == "EMS"
+    assert result["parcels"][0]["actual_weight_g"] == 6100
+
+def test_optimizer_6kg_usa_itps_only_must_split_with_max_parcels_2():
+    item = make_item(weight_g=3000, quantity=2, splittable=True, item_id="A")
+    # total 6000g but splittable into 3000+3000, each parcel ~3100g feasible for ITPS 5000
+    result = optimize_shipment(
+        items=[item],
+        packages=[std_package()],
+        lanes=[itps_lane(weight_cap_g=5000)],
+        optimization_mode=OptimizationMode.CHEAPEST,
+        max_parcels=2,
+        landed_cost=default_landed_cost(),
+    )
+    assert result["parcel_count"] == 2
+    for p in result["parcels"]:
+        assert p["lane"] == "ITPS"
+        assert p["actual_weight_g"] <= 5000
+
+def test_optimizer_6kg_usa_itps_only_fails_with_max_parcels_1():
+    from app.optimizer import OptimizationError
+    item = make_item(weight_g=6000, quantity=1, splittable=True, item_id="HEAVY6K")
+    # Single item 6000g splittable but candidate generation splits by item quantities not weight — need quantity 2x3000 to allow split
+    # Non-splittable heavy item exceeding cap should be infeasible
+    heavy = make_item(weight_g=6000, quantity=1, splittable=False, item_id="HEAVY")
+    try:
+        optimize_shipment(
+            items=[heavy],
+            packages=[std_package()],
+            lanes=[itps_lane(weight_cap_g=5000)],
+            optimization_mode=OptimizationMode.CHEAPEST,
+            max_parcels=1,
+            landed_cost=default_landed_cost(),
+        )
+        assert False, "expected OptimizationError"
+    except OptimizationError:
+        pass
+
+def test_optimizer_21kg_au_ems_must_fail_or_split():
+    from app.optimizer import OptimizationError
+    heavy = make_item(weight_g=21000, quantity=1, splittable=False, item_id="HEAVY21")
+    try:
+        optimize_shipment(
+            items=[heavy],
+            packages=[std_package()],
+            lanes=[ems_lane(divisor=5000, weight_cap_g=20000)],
+            optimization_mode=OptimizationMode.CHEAPEST,
+            max_parcels=1,
+            landed_cost=default_landed_cost(),
+        )
+        assert False, "expected OptimizationError for AU EMS cap 20kg"
+    except OptimizationError:
+        pass
+
+def test_optimizer_21kg_au_ems_split_feasible_with_two_parcels():
+    item = make_item(weight_g=10500, quantity=2, splittable=True, item_id="A")
+    result = optimize_shipment(
+        items=[item],
+        packages=[Package(package_id="BOX-STD", name="Standard Box", tare_weight_g=100, length_cm=Decimal("20"), width_cm=Decimal("20"), height_cm=Decimal("20"), cost_minor=5000, max_product_weight_g=20000)],
+        lanes=[ems_lane(divisor=5000, weight_cap_g=20000)],
+        optimization_mode=OptimizationMode.CHEAPEST,
+        max_parcels=2,
+        landed_cost=default_landed_cost(),
+    )
+    assert result["parcel_count"] == 2
+    for p in result["parcels"]:
+        assert p["chargeable_weight_g"] <= 20000
+
+def test_optimizer_25kg_uk_must_use_ems_not_itps():
+    # 25kg product: ITPS 5kg cap infeasible, EMS 30kg feasible
+    item = make_item(weight_g=25000, quantity=1, splittable=False, item_id="HEAVY25")
+    result = optimize_shipment(
+        items=[item],
+        packages=[Package(package_id="BOX-STD", name="Standard Box", tare_weight_g=100, length_cm=Decimal("20"), width_cm=Decimal("20"), height_cm=Decimal("20"), cost_minor=5000, max_product_weight_g=30000)],
+        lanes=[itps_lane(weight_cap_g=5000), ems_lane(divisor=5000, weight_cap_g=30000)],
+        optimization_mode=OptimizationMode.CHEAPEST,
+        max_parcels=1,
+        landed_cost=default_landed_cost(),
+    )
+    assert result["parcel_count"] == 1
+    assert result["parcels"][0]["lane"] == "EMS"
+
+def test_optimizer_4kg_bulky_light_usa_volume_free_itps_feasible():
+    # 4kg product, small package dims so volumetric irrelevant for ITPS (volume_free)
+    # ITPS 5kg cap should be feasible
+    item = make_item(weight_g=4000, quantity=1, splittable=True, item_id="BULKY")
+    result = optimize_shipment(
+        items=[item],
+        packages=[std_package()],
+        lanes=[itps_lane(weight_cap_g=5000), ems_lane(divisor=5000, weight_cap_g=31500)],
+        optimization_mode=OptimizationMode.CHEAPEST,
+        max_parcels=1,
+        landed_cost=default_landed_cost(),
+    )
+    # ITPS cheaper for this weight, should be selected as cheapest
+    assert result["parcel_count"] == 1
+    assert result["parcels"][0]["actual_weight_g"] == 4100
+    assert result["parcels"][0]["actual_weight_g"] <= 5000
+
+def test_ems_border_31500_feasible_31501_infeasible_via_optimizer():
+    from app.optimizer import OptimizationError
+    # exact cap feasible
+    result = optimize_shipment(
+        items=[make_item(weight_g=31400, quantity=1, splittable=False, item_id="X")],
+        packages=[Package(package_id="BOX-STD", name="Standard Box", tare_weight_g=100, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"), cost_minor=5000, max_product_weight_g=40000)],
+        lanes=[ems_lane(divisor=5000, weight_cap_g=31500)],
+        optimization_mode=OptimizationMode.CHEAPEST,
+        max_parcels=1,
+        landed_cost=default_landed_cost(),
+    )
+    assert result["parcels"][0]["chargeable_weight_g"] == 31500
+    heavy = make_item(weight_g=31501, quantity=1, splittable=False, item_id="Y")
+    try:
+        optimize_shipment(
+            items=[heavy],
+            packages=[Package(package_id="BOX-STD", name="Standard Box", tare_weight_g=100, length_cm=Decimal("10"), width_cm=Decimal("10"), height_cm=Decimal("10"), cost_minor=5000, max_product_weight_g=40000)],
+            lanes=[ems_lane(divisor=5000, weight_cap_g=31500)],
+            optimization_mode=OptimizationMode.CHEAPEST,
+            max_parcels=1,
+            landed_cost=default_landed_cost(),
+        )
+        assert False, "expected infeasible"
+    except OptimizationError:
+        pass

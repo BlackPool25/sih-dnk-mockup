@@ -21,17 +21,18 @@ ITPS_EXPECTED_ROWS = 135  # Table VIII row-count gate (trailing prose must never
 ITPS_GAZETTE_URL = "https://archive.org/details/in.gazette.central.e.2026-02-06.269951"
 ITPS_GAZETTE_DATE = date(2026, 2, 6)
 
-# Weight caps — RESOLVED overrides (itps-lane.md §5).  The table file's own
-# line-147 note ("2 kg for USA…") is STALE: DoP OM CF-71/17/2025-CF-DOP
-# 01-Jan-2026 raised USA 2 kg → 5 kg (O10 resolved; USA shipping.md §1.3).
+# Weight caps — RESOLVED overrides (itps-lane.md §5).
+# Unified ITPS 5 kg (5000g) for US/GB/AE/AU per S.O. gazette + EMS Schedule I
+# update (2026-02-06 + DoP OM 01-Jan-2026).  Previous per-destination 2 kg
+# values for AU/GB/CA were stale and are now superseded.
 # NULL = unverified — never guessed from the "~29 destinations" list.
 ITPS_WEIGHT_CAP_G: dict[str, int] = {
-    "US": 5000,  # DoP OM 01-Jan-2026 (L1) + Shiprocket 21-Jan-2026 corroborates
-    "AU": 2000,  # L1 gazette per-destination + PO Rules §50E
-    "CA": 2000,  # L1 gazette per-destination
-    "GB": 2000,  # per Table VIII convention (UK shipping.md §2.2; row not individually verified)
-    "AE": 5000,  # DoP OM table (UAE shipping.md §2.1)
-    "SG": 5000,  # DoP OM table (UAE shipping.md §2.1 lists Singapore max 5 kg)
+    "US": 5000,  # United States — ITPS Limit 5 kg (S.O. gazette + DoP OM L1)
+    "GB": 5000,  # United Kingdom — ITPS Limit 5 kg (Schedule I)
+    "AE": 5000,  # United Arab Emirates — ITPS Limit 5 kg (DoP OM table)
+    "AU": 5000,  # Australia — ITPS Limit 5 kg (stricter EMS cap is separate)
+    "CA": 2000,  # Canada — L1 gazette per-destination (unchanged)
+    "SG": 5000,  # Singapore — DoP OM table (UAE shipping.md §2.1 lists Singapore max 5 kg)
 }
 
 # Transit ranges — L5, ranges only, ONLY where the corpus gives them
@@ -56,53 +57,64 @@ EMS_SOURCE_FILES: dict[str, str] = {
 # (country name, spec) — rates in paise; transit in working days;
 # `alternatives` = the C-1..C-4 conflicting published figures verbatim
 # (ems-lane.md §4.2 + per-market shipping.md), key REQUIRED by todo 8.
+EMS_CAPS_G: dict[str, int] = {
+    "US": 31500,
+    "GB": 30000,
+    "AE": 30000,
+    "AU": 20000,
+}
+
 EMS_MARKETS: list[tuple[str, dict[str, object]]] = [
     (
         "United States of America",
         {
-            "first": 86500,  # working figure: corpus §4.2 + indiapost.org (L5)
+            "first": 86500,
             "addl": 10000,
-            "transit": (5, 14),  # USA shipping.md §2.4
+            "weight_cap_g": 31500,
+            "transit": (5, 14),
             "alternatives": [
-                {"source": "clickpost", "first": 182000, "addl": 15000},  # USA shipping.md §2.1
-                {"source": "findpincode", "first": 58500, "addl": None},  # ems-lane.md §4.2
+                {"source": "clickpost", "first": 182000, "addl": 15000},
+                {"source": "findpincode", "first": 58500, "addl": None},
             ],
         },
     ),
     (
         "United Kingdom",
         {
-            "first": 86500,  # working figure: corpus §4.2 + indiapost.org (L5)
+            "first": 86500,
             "addl": 10000,
-            "transit": (4, 14),  # UK shipping.md §4
+            "weight_cap_g": 30000,
+            "transit": (4, 14),
             "alternatives": [
-                {"source": "findpincode", "first": 95500, "addl": 10500},  # UK shipping.md §3.1
-                {"source": "clickpost", "first": 196500, "addl": 9000},  # UK shipping.md §3.1
+                {"source": "findpincode", "first": 95500, "addl": 10500},
+                {"source": "clickpost", "first": 196500, "addl": 9000},
             ],
         },
     ),
     (
         "United Arab Emirates",
         {
-            "first": 60000,  # working figure (corpus; UAE range ₹600–1,400 across sources)
+            "first": 60000,
             "addl": 4000,
-            "transit": (3, 8),  # UAE shipping.md §3 / §4
+            "weight_cap_g": 30000,
+            "transit": (3, 8),
             "alternatives": [
-                {"source": "findpincode", "first": 89500, "addl": 5000},  # UAE shipping.md §3
-                {"source": "indspeedpost", "first": 124000, "addl": 5000},  # UAE shipping.md §3
-                {"source": "shiprocket", "first": 60000, "addl": 6000},  # UAE shipping.md §3
-                {"source": "clickpost", "first": 140000, "addl": 4000},  # UAE shipping.md §3
+                {"source": "findpincode", "first": 89500, "addl": 5000},
+                {"source": "indspeedpost", "first": 124000, "addl": 5000},
+                {"source": "shiprocket", "first": 60000, "addl": 6000},
+                {"source": "clickpost", "first": 140000, "addl": 4000},
             ],
         },
     ),
     (
         "Australia",
         {
-            "first": 63000,  # working figure: PO Rules §225 + indiapost.org (L5)
+            "first": 63000,
             "addl": 15500,
-            "transit": (5, 14),  # Australia shipping.md §3
+            "weight_cap_g": 20000,
+            "transit": (5, 14),
             "alternatives": [
-                {"source": "clickpost", "first": 112500, "addl": 23000},  # AU shipping.md §2.1
+                {"source": "clickpost", "first": 112500, "addl": 23000},
             ],
         },
     ),
@@ -174,9 +186,9 @@ def _ems_lanes() -> list[Lane]:
                 first_slab_rate_minor=spec["first"],  # type: ignore[arg-type]
                 addl_slab_g=250,
                 addl_slab_rate_minor=spec["addl"],  # type: ignore[arg-type]
-                weight_cap_g=None,  # no authoritative per-market ceiling (C11/C16)
-                volume_free=False,  # EMS may bill volumetric (PO Regs 2024 clause (r))
-                divisor=None,  # no official international divisor (÷4000/5000/6000 conflict)
+                weight_cap_g=spec["weight_cap_g"],  # type: ignore[arg-type]
+                volume_free=False,
+                divisor=5000,
                 transit_min_days=transit[0],
                 transit_max_days=transit[1],
                 conflicts={"alternatives": spec["alternatives"]},

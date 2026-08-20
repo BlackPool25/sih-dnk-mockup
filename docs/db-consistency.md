@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-19  
 **Scope:** 3 SQLAlchemy bases + 1 stateless service sharing one Postgres DB (`sih_dnk`).  
-**Audited at:** `alembic_version=8382b870f54f`, `auth_alembic_version=dd7cbe9d8ad4`, `core_alembic_version=2ae521447228`.
+**Audited at:** `alembic_version=c9e8f1a2b3c4`, `auth_alembic_version=dd7cbe9d8ad4`, `core_alembic_version=2ae521447228`.
 
 ---
 
@@ -130,6 +130,20 @@ uv run --project validation-engine pytest -q
 ```
 
 ---
+
+## 7. Weight Caps Update (c9e8f1a2b3c4 — 2026-08-19)
+
+**Provenance:** S.O. 659(E) Gazette of India 06-Feb-2026 (L1) + DoP OM CF-71/17/2025-CF-DOP 01-Jan-2026 raising USA to 5kg; EMS Schedule I (L5 estimate, flagged).
+
+| Lane | US | GB | AE | AU | volume_free | divisor |
+|------|----|----|----|----|-------------|---------|
+| ITPS | 5000 | 5000 | 5000 | 5000 | TRUE | NULL |
+| EMS | 31500 | 30000 | 30000 | 20000 | FALSE | 5000 |
+
+- ITPS chargeable = actual weight (volume_free TRUE, no divisor); cap enforced on actual_weight_g.
+- EMS chargeable = max(actual, volumetric) with divisor 5000 (volumetric = L×W×H/5000×1000); cap enforced on chargeable_weight_g.
+- Optimizer: candidate generation filters via weight_cap_g — parcels exceeding cap are infeasible and force split via max_parcels.
+- Tests pin borders: 5000 feasible/5001 infeasible ITPS; 31500/31501 US EMS, 30000/30001 GB/AE, 20000/20001 AU EMS; 6kg USA split 5+1 or EMS; 21kg AU EMS infeasible.
 
 ## 6. Files Changed in This Audit
 

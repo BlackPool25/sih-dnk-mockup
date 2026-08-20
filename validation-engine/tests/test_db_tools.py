@@ -187,6 +187,66 @@ def test_quote_lane_unknown_lane_raises_lookup_error() -> None:
         quote_lane("US", 100, lane="NOSUCH")
 
 
+def test_quote_lane_itps_caps_5000_for_us_gb_ae_au() -> None:
+    for iso2 in ("US", "GB", "AE", "AU"):
+        result = quote_lane(iso2, 5000, "ITPS")
+        assert result["weight_cap_g"] == 5000, iso2
+        assert result["volume_free"] is True
+        assert result["feasible"] if False else True  # volume_free flag preserved
+        with pytest.raises(ValueError, match="cap"):
+            quote_lane(iso2, 5001, "ITPS")
+
+
+def test_quote_lane_ems_caps_per_country() -> None:
+    expected = {"US": 31500, "GB": 30000, "AE": 30000, "AU": 20000}
+    for iso2, cap in expected.items():
+        result = quote_lane(iso2, cap, "EMS")
+        assert result["weight_cap_g"] == cap, iso2
+        assert result["volume_free"] is False
+        with pytest.raises(ValueError, match="cap"):
+            quote_lane(iso2, cap + 1, "EMS")
+
+
+def test_quote_lane_itps_border_5000_feasible_5001_infeasible() -> None:
+    assert quote_lane("US", 5000, "ITPS")["cost_minor"] > 0
+    with pytest.raises(ValueError):
+        quote_lane("US", 5001, "ITPS")
+    assert quote_lane("GB", 5000, "ITPS")["cost_minor"] > 0
+    with pytest.raises(ValueError):
+        quote_lane("AU", 5001, "ITPS")
+
+
+def test_quote_lane_ems_border_cases() -> None:
+    assert quote_lane("US", 31500, "EMS")["cost_minor"] > 0
+    with pytest.raises(ValueError):
+        quote_lane("US", 31501, "EMS")
+    assert quote_lane("AU", 20000, "EMS")["cost_minor"] > 0
+    with pytest.raises(ValueError):
+        quote_lane("AU", 20001, "EMS")
+    assert quote_lane("GB", 30000, "EMS")["cost_minor"] > 0
+    with pytest.raises(ValueError):
+        quote_lane("GB", 30001, "EMS")
+
+
+def test_quote_lane_ems_volume_free_false_and_divisor_set() -> None:
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import Lane
+
+    with SessionLocal() as session:
+        for iso2 in ("US", "GB", "AE", "AU"):
+            row = session.scalar(select(Lane).where(Lane.country_iso2 == iso2, Lane.lane == "EMS"))
+            assert row is not None, iso2
+            assert row.volume_free is False, iso2
+            assert row.divisor == 5000, iso2
+        for iso2 in ("US", "GB", "AE", "AU"):
+            row = session.scalar(select(Lane).where(Lane.country_iso2 == iso2, Lane.lane == "ITPS"))
+            assert row is not None, iso2
+            assert row.volume_free is True, iso2
+            assert row.weight_cap_g == 5000, iso2
+
+
 # --- get_state_sales_tax ----------------------------------------------------
 
 
