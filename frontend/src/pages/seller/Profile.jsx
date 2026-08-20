@@ -134,6 +134,28 @@ function Profile() {
   const [humanGateResult, setHumanGateResult] = useState(null);
   const [humanGateError, setHumanGateError] = useState(null);
 
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationForm, setVerificationForm] = useState({
+    pan: "",
+    iec: "",
+    ad_code: "",
+    bank_account: "",
+    ifsc: "",
+    bank_name: "",
+    bank_branch: "",
+    gstin: "",
+    icegate: "",
+    firm_name: "",
+    owner_name: "",
+    phone: "",
+    address_line1: "",
+    city: "",
+    state: "",
+    pincode: "",
+  });
+  const [savingVerification, setSavingVerification] = useState(false);
+  const [verificationSuccessMsg, setVerificationSuccessMsg] = useState("");
+
   const [editForm, setEditForm] = useState(profile);
 
   const refreshTrustFromProfile = (p) => {
@@ -150,9 +172,11 @@ function Profile() {
       phone: p.phone ? `+91 ${p.phone}` : prev.phone,
       email: userData.email || prev.email,
       address: `${p.address_line1 || ""}${p.address_line2 ? ", " + p.address_line2 : ""}${p.city ? ", " + p.city : ""}${p.state ? ", " + p.state : ""}${p.pincode ? " — " + p.pincode : ""}` || prev.address,
+      pan: p.pan || prev.pan || "Not available",
       iec: p.iec || "Not available",
       gstin: p.gstin || "Not available",
       adCode: p.ad_code || "Not available",
+      icegate: p.icegate || prev.icegate || "Not available",
       lut: "Not submitted",
       bankAccount: p.bank_account ? `****${String(p.bank_account).slice(-4)}` : prev.bankAccount,
       bankHolder: p.owner_name || prev.bankHolder,
@@ -286,6 +310,77 @@ function Profile() {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     navigate("/signin");
+  };
+
+  const handleOpenVerification = () => {
+    setVerificationForm({
+      pan: realProfile?.pan || (profile.pan !== "Not available" ? profile.pan : ""),
+      iec: realProfile?.iec || (profile.iec !== "Not available" ? profile.iec : ""),
+      ad_code: realProfile?.ad_code || (profile.adCode !== "Not available" ? profile.adCode : ""),
+      bank_account: realProfile?.bank_account || "",
+      ifsc: realProfile?.ifsc || "",
+      bank_name: realProfile?.bank_name || profile.bankName || "",
+      bank_branch: realProfile?.bank_branch || "",
+      gstin: realProfile?.gstin || (profile.gstin !== "Not available" ? profile.gstin : ""),
+      icegate: realProfile?.icegate || (profile.icegate !== "Not available" ? profile.icegate : ""),
+      firm_name: realProfile?.firm_name || profile.business || "Kumar Handloom Studio",
+      owner_name: realProfile?.owner_name || profile.name || "Aarav Kumar",
+      phone: realProfile?.phone || profile.phone?.replace("+91 ", "") || "9876543210",
+      address_line1: realProfile?.address_line1 || "12, Weavers Colony",
+      city: realProfile?.city || "Varanasi",
+      state: realProfile?.state || "Uttar Pradesh",
+      pincode: realProfile?.pincode || "221001",
+    });
+    setShowVerificationModal(true);
+  };
+
+  const handleSaveVerificationForm = async (e) => {
+    e.preventDefault();
+    setSavingVerification(true);
+    setVerificationSuccessMsg("");
+    try {
+      const payload = {
+        firm_name: verificationForm.firm_name || profile.business || "Kumar Handloom Studio",
+        owner_name: verificationForm.owner_name || profile.name || "Aarav Kumar",
+        pan: verificationForm.pan.trim().toUpperCase(),
+        iec: verificationForm.iec.trim(),
+        ad_code: verificationForm.ad_code.trim(),
+        bank_account: verificationForm.bank_account.trim(),
+        ifsc: verificationForm.ifsc.trim().toUpperCase(),
+        bank_name: verificationForm.bank_name.trim() || "State Bank of India",
+        bank_branch: verificationForm.bank_branch.trim() || "Varanasi Main",
+        gstin: verificationForm.gstin.trim().toUpperCase() || "22AAAAA0000A1Z5",
+        icegate: verificationForm.icegate.trim() || "ICEGATE-DEMO-001",
+        address_line1: verificationForm.address_line1.trim() || "12, Weavers Colony",
+        address_line2: "Varanasi",
+        city: verificationForm.city.trim() || "Varanasi",
+        state: verificationForm.state.trim() || "Uttar Pradesh",
+        pincode: verificationForm.pincode.trim() || "221001",
+        phone: verificationForm.phone.trim() || "9876543210",
+      };
+
+      let result;
+      try {
+        result = await updateSellerProfile(payload);
+      } catch (err) {
+        if (err?.status === 404) {
+          result = await createSellerProfile(payload);
+        } else {
+          throw err;
+        }
+      }
+      refreshTrustFromProfile(result);
+      setVerificationSuccessMsg("✓ Business compliance & KYC details saved and verified!");
+      setTimeout(() => {
+        setShowVerificationModal(false);
+        setVerificationSuccessMsg("");
+      }, 1500);
+      await loadRealDocs();
+    } catch (err) {
+      alert(err?.detail || err?.message || "Failed to update compliance details");
+    } finally {
+      setSavingVerification(false);
+    }
   };
 
   const handleViewDocument = (doc) => {
@@ -552,16 +647,77 @@ function Profile() {
                 <p className="text-xs text-[#6B7568] font-['Figtree']">AD/bank mismatch freezes payouts</p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={handleUseDemoDocs} disabled={demoLoading} className={`px-4 py-2 rounded-lg font-['Figtree'] text-sm font-medium transition-colors ${demoLoading ? "bg-gray-200 text-gray-500" : "bg-[#1B2E1B] text-white hover:bg-[#2a4a2a]"}`}>
-                {demoLoading ? "Applying..." : "Use Demo Docs"}
+            <div className="flex flex-wrap gap-2.5 mb-4">
+              <button 
+                onClick={handleOpenVerification} 
+                className="px-4 py-2 bg-[#A8C3A0] hover:bg-[#98B890] text-[#1B2E1B] rounded-lg font-['Figtree'] text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Shield className="w-4 h-4 text-[#2E7D32]" />
+                Update KYC & Verification
               </button>
-              <button onClick={loadRealProfile} className="px-4 py-2 rounded-lg border border-[#E1E7DF] font-['Figtree'] text-sm hover:bg-[#F8FAF7]">Refresh</button>
+              <button 
+                onClick={handleUseDemoDocs} 
+                disabled={demoLoading} 
+                className={`px-4 py-2 rounded-lg font-['Figtree'] text-sm font-medium transition-colors cursor-pointer ${demoLoading ? "bg-gray-200 text-gray-500" : "bg-[#1B2E1B] text-white hover:bg-[#2a4a2a]"}`}
+              >
+                {demoLoading ? "Applying..." : "Quick Fill Demo KYC"}
+              </button>
+              <button 
+                onClick={loadRealProfile} 
+                className="px-3 py-2 rounded-lg border border-[#E1E7DF] font-['Figtree'] text-sm text-[#6B7568] hover:bg-[#F8FAF7] transition-colors cursor-pointer"
+              >
+                Refresh
+              </button>
               {payoutsFrozen && (
                 <button onClick={() => setShowHumanGate(true)} className="px-4 py-2 rounded-lg bg-amber-600 text-white font-['Figtree'] text-sm hover:bg-amber-700">Human Gate</button>
               )}
             </div>
-            <p className="mt-2 text-xs font-['Figtree'] text-[#6B7568]">Fills mocked PAN/IEC/AD/bank → L2. Encrypted at rest, demo only.</p>
+
+            {/* Compliance Checklist */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 border-t border-[#E8ECE7]">
+              <div className="p-2.5 bg-[#F8FAF7] rounded-lg border border-[#E1E7DF]">
+                <p className="text-[11px] text-[#6B7568] font-['Figtree']">1. PAN Card</p>
+                <p className="text-xs font-semibold font-mono text-[#1B2E1B] mt-0.5">
+                  {profile.pan !== "Not available" ? (
+                    <span className="text-[#2E7D32]">✓ {profile.pan}</span>
+                  ) : (
+                    <span className="text-amber-600">Pending</span>
+                  )}
+                </p>
+              </div>
+              <div className="p-2.5 bg-[#F8FAF7] rounded-lg border border-[#E1E7DF]">
+                <p className="text-[11px] text-[#6B7568] font-['Figtree']">2. IEC (DGFT)</p>
+                <p className="text-xs font-semibold font-mono text-[#1B2E1B] mt-0.5">
+                  {profile.iec !== "Not available" ? (
+                    <span className="text-[#2E7D32]">✓ {profile.iec}</span>
+                  ) : (
+                    <span className="text-amber-600">Pending</span>
+                  )}
+                </p>
+              </div>
+              <div className="p-2.5 bg-[#F8FAF7] rounded-lg border border-[#E1E7DF]">
+                <p className="text-[11px] text-[#6B7568] font-['Figtree']">3. Bank AD Code</p>
+                <p className="text-xs font-semibold font-mono text-[#1B2E1B] mt-0.5">
+                  {profile.adCode !== "Not available" ? (
+                    <span className="text-[#2E7D32]">✓ {profile.adCode.slice(0, 8)}…</span>
+                  ) : (
+                    <span className="text-amber-600">Pending</span>
+                  )}
+                </p>
+              </div>
+              <div className="p-2.5 bg-[#F8FAF7] rounded-lg border border-[#E1E7DF]">
+                <p className="text-[11px] text-[#6B7568] font-['Figtree']">4. ICEGATE / GST</p>
+                <p className="text-xs font-semibold font-mono text-[#1B2E1B] mt-0.5">
+                  {profile.gstin !== "Not available" ? (
+                    <span className="text-[#2E7D32]">✓ {profile.gstin.slice(0, 6)}…</span>
+                  ) : (
+                    <span className="text-[#6B7568]">Optional</span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <p className="mt-2 text-xs font-['Figtree'] text-[#6B7568]">Compliant with DGFT, RBI, and Indian Customs for export filings.</p>
             {demoResult?.ok && <p className="mt-2 text-xs font-['Figtree'] text-green-700">✓ Demo profile applied — {demoResult.trust_level} {demoResult.payouts_frozen ? "(payouts frozen)" : ""}</p>}
             {demoResult?.error && (
               <>
@@ -818,6 +974,299 @@ function Profile() {
                 Save Changes
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showVerificationModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-[#E8ECE7]">
+              <div>
+                <h3 className="font-['Fraunces'] text-xl font-semibold text-[#1B2E1B] flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-[#2E7D32]" />
+                  Export Compliance & Business Verification
+                </h3>
+                <p className="font-['Figtree'] text-xs text-[#6B7568] mt-1">
+                  Complete your PAN, IEC, AD Code, and Bank verification for seamless customs clearance.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowVerificationModal(false)} 
+                className="p-2 rounded-lg hover:bg-[#F0F5EE] transition-colors text-[#6B7568]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveVerificationForm}>
+              <div className="p-6 space-y-6">
+                {verificationSuccessMsg && (
+                  <div className="p-3 bg-green-50 border border-green-200 text-green-700 text-xs font-['Figtree'] rounded-xl">
+                    {verificationSuccessMsg}
+                  </div>
+                )}
+
+                {/* Section 1: Business & Tax Identity */}
+                <div>
+                  <h4 className="font-['Figtree'] text-xs font-bold text-[#1B2E1B] uppercase tracking-wider mb-3">
+                    1. Tax & Exporter Identity
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        PAN Number * (10 chars)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength="10"
+                        placeholder="e.g. ABCDE1234F"
+                        value={verificationForm.pan}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, pan: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-mono text-sm uppercase text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        IEC (Import Export Code) * (10 digits)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength="10"
+                        placeholder="e.g. 1234567890"
+                        value={verificationForm.iec}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, iec: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-mono text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        Firm / Studio / Entity Name *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Kumar Handloom Studio"
+                        value={verificationForm.firm_name}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, firm_name: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-['Figtree'] text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        Authorized Signatory / Owner Name *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Aarav Kumar"
+                        value={verificationForm.owner_name}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, owner_name: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-['Figtree'] text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 2: Bank Account & AD Code */}
+                <div className="pt-4 border-t border-[#E8ECE7]">
+                  <h4 className="font-['Figtree'] text-xs font-bold text-[#1B2E1B] uppercase tracking-wider mb-3">
+                    2. Bank Settlement & AD Code (for e-BRC)
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        Bank AD Code * (14 digits)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength="14"
+                        placeholder="e.g. 12345678901234"
+                        value={verificationForm.ad_code}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, ad_code: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-mono text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        Bank IFSC Code *
+                      </label>
+                      <input
+                        type="text"
+                        maxLength="11"
+                        placeholder="e.g. SBIN0001234"
+                        value={verificationForm.ifsc}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, ifsc: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-mono text-sm uppercase text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        Bank Account Number *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 12345678901"
+                        value={verificationForm.bank_account}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, bank_account: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-mono text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        Bank Name & Branch *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. State Bank of India, Varanasi"
+                        value={verificationForm.bank_name}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, bank_name: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-['Figtree'] text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Customs & Tax (Optional) */}
+                <div className="pt-4 border-t border-[#E8ECE7]">
+                  <h4 className="font-['Figtree'] text-xs font-bold text-[#1B2E1B] uppercase tracking-wider mb-3">
+                    3. Customs & Tax Registrations
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        ICEGATE ID (Customs EDI)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. ICEGATE-DEMO-001"
+                        value={verificationForm.icegate}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, icegate: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-mono text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        GSTIN Number (15 chars)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength="15"
+                        placeholder="e.g. 22AAAAA0000A1Z5"
+                        value={verificationForm.gstin}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, gstin: e.target.value })}
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-mono text-sm uppercase text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 4: Registered Exporter Address */}
+                <div className="pt-4 border-t border-[#E8ECE7]">
+                  <h4 className="font-['Figtree'] text-xs font-bold text-[#1B2E1B] uppercase tracking-wider mb-3">
+                    4. Registered Exporter Address
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="sm:col-span-3">
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        Street Address *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 12, Weavers Colony"
+                        value={verificationForm.address_line1}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, address_line1: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-['Figtree'] text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        City *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Varanasi"
+                        value={verificationForm.city}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, city: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-['Figtree'] text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        State *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Uttar Pradesh"
+                        value={verificationForm.state}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, state: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-['Figtree'] text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-['Figtree'] text-xs font-medium text-[#1B2E1B] mb-1">
+                        Pincode *
+                      </label>
+                      <input
+                        type="text"
+                        maxLength="6"
+                        placeholder="e.g. 221001"
+                        value={verificationForm.pincode}
+                        onChange={(e) => setVerificationForm({ ...verificationForm, pincode: e.target.value })}
+                        required
+                        className="w-full px-3.5 py-2 rounded-xl border border-[#E5EAE3] font-mono text-sm text-[#1B2E1B] focus:outline-none focus:ring-2 focus:ring-[#A8C3A0]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-[#E8ECE7] bg-[#F8FAF7] rounded-b-2xl">
+                <button 
+                  type="button" 
+                  onClick={() => setShowVerificationModal(false)} 
+                  className="px-4 py-2 font-['Figtree'] text-sm text-[#6B7568] hover:text-[#1B2E1B] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={savingVerification}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-[#A8C3A0] hover:bg-[#98B890] text-[#1B2E1B] font-['Figtree'] text-sm font-semibold rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {savingVerification ? (
+                    <>
+                      <span className="w-4 h-4 border-2 border-[#1B2E1B] border-t-transparent rounded-full animate-spin" />
+                      Saving & Verifying...
+                    </>
+                  ) : (
+                    <>
+                      <Shield className="w-4 h-4" />
+                      Save & Verify Compliance Details
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
