@@ -8,6 +8,7 @@ a ``ValidationReport``.  Business errors are in the report, not HTTP errors.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, ValidationError
@@ -332,6 +333,8 @@ class ValidateShipmentRequest(BaseModel):
     iec: str | None = None
     gstin: str | None = None
     state_iso2: str | None = None
+    previous_db_info: dict[str, Any] | None = None
+    changed_fields: list[str] | None = None
 
 
 shipment_router = APIRouter(prefix="/api/validate", tags=["validation"])
@@ -363,11 +366,14 @@ def validate_shipment_turn(payload: ValidateShipmentRequest) -> ValidationTurnRe
             for error in exc.errors()
         ]
 
-    # Post-hoc sanity gate (Wave 1 T1): a value can be business-valid yet
-    # implausible (quantity=2000 for small-woodware) — re-ask via
-    # pick_next_field (business-error-wins) instead of booking it.
+    if payload.changed_fields is not None and payload.changed_fields:
+        allowed = set(payload.changed_fields)
+        business_errors = [e for e in business_errors if e.field in allowed]
+
     seen_fields = {error.field for error in business_errors}
     for error in sanity_violations(draft, draft.product_category):
+        if payload.changed_fields is not None and payload.changed_fields and error.field not in set(payload.changed_fields):
+            continue
         if error.field not in seen_fields:
             business_errors.append(error)
             seen_fields.add(error.field)
@@ -429,27 +435,53 @@ def validate_shipment_turn(payload: ValidateShipmentRequest) -> ValidationTurnRe
             state_tax = None
 
     hs_codes = data.hs_codes
-    try:
-        category = next(
-            (
-                c
-                for c in search_categories(draft.product_category)
-                if c["slug"] == draft.product_category
-            ),
-            None,
-        )
-    except Exception:
-        category = None
+    previous = payload.previous_db_info or {}
+    if previous and isinstance(previous.get("category"), dict):
+        prev_cat = previous.get("category")
+        if isinstance(prev_cat, dict) and prev_cat.get("slug") == draft.product_category:
+            category: dict[str, Any] | None = dict(prev_cat)  # type: ignore[arg-type]
+        else:
+            try:
+                category = next(
+                    (
+                        c
+                        for c in search_categories(draft.product_category or "")
+                        if c["slug"] == draft.product_category
+                    ),
+                    None,
+                )
+            except Exception:
+                category = None
+    else:
+        try:
+            category = next(
+                (
+                    c
+                    for c in search_categories(draft.product_category or "")
+                    if c["slug"] == draft.product_category
+                ),
+                None,
+            )
+        except Exception:
+            category = None
+
+    duties: list[dict[str, Any]] = data.duties
+    lane: dict[str, Any] | None = data.lane
+    landed: int | None = data.landed_cost_minor
+    if previous and not duties and isinstance(previous.get("duties"), list):
+        duties = previous["duties"]  # type: ignore[assignment]
+    if previous and lane is None and isinstance(previous.get("lane"), dict):
+        lane = previous["lane"]  # type: ignore[assignment]
 
     db_info = DbInfo(
         category=category,
         hs_codes=hs_codes,
         cth=hs_codes[0]["hs6"][:4] if hs_codes else None,
         product_description=data.category_name,
-        duties=data.duties,
-        lane=data.lane,
+        duties=duties,
+        lane=lane,
         state_sales_tax=state_tax,
-        landed_cost_minor=data.landed_cost_minor,
+        landed_cost_minor=landed,
     )
     return ValidationTurnReport(
         draft=draft,

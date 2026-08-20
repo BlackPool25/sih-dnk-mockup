@@ -20,6 +20,8 @@ Every turn:
 from __future__ import annotations
 
 import json
+import time
+import unicodedata
 import uuid
 from typing import Any
 
@@ -36,9 +38,39 @@ from app.services.llm_reply import (
     offtopic_reply,
     options_line,
 )
+from app.services.translation import (
+    ensure_english_free_text,
+    is_latin_free_text,
+    translate_consignee_hi_en,
+)
 from app.services.val_client import ServiceUnavailable, ValClient
+
 _REDIS_KEY_PREFIX = "chat_session"
 _SENTINELS: frozenset[object] = frozenset({-1, "unknown", None})
+
+_SEARCH_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_SEARCH_TTL_SECONDS = 300.0
+
+
+def _normalize_search_query(query: str) -> str:
+    return unicodedata.normalize("NFKC", query).lower().strip()
+
+
+def _search_cache_get(query: str) -> list[dict[str, Any]] | None:
+    key = _normalize_search_query(query)
+    entry = _SEARCH_CACHE.get(key)
+    if entry is None:
+        return None
+    ts, value = entry
+    if time.monotonic() - ts > _SEARCH_TTL_SECONDS:
+        _SEARCH_CACHE.pop(key, None)
+        return None
+    return value
+
+
+def _search_cache_set(query: str, value: list[dict[str, Any]]) -> None:
+    key = _normalize_search_query(query)
+    _SEARCH_CACHE[key] = (time.monotonic(), value)
 
 
 def _sentinel(value: object) -> bool:
@@ -56,6 +88,13 @@ def _get_settings():
 # ---------------------------------------------------------------------------
 
 
+def _call_enricher(enricher, lang, template_text, draft, db_info, next_field, session_state):
+    try:
+        return enricher.enrich(lang, template_text, draft, db_info, next_field, session_state=session_state)
+    except TypeError:
+        return enricher.enrich(lang, template_text, draft, db_info, next_field)
+
+
 def new_state(user_id: str, language: str) -> dict[str, Any]:
     return {
         "user_id": user_id,
@@ -68,6 +107,11 @@ def new_state(user_id: str, language: str) -> dict[str, Any]:
         "db_info": None,
         "document_ready": False,
         "candidates": [],
+        "iec": None,
+        "gstin": None,
+        "state_code": None,
+        "state_iso2": None,
+        "has_greeted": False,
     }
 
 
@@ -100,6 +144,11 @@ async def load_state(redis, conv_id: str) -> dict[str, Any] | None:
     state["db_info"] = db_info if isinstance(db_info, dict) else None
     state["document_ready"] = flat.get("document_ready") == "true"
     state["candidates"] = _load_json("candidates", [])
+    state["iec"] = flat.get("iec") or None
+    state["gstin"] = flat.get("gstin") or None
+    state["state_code"] = flat.get("state_code") or None
+    state["state_iso2"] = flat.get("state_iso2") or None
+    state["has_greeted"] = flat.get("has_greeted") == "true"
     return state
 
 
@@ -110,13 +159,18 @@ async def save_state(redis, conv_id: str, state: dict[str, Any]) -> None:
         "user_id": str(state["user_id"]),
         "language": str(state["language"]),
         "current_step": str(state["current_step"]),
-        "filled_fields": json.dumps(state["filled_fields"]),
+        "filled_fields": json.dumps(state["filled_fields"], ensure_ascii=False),
         "pending_fields": json.dumps(state["pending_fields"]),
-        "history": json.dumps(state["history"]),
-        "validation_report": json.dumps(state["validation_report"]),
-        "db_info": json.dumps(state["db_info"]),
+        "history": json.dumps(state["history"], ensure_ascii=False),
+        "validation_report": json.dumps(state["validation_report"], ensure_ascii=False),
+        "db_info": json.dumps(state["db_info"], ensure_ascii=False),
         "document_ready": "true" if state["document_ready"] else "false",
-        "candidates": json.dumps(state["candidates"]),
+        "candidates": json.dumps(state["candidates"], ensure_ascii=False),
+        "iec": str(state["iec"]) if state.get("iec") else "",
+        "gstin": str(state["gstin"]) if state.get("gstin") else "",
+        "state_code": str(state.get("state_code") or state.get("state_iso2") or ""),
+        "state_iso2": str(state.get("state_iso2") or state.get("state_code") or ""),
+        "has_greeted": "true" if state.get("has_greeted") else "false",
     }
     await redis.hset(key, mapping=flat)
     ttl_seconds = _get_settings().LLM_CONVERSATION_TTL_HOURS * 3600
@@ -171,13 +225,15 @@ def build_reply(
     db_info: dict[str, Any] | None,
     next_field: str | None,
     candidates: list[dict[str, Any]],
+    changed_fields: list[str] | None = None,
+    has_greeted: bool = True,
 ) -> str:
-    """The template reply: disambiguation options, else echo + next question."""
     if candidates:
         return options_line(lang, candidates)
     if next_field is None:
-        return f"{echo_line(lang, draft, db_info)} {TEMPLATES[lang]['ready']}".strip()
-    echo = echo_line(lang, draft, db_info)
+        echo = echo_line(lang, draft, db_info, only_fields=changed_fields)
+        return f"{echo} {TEMPLATES[lang]['ready']}".strip()
+    echo = echo_line(lang, draft, db_info, only_fields=changed_fields)
     question = ask_line(lang, next_field)
     if echo:
         return f"{echo} {question}"
@@ -226,6 +282,37 @@ def _expected_field(state: dict[str, Any]) -> str | None:
     return str(pending[0]) if pending else None
 
 
+async def _maybe_translate_consignee(
+    state: dict[str, Any], redis
+) -> dict[str, str] | None:
+    raw = state["filled_fields"].get("consignee")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    if is_latin_free_text(raw):
+        return None
+    existing_en = state["filled_fields"].get("consignee_en")
+    existing_hi = state["filled_fields"].get("consignee_hi")
+    if existing_hi == raw and isinstance(existing_en, str) and existing_en:
+        return {"hi": str(existing_hi), "en": str(existing_en)}
+    try:
+        hi_en = await translate_consignee_hi_en(raw, redis=redis)
+        state["filled_fields"]["consignee_hi"] = hi_en["hi"]
+        state["filled_fields"]["consignee_en"] = hi_en["en"]
+        return hi_en
+    except Exception:
+        return None
+
+
+async def _cached_search_categories(client: ValClient, query: str) -> list[dict[str, Any]]:
+    cached = _search_cache_get(query)
+    if cached is not None:
+        return cached
+    result = await client.search_categories(query)
+    typed: list[dict[str, Any]] = [dict(r) for r in result]
+    _search_cache_set(query, typed)
+    return typed
+
+
 async def run_turn(
     *,
     user_id: str,
@@ -234,7 +321,11 @@ async def run_turn(
     state: dict[str, Any],
     redis,
     iec: str | None = None,
+    gstin: str | None = None,
+    state_code: str | None = None,
+    state_iso2: str | None = None,
     val_client: ValClient | None = None,
+    changed_fields: list[str] | None = None,
 ) -> ChatResponse:
     """Execute one chat turn; returns the extended ChatResponse."""
     if val_client is None:
@@ -243,7 +334,19 @@ async def run_turn(
         val_client = _default_client
     client = val_client
     lang = body.language if body.language in ("hi", "en") else "hi"
-
+    if iec is not None and iec.strip():
+        state["iec"] = iec.strip()
+    if gstin is not None and gstin.strip():
+        state["gstin"] = gstin.strip()
+    _sc = state_code or state_iso2
+    if _sc is not None and str(_sc).strip():
+        state["state_code"] = str(_sc).strip()
+        state["state_iso2"] = str(_sc).strip()
+    if state.get("state_code") and not state.get("state_iso2"):
+        state["state_iso2"] = state["state_code"]
+    if state.get("state_iso2") and not state.get("state_code"):
+        state["state_code"] = state["state_iso2"]
+    is_first_turn = not bool(state.get("has_greeted"))
     state["history"].append({"role": "user", "content": body.message})
 
     # 0. Category-pick resolution --------------------------------------------
@@ -268,6 +371,13 @@ async def run_turn(
     state["filled_fields"] = merge_draft(state["filled_fields"], dict(result.draft))
     state["candidates"] = []
     newly_filled = _newly_filled_fields(filled_before, state["filled_fields"])
+
+    previous_db_info = state.get("db_info") if isinstance(state.get("db_info"), dict) else None
+    await _maybe_translate_consignee(state, redis)
+
+    effective_changed: list[str] | None = changed_fields
+    if effective_changed is None:
+        effective_changed = newly_filled if newly_filled else ([expected_field] if expected_field else None)
 
     # 2. Filler acknowledgment ------------------------------------------------
     # Nothing new was extracted AND the message is pure filler: acknowledge
@@ -297,7 +407,7 @@ async def run_turn(
             candidates.append({"slug": slug, "name": slug.replace("-", " ").title()})
         if not candidates:
             try:
-                candidates = await client.search_categories(body.message)
+                candidates = await _cached_search_categories(client, body.message)
             except ServiceUnavailable:
                 candidates = []
         state["candidates"] = candidates
@@ -323,18 +433,55 @@ async def run_turn(
         return build_state_response(conv_id, user_id, lang, state, reply)
 
     # 4. Deterministic validation ---------------------------------------------
+    validation_draft: dict[str, Any] = dict(state["filled_fields"])
+    consignee_en = state["filled_fields"].get("consignee_en")
+    if isinstance(consignee_en, str) and consignee_en.strip():
+        validation_draft["consignee"] = consignee_en
+    elif isinstance(validation_draft.get("consignee"), str) and not is_latin_free_text(str(validation_draft.get("consignee"))):
+        try:
+            eng = await ensure_english_free_text(
+                [("consignee", str(validation_draft["consignee"]))], redis=redis
+            )
+            validation_draft["consignee"] = eng.get("consignee", validation_draft["consignee"])
+        except Exception:
+            pass
+
+    _iec = state.get("iec") or iec
+    _gstin = state.get("gstin") or gstin
+    _state_iso2 = state.get("state_iso2") or state.get("state_code") or state_iso2 or state_code
     try:
         report = await client.validate_shipment(
-            state["filled_fields"],
+            validation_draft,
             form_type="PBE_IV",
-            iec=iec,
+            iec=_iec,
+            gstin=_gstin,
+            state_iso2=_state_iso2,
+            previous_db_info=previous_db_info,
+            changed_fields=effective_changed,
         )
     except ServiceUnavailable as exc:
         return _error_response(conv_id, user_id, lang, state, f"सेवा उपलब्ध नहीं — {exc}")
 
+    if effective_changed is not None and effective_changed:
+        allowed = set(effective_changed)
+        if expected_field:
+            allowed.add(expected_field)
+        raw_errors = report.get("business_errors")
+        if isinstance(raw_errors, list):
+            filtered = [
+                e for e in raw_errors if isinstance(e, dict) and e.get("field") in allowed
+            ]
+            report = {**report, "business_errors": filtered}
+
     state["validation_report"] = report
     db_info = report.get("db_info")
-    state["db_info"] = db_info if isinstance(db_info, dict) else None
+    if isinstance(db_info, dict) and db_info:
+        state["db_info"] = db_info
+    elif previous_db_info is not None and not db_info:
+        state["db_info"] = previous_db_info
+        report["db_info"] = previous_db_info
+    else:
+        state["db_info"] = db_info if isinstance(db_info, dict) else None
     state["document_ready"] = bool(report.get("document_ready"))
     state["pending_fields"] = pending_fields(state["filled_fields"])
 
@@ -358,14 +505,16 @@ async def run_turn(
         # Consignee answered this turn while another field is still pending:
         # read the name back once, folded into the normal next ask.
         readback = consignee_readback(lang, state["filled_fields"].get("consignee"))
-        reply = f"{readback} {build_reply(lang, state['filled_fields'], state['db_info'], next_field, [])}"
+        reply = f"{readback} {build_reply(lang, state['filled_fields'], state['db_info'], next_field, [], changed_fields=newly_filled, has_greeted=bool(state.get('has_greeted')))}"
     else:
-        reply = build_reply(lang, state["filled_fields"], state["db_info"], next_field, [])
+        reply = build_reply(lang, state["filled_fields"], state["db_info"], next_field, [], changed_fields=newly_filled, has_greeted=bool(state.get('has_greeted')))
 
     enricher = GeminiEnricher()
-    reply = enricher.enrich(
-        lang, reply, state["filled_fields"], state["db_info"] or {}, next_field
-    )
+    reply = _call_enricher(enricher, lang, reply, state["filled_fields"], state["db_info"] or {}, next_field, state)
+    if not is_first_turn and "नमस्ते" in reply:
+        reply = reply.replace("नमस्ते!", "").replace("नमस्ते", "").strip()
+        reply = reply.lstrip(" ,।!").strip()
+    state["has_greeted"] = True
     state["history"].append({"role": "assistant", "content": reply})
 
     await save_state(redis, conv_id, state)

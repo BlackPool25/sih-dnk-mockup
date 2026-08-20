@@ -73,6 +73,23 @@ def _render_db_info(db_info: dict[str, Any]) -> str:
     return "; ".join(parts) if parts else "(no research yet)"
 
 
+def _field_hint(lang: str, field: str | None) -> str:
+    _ = lang
+    _ = field
+    return ""
+
+
+def _render_session_identifiers(session_state: dict[str, Any] | None) -> str:
+    if not session_state:
+        return "(no seller identifiers)"
+    parts: list[str] = []
+    for key in ("iec", "gstin", "state_code", "state_iso2"):
+        value = session_state.get(key)
+        if value:
+            parts.append(f"{key}: {value}")
+    return ", ".join(parts) if parts else "(no seller identifiers)"
+
+
 class GeminiEnricher:
     """Reword a template reply into natural Hindi/English via Gemini."""
 
@@ -100,6 +117,7 @@ class GeminiEnricher:
         draft: dict[str, Any],
         db_info: dict[str, Any],
         next_field: str | None = None,
+        session_state: dict[str, Any] | None = None,
     ) -> str:
         """Return a polished version of *template_text*, or it unchanged."""
         try:
@@ -107,7 +125,7 @@ class GeminiEnricher:
             if model is None:
                 return template_text
             response = model.generate_content(
-                self._persona_prompt(lang, template_text, draft, db_info, next_field)
+                self._persona_prompt(lang, template_text, draft, db_info, next_field, session_state)
             )
             polished = (getattr(response, "text", "") or "").strip()
             return polished if polished else template_text
@@ -121,11 +139,21 @@ class GeminiEnricher:
         draft: dict[str, Any],
         db_info: dict[str, Any],
         next_field: str | None,
+        session_state: dict[str, Any] | None = None,
     ) -> str:
         question_rule = (
             f"Ask exactly ONE question to collect the next pending field: {next_field}."
             if next_field
             else "Ask NO question — the shipment looks complete; just confirm readiness warmly."
+        )
+        hint = _field_hint(lang, next_field)
+        hint_block = f"\nField hint: {hint}\n" if hint else ""
+        identifiers = _render_session_identifiers(session_state)
+        has_greeted = bool((session_state or {}).get("has_greeted"))
+        greeting_rule = (
+            "Do NOT greet with 'नमस्ते' — already greeted in the first turn."
+            if has_greeted
+            else "Greet warmly with 'नमस्ते' once at session start."
         )
         return (
             "You are a warm, friendly Hindi Dak Ghar Niryat sahayak (export "
@@ -133,6 +161,7 @@ class GeminiEnricher:
             "Acknowledge briefly and warmly what the user has told you (from the "
             "draft values below). "
             f"{question_rule} "
+            f"{greeting_rule} "
             "Use natural, varied, conversational Hindi phrasing (never the same "
             "wording as the template verbatim). "
             "Reply with the message text only — no quotes, no preamble, no numbering. "
@@ -142,6 +171,8 @@ class GeminiEnricher:
             f"Template reply to polish:\n{template_text}\n\n"
             f"Known draft values:\n{_render_draft(lang, draft)}\n\n"
             f"Research summary:\n{_render_db_info(db_info)}\n\n"
+            f"Seller identifiers (carried across turns):\n{identifiers}\n"
+            f"{hint_block}"
             f"Next pending field: {next_field or 'none'}"
         )
 

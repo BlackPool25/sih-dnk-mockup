@@ -122,6 +122,8 @@ class FakeValClient:
         iec: str | None = None,
         gstin: str | None = None,
         state_iso2: str | None = None,
+        previous_db_info: dict[str, object] | None = None,
+        changed_fields: list[str] | None = None,
     ) -> dict[str, object]:
         self.calls.append("validate")
         # The real ValidationTurnReport emits PBE field keys in missing_required
@@ -142,7 +144,18 @@ class FakeValClient:
             for key in pbe_missing
         ]
         errors = [dict(e) for e in self.business_errors]
+        if changed_fields is not None and changed_fields:
+            errors = [e for e in errors if e.get("field") in set(changed_fields)]
         db_info = self._db_info_for(draft)
+        if previous_db_info is not None and not db_info.get("category"):
+            prev_cat = previous_db_info.get("category")  # type: ignore[union-attr]
+            if isinstance(prev_cat, dict):
+                db_info["category"] = prev_cat
+                db_info["category_name"] = prev_cat.get("name")  # type: ignore[union-attr]
+        if self.lane_error is not None:
+            db_info["lane_error"] = self.lane_error
+        self.last_previous_db_info = previous_db_info  # type: ignore[attr-defined]
+        self.last_changed_fields = changed_fields  # type: ignore[attr-defined]
         if self.lane_error is not None:
             db_info["lane_error"] = self.lane_error
         return {

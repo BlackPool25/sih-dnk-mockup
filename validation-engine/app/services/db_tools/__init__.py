@@ -29,6 +29,8 @@ container up.
 from __future__ import annotations
 
 import math
+import time
+import unicodedata
 from datetime import date, datetime
 from typing import Any
 
@@ -44,6 +46,13 @@ from app.models import (
     StateSalesTax,
 )
 from app.services.cache import cache
+
+_SEARCH_TTL_SECONDS = 300.0
+_search_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+
+
+def _normalize_query(query: str) -> str:
+    return unicodedata.normalize("NFKC", query).lower().strip()
 
 # Row caps — enforced as LIMIT inside each query.
 SEARCH_CATEGORIES_LIMIT = 5
@@ -160,9 +169,19 @@ def search_categories(query: str) -> list[dict]:
     path depends on this.  Returns at most 5 rows (LIMIT in the query); each
     dict carries the category identity plus provenance.
     """
+    normalized = _normalize_query(query)
+    now = time.monotonic()
+    entry = _search_cache.get(normalized)
+    if entry is not None:
+        ts, cached_val = entry
+        if now - ts <= _SEARCH_TTL_SECONDS:
+            return cached_val
+        _search_cache.pop(normalized, None)
+
     cache_key = f"search_categories:{query}"
     cached = _cache_read(cache_key)
     if cached is not None:
+        _search_cache[normalized] = (now, cached)
         return cached
     like = f"%{query}%"
     index_slugs = {
@@ -191,6 +210,7 @@ def search_categories(query: str) -> list[dict]:
         for row in rows
     ]
     _cache_write(cache_key, result)
+    _search_cache[normalized] = (now, result)
     return result
 
 

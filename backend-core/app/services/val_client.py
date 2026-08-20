@@ -129,17 +129,24 @@ class ValClient:
         iec: str | None = None,
         gstin: str | None = None,
         state_iso2: str | None = None,
+        previous_db_info: dict[str, object] | None = None,
+        changed_fields: list[str] | None = None,
     ) -> dict[str, object]:
         """POST /api/validate/shipment — deterministic per-turn report."""
+        payload: dict[str, object] = {
+            "draft": draft,
+            "form_type": form_type,
+            "iec": iec,
+            "gstin": gstin,
+            "state_iso2": state_iso2,
+        }
+        if previous_db_info is not None:
+            payload["previous_db_info"] = previous_db_info
+        if changed_fields is not None:
+            payload["changed_fields"] = changed_fields
         return await self._post_json(
             "/api/validate/shipment",
-            json={
-                "draft": draft,
-                "form_type": form_type,
-                "iec": iec,
-                "gstin": gstin,
-                "state_iso2": state_iso2,
-            },
+            json=payload,
         )
 
     async def search_categories(self, query: str) -> list[dict[str, object]]:

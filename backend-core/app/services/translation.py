@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from typing import Any
 
 import redis.asyncio as redis
@@ -30,16 +31,17 @@ logger = logging.getLogger(__name__)
 
 _READ_TIMEOUT = 60.0
 
-# Latin-script free-text guard: letters, digits, spaces and common punctuation.
 _LATIN_FREE_TEXT_RE = re.compile(r"^[A-Za-z0-9 ,.'-]+$")
 
-# Cache namespace for transliterated free-text values (kind=transliterate).
 I18N_CACHE_PREFIX = "i18n:transliterate:"
 I18N_CACHE_TTL_SECONDS = 30 * 24 * 3600  # 30 days
 
 
+def _normalize_cache_key(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).lower().strip()
+
+
 def is_latin_free_text(text: str | None) -> bool:
-    """True when the text is already Latin-script English (or empty)."""
     if not text:
         return True
     stripped = text.strip()
@@ -49,16 +51,14 @@ def is_latin_free_text(text: str | None) -> bool:
 
 
 class TranslationError(Exception):
-    """Base for voice-pipeline translation client errors."""
+    pass
 
 
 class TranslationUnavailable(TranslationError):
-    """voice-pipeline unreachable or errored."""
+    pass
 
 
 class TranslationClient:
-    """Thin async httpx wrapper over the voice-pipeline /translate/text API."""
-
     def __init__(
         self,
         base_url: str | None = None,
@@ -70,7 +70,6 @@ class TranslationClient:
     async def transliterate_batch(
         self, items: list[tuple[str, str]]
     ) -> dict[str, str]:
-        """POST /translate/text — batch transliteration, key → English text."""
         payload = {
             "items": [
                 {"key": key, "text": text, "kind": "transliterate"}
@@ -103,26 +102,28 @@ class TranslationClient:
 async def _cache_get(
     redis: redis.Redis | None, text: str
 ) -> str | None:
-    """Read a cached transliteration; None on miss or any redis failure."""
     if redis is None:
         return None
     try:
-        value = await redis.get(f"{I18N_CACHE_PREFIX}{text}")
+        key = f"{I18N_CACHE_PREFIX}{_normalize_cache_key(text)}"
+        value = await redis.get(key)
+        if isinstance(value, bytes):
+            return value.decode()
         return value if isinstance(value, str) else None
-    except Exception:  # noqa: BLE001 — cache must never block doc flow
+    except Exception:  # noqa: BLE001
         logger.warning("i18n cache read failed, skipping", exc_info=True)
         return None
 
 
 async def _cache_set(redis: redis.Redis | None, text: str, english: str) -> None:
-    """Write-through a transliteration; never raises."""
     if redis is None:
         return
     try:
+        key = f"{I18N_CACHE_PREFIX}{_normalize_cache_key(text)}"
         await redis.set(
-            f"{I18N_CACHE_PREFIX}{text}", english, ex=I18N_CACHE_TTL_SECONDS
+            key, english, ex=I18N_CACHE_TTL_SECONDS
         )
-    except Exception:  # noqa: BLE001 — cache must never block doc flow
+    except Exception:  # noqa: BLE001
         logger.warning("i18n cache write failed, skipping", exc_info=True)
 
 
@@ -132,12 +133,6 @@ async def ensure_english_free_text(
     redis: redis.Redis | None = None,
     client: TranslationClient | None = None,
 ) -> dict[str, str]:
-    """Map free-text (key, value) pairs to English.
-
-    Latin values pass through.  Non-Latin values are transliterated in one
-    batched call and cached.  On ANY failure the raw value is returned — order
-    creation and doc generation are never blocked by translation.
-    """
     client = client or _default_client()
     english: dict[str, str] = {}
     needs_transliteration: list[tuple[str, str]] = []
@@ -157,7 +152,7 @@ async def ensure_english_free_text(
 
     try:
         translated = await client.transliterate_batch(needs_transliteration)
-    except Exception as exc:  # noqa: BLE001 — translation never blocks doc flow
+    except Exception as exc:  # noqa: BLE001
         logger.warning("transliteration failed (%s); using raw values", exc)
         for key, text in needs_transliteration:
             english[key] = text
@@ -172,6 +167,30 @@ async def ensure_english_free_text(
             english[key] = value
             await _cache_set(redis, text, value)
     return english
+
+
+async def translate_consignee_hi_en(
+    consignee_hi: str | None,
+    *,
+    redis: redis.Redis | None = None,
+    client: TranslationClient | None = None,
+) -> dict[str, str]:
+    if not consignee_hi:
+        return {"hi": "", "en": ""}
+    hi = consignee_hi.strip()
+    if not hi:
+        return {"hi": consignee_hi, "en": consignee_hi}
+    if is_latin_free_text(hi):
+        return {"hi": hi, "en": hi}
+    try:
+        result = await ensure_english_free_text(
+            [("consignee", hi)], redis=redis, client=client
+        )
+        en = result.get("consignee", hi)
+        return {"hi": hi, "en": en}
+    except Exception:  # noqa: BLE001
+        logger.warning("translate_consignee_hi_en fallback to raw", exc_info=True)
+        return {"hi": hi, "en": hi}
 
 
 _default_client_instance: TranslationClient | None = None
@@ -192,4 +211,5 @@ __all__ = [
     "TranslationUnavailable",
     "ensure_english_free_text",
     "is_latin_free_text",
+    "translate_consignee_hi_en",
 ]

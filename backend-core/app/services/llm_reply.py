@@ -106,10 +106,12 @@ def _display_value(
     return str(value)
 
 
-def echo_line(lang: str, draft: dict[str, Any], db_info: dict[str, Any] | None = None) -> str:
-    """Build the 'मैंने समझा — …' echo from KNOWN draft fields only."""
+def echo_line(lang: str, draft: dict[str, Any], db_info: dict[str, Any] | None = None, only_fields: list[str] | None = None) -> str:
+    fields = only_fields if only_fields is not None else list(FIELD_ORDER)
     parts: list[str] = []
-    for field in FIELD_ORDER:
+    for field in fields:
+        if field not in FIELD_ORDER:
+            continue
         raw = draft.get(field)
         display = _display_value(lang, field, raw, db_info)
         if display is None:
@@ -124,7 +126,7 @@ def echo_line(lang: str, draft: dict[str, Any], db_info: dict[str, Any] | None =
 def options_line(lang: str, candidates: list[dict[str, Any]]) -> str:
     """Numbered category options from search_categories rows."""
     numbered = "  ".join(
-        f"{i + 1}) {c.get('name') or c.get('slug')}" for i, c in enumerate(candidates[:5])
+        f"{i + 1}) {c.get('name_hi') or c.get('name') or c.get('slug')}" for i, c in enumerate(candidates[:5])
     )
     return TEMPLATES[lang]["disambiguate.category"].format(options=numbered)
 
