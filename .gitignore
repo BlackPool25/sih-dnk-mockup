@@ -27,3 +27,5 @@ BULK_UPDATED_FILE.zip
 voice-pipeline/models/
 sih2026-deck/
 *.pptx
+.serena/
+messaging-service/.coverage
