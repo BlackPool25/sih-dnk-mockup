@@ -15,13 +15,16 @@ from app.routers.docs import router as docs_router
 from app.routers.documents import router as documents_router
 from app.routers.llm import router as llm_router
 from app.routers.orders import router as orders_router
+from app.routers.payments import router as payments_router
+from app.routers.pricing import router as pricing_router
 from app.routers.profile import router as profile_router
 from app.routers.proxy import router as proxy_router
 from app.routers.qr import router as qr_router
+from app.routers.tracking import router as tracking_router
 from auth.routes import router as auth_router
 
-# Extend public auth paths so the /health endpoint is accessible without a token.
-auth_mw.PUBLIC_AUTH_PATHS = auth_mw.PUBLIC_AUTH_PATHS | {"/health"}
+# Extend public auth paths so the /health and webhook endpoints are accessible without a token.
+auth_mw.PUBLIC_AUTH_PATHS = auth_mw.PUBLIC_AUTH_PATHS | {"/health", "/payments/webhook"}
 
 app = FastAPI(
     title="SIH-DNK Backend Core",
@@ -58,6 +61,12 @@ app.include_router(docs_router)
 app.include_router(qr_router)
 
 app.include_router(llm_router)
+
+app.include_router(pricing_router)
+
+app.include_router(tracking_router)
+
+app.include_router(payments_router)
 
 app.include_router(proxy_router)
 
