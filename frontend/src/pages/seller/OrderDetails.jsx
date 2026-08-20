@@ -7,6 +7,7 @@ import { getOrder, getDocuments, generateDocs } from "../../services/api";
 import PricingTable from "../../components/Order/PricingTable";
 import TrackingTimeline from "../../components/Order/TrackingTimeline";
 import PaymentLinkCard from "../../components/Order/PaymentLinkCard";
+import ShipmentQRCodeCard from "../../components/Order/ShipmentQRCodeCard";
 import {
   ArrowLeft,
   MapPin,
@@ -369,6 +370,12 @@ export default function OrderDetails() {
               </>
             )}
           </div>
+
+          <ShipmentQRCodeCard
+            orderId={displayId}
+            order={order}
+            documentsData={docsData}
+          />
         </div>
 
         <div className="lg:col-span-1 space-y-6">
