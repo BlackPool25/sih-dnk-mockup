@@ -1,5 +1,5 @@
 # =============================================================================
-# SIH-DNK Mockup — Docker Compose (dev stack: Postgres 16 + Redis 7 + 5 services)
+# SIH-DNK Mockup — Docker Compose (dev stack: Postgres 16 + Redis 7 + 9 services)
 # =============================================================================
 # Host port 5433 is used because 5432 is live-occupied by internapply-postgres.
 # ALL host ports are bound to 127.0.0.1 ONLY (never exposed to 0.0.0.0).
@@ -7,7 +7,10 @@
 # Locked artifacts (plan §Locked compose artifacts) — DO NOT CHANGE:
 #   name: sih-dnk-mockup | volume sih_dnk_pgdata | network dbnet
 #   container sih-dnk-postgres | host port 127.0.0.1:5433:5432
-# Port table (plan §Port allocation table, locked): see per-service comments.
+# Port table (plan §Port allocation table, locked):
+#   5433 db | 6379 redis | 8001 validation | 8002 voice | 8003 pricing
+#   8004 tracking | 8005 frontend | 8006 backend-core | 8007 marketplace
+#   8008 verification-service | 8009 messaging-service
 # =============================================================================
 
 name: sih-dnk-mockup
@@ -278,6 +281,7 @@ services:
       - SARVAM_API_KEY=${SARVAM_API_KEY:-}
       - SARVAM_ENABLED=${SARVAM_ENABLED:-false}
       - MARKETPLACE_URL=http://marketplace:8000
+      - MESSAGING_SERVICE_URL=http://messaging-service:8000
     volumes:
       - .:/app
     working_dir: /opt/backend-core
@@ -343,6 +347,42 @@ services:
       VERIFICATION_MODE: mock
     volumes:
       - ./verification-service:/app
+      - /app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dbnet
+
+  # ---------------------------------------------------------------------------
+  # Service 11: messaging-service — FastAPI (mocked), 127.0.0.1:8009 -> 8000
+  # ---------------------------------------------------------------------------
+  messaging-service:
+    build:
+      context: ./messaging-service
+    image: sih-dnk-messaging-service
+    container_name: sih-dnk-messaging-service
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8009:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      ENCRYPTION_MASTER_KEY: ${ENCRYPTION_MASTER_KEY:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-this-is-a-dev-secret-key-at-least-32-chars}
+      MOCK_MESSAGING: "true"
+      MESSAGING_MODE: mock
+    volumes:
+      - ./messaging-service:/app
       - /app/.venv
     depends_on:
       db:

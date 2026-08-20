@@ -17,6 +17,7 @@ declare -A ENDPOINTS=(
   ["voice-pipeline"]="http://127.0.0.1:8002/healthz"
   ["marketplace"]="http://127.0.0.1:8007/health"
   ["verification-service"]="http://127.0.0.1:8008/health"
+  ["messaging-service"]="http://127.0.0.1:8009/health"
   ["frontend"]="http://127.0.0.1:8005/"
 )
 

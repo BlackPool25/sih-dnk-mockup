@@ -93,6 +93,7 @@ class Settings(BaseModel):
     TRACKING_API_URL: str = "http://tracking-api:8000"
     VOICE_PIPELINE_URL: str = "http://voice-pipeline:8000"
     MARKETPLACE_URL: str = "http://marketplace:8000"
+    MESSAGING_SERVICE_URL: str = "http://messaging-service:8000"
 
     # --------------------------------------------------------------------------
     # Validators
