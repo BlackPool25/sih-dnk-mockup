@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -37,6 +37,8 @@ async def healthz() -> dict[str, str]:
 class ShipmentRequest(BaseModel):
     tracking_number: str
     carrier: str
+    order_id: Optional[str] = None
+    parcel_id: Optional[str] = None
 
 
 class EventRequest(BaseModel):
@@ -48,16 +50,52 @@ class EventRequest(BaseModel):
 def register_shipment(shipment: ShipmentRequest, db: Session = Depends(get_db)) -> dict[str, object]:
     existing = db.query(models.Shipment).filter_by(tracking_number=shipment.tracking_number).first()
     if existing:
+        has_linkage = (
+            shipment.order_id is not None
+            or shipment.parcel_id is not None
+            or existing.order_id is not None
+            or existing.parcel_id is not None
+        )
+        if has_linkage and existing.order_id == shipment.order_id and existing.parcel_id == shipment.parcel_id:
+            return jsonable_encoder(existing)
         raise HTTPException(status_code=400, detail="Shipment already registered")
 
     provider = get_provider()
     provider.register(shipment.tracking_number, shipment.carrier)
 
-    new_shipment = models.Shipment(tracking_number=shipment.tracking_number, carrier=shipment.carrier)
+    new_shipment = models.Shipment(
+        tracking_number=shipment.tracking_number,
+        carrier=shipment.carrier,
+        order_id=shipment.order_id,
+        parcel_id=shipment.parcel_id,
+    )
     db.add(new_shipment)
     db.commit()
     db.refresh(new_shipment)
     return jsonable_encoder(new_shipment)
+
+
+@app.get("/shipments")
+def list_shipments(
+    order_id: Optional[str] = Query(None),
+    parcel_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    q = db.query(models.Shipment)
+    if order_id is not None:
+        q = q.filter(models.Shipment.order_id == order_id)
+    if parcel_id is not None:
+        q = q.filter(models.Shipment.parcel_id == parcel_id)
+    shipments = q.order_by(models.Shipment.id).all()
+    return jsonable_encoder(shipments)
+
+
+@app.get("/orders/{order_id}/shipments")
+def list_order_shipments(order_id: str, db: Session = Depends(get_db)) -> dict[str, object]:
+    shipments = (
+        db.query(models.Shipment).filter(models.Shipment.order_id == order_id).order_by(models.Shipment.id).all()
+    )
+    return {"order_id": order_id, "shipments": jsonable_encoder(shipments)}
 
 
 @app.get("/shipments/{tracking_number}")

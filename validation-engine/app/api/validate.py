@@ -243,24 +243,26 @@ def post_validate(
                 iec=order.iec,
             )
 
-        # ── pricing-engine optimal assignment (idempotent, non-blocking) ─
         pricing_error: str | None = None
         if report.validation_state == "ready" and report.status == "ready" and order.line_items:
-            # Idempotency: reuse stored breakdown if already present
             if order.pricing_breakdown is not None and order.parcels is not None:
-                pass  # reuse stored
+                pass
             else:
                 try:
                     from app.services.pricing_client import query_optimal_assignment_sync
 
                     pricing_resp = query_optimal_assignment_sync(order, order.line_items)
-                    # Store full response as pricing_breakdown + parcels list
                     order.pricing_breakdown = pricing_resp
                     order.parcels = pricing_resp.get("parcels", [])
-                    # Also persist lane_breakdown/cost/landed_cost provenance implicitly via full dump
                 except Exception as exc:  # noqa: BLE001 — pricing must not block validation
                     pricing_error = str(exc)
-                    # Keep report ready; surface error via last_report.pricing_error
+        if report.validation_state == "ready" and report.status == "ready" and order.parcels:
+            try:
+                from app.services.tracking_client import register_shipments_for_order
+
+                register_shipments_for_order(order, order.parcels or [])
+            except Exception:
+                pass
         # Persist last_report snapshot (+ pricing_error side-channel).
         report_dict = report.model_dump()
         if pricing_error is not None:
