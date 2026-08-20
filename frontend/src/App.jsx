@@ -43,6 +43,7 @@ import QRScanner from "./pages/dnk/QRScanner";
 import ShipmentDetails from "./pages/dnk/ShipmentDetails";
 
 import Inbox from "./pages/Inbox";
+import MockCheckout from "./pages/payment/MockCheckout";
 
 function SellerGuard({ children }) {
   return (
@@ -100,6 +101,16 @@ function App() {
           <Route path="/seller/notifications" element={<SellerGuard><Notifications /></SellerGuard>} />
 
           <Route path="/inbox" element={<PrivateRoute><Inbox /></PrivateRoute>} />
+          <Route
+            path="/payment/mock/:id"
+            element={
+              <PrivateRoute>
+                <RoleGuard roles={["buyer", "seller"]}>
+                  <MockCheckout />
+                </RoleGuard>
+              </PrivateRoute>
+            }
+          />
 
           {/* Marketplace Routes — protected: buyer only */}
           <Route path="/marketplace" element={<BuyerGuard><FullMarketplace /></BuyerGuard>} />

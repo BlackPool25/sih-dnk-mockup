@@ -9,9 +9,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.models import QuoteState, QuoteVersion
+from app.models import MessagingMessage, MessagingThread, PaymentMock, QuoteState, QuoteVersion
 from app.schemas.quote import (
     MockPaymentOut,
     QuoteCreateRequest,
@@ -22,6 +23,7 @@ from app.schemas.quote import (
     QuoteVersionOut,
 )
 from app.services.auth import AuthUser, get_current_user
+from app.services.crypto import encrypt_thread_message
 from app.services.quote_state import QuoteStateError, QuoteStateLiteral, next_state
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
@@ -93,10 +95,32 @@ async def _get_versions(quote_id: uuid.UUID, db: AsyncSession) -> list[QuoteVers
 def _mock_payment_link(quote_id: uuid.UUID, amount_minor: int) -> MockPaymentOut:
     return MockPaymentOut(
         mocked=True,
-        payment_link=f"https://pay.mock/quote/{quote_id}?amount={amount_minor}",
+        payment_link=f"/payment/mock/{quote_id}",
         quote_id=quote_id,
         amount_minor=amount_minor,
     )
+
+
+def _master_key() -> bytes:
+    hex_env = os.environ.get("ENCRYPTION_MASTER_KEY")
+    if hex_env is not None and hex_env != "":
+        return bytes.fromhex(hex_env)
+    try:
+        from storage.config import settings as s  # type: ignore[import-untyped]
+
+        hk = str(s.ENCRYPTION_MASTER_KEY)
+        if hk:
+            return bytes.fromhex(hk)
+    except Exception:
+        pass
+    return bytes.fromhex("00" * 32)
+
+
+def _encrypt_preview(tid: str, preview: str, mk: bytes) -> str:
+    import json as _json
+
+    enc = encrypt_thread_message(preview, tid, mk)
+    return _json.dumps({"ciphertext_b64": enc["ciphertext_b64"], "nonce_b64": enc["nonce_b64"]})
 
 
 # --- Routes ---
@@ -117,12 +141,29 @@ async def create_quote(
 
     seller_uuid = uuid.UUID(user["user_id"])
     buyer_id_str = request.headers.get("X-Buyer-Id") or request.query_params.get("buyer_id")
+    buyer_uuid: uuid.UUID | None = None
     if buyer_id_str:
         try:
             buyer_uuid = uuid.UUID(buyer_id_str)
         except ValueError:
             raise HTTPException(status_code=422, detail="Invalid buyer_id") from None
-    else:
+    if buyer_uuid is None and body.thread_id is not None:
+        try:
+            th_res = await db.execute(select(MessagingThread).where(MessagingThread.id == body.thread_id))
+            th_obj = th_res.scalar_one_or_none()
+            if th_obj is not None and th_obj.buyer_id is not None:
+                buyer_uuid = th_obj.buyer_id
+        except Exception:
+            pass
+    if buyer_uuid is None and body.thread_id is not None and body.order_id is not None:
+        try:
+            th2 = await db.execute(select(MessagingThread).where(MessagingThread.order_id == body.order_id))
+            th_obj2 = th2.scalar_one_or_none()
+            if th_obj2 is not None and th_obj2.buyer_id is not None:
+                buyer_uuid = th_obj2.buyer_id
+        except Exception:
+            pass
+    if buyer_uuid is None:
         buyer_uuid = uuid.uuid4()
 
     quote_id = uuid.uuid4()
@@ -232,15 +273,74 @@ async def approve_quote(
         created_at=now,
     )
     db.add(qv)
+
+    amount_total = qs.amount_minor + qs.shipping_minor
+    try:
+        existing_pm = await db.execute(select(PaymentMock).where(PaymentMock.id == quote_id))
+        if existing_pm.scalar_one_or_none() is None:
+            by_quote = await db.execute(select(PaymentMock).where(PaymentMock.quote_id == quote_id))
+            if by_quote.scalar_one_or_none() is None:
+                pm = PaymentMock(
+                    id=quote_id,
+                    quote_id=quote_id,
+                    order_id=qs.order_id,
+                    thread_id=qs.thread_id,
+                    amount_minor=amount_total,
+                    status="initiated",
+                    created_at=now,
+                    updated_at=now,
+                )
+                db.add(pm)
+    except OperationalError:
+        pass
+
+    thread: MessagingThread | None = None
+    try:
+        if qs.thread_id is not None:
+            tr = await db.execute(select(MessagingThread).where(MessagingThread.id == qs.thread_id))
+            thread = tr.scalar_one_or_none()
+        if thread is None:
+            tr2 = await db.execute(select(MessagingThread).where(MessagingThread.order_id == qs.order_id))
+            thread = tr2.scalar_one_or_none()
+    except OperationalError:
+        thread = None
+    if thread is not None:
+        link = f"/payment/mock/{quote_id}"
+        body_plain = f"Quote approved. Payment link: {link} — amount ₹{amount_total/100:.2f}. DNK fees included, customs excluded."
+        mk = _master_key()
+        tid_str = str(thread.id)
+        enc = encrypt_thread_message(body_plain, tid_str, mk)
+        msg = MessagingMessage(
+            id=uuid.uuid4(),
+            thread_id=thread.id,
+            sender_id=uuid.UUID(user["user_id"]) if _is_uuid(user["user_id"]) else thread.seller_id,
+            sender_role="system",
+            body_ciphertext=enc["ciphertext_b64"],
+            enc_nonce_b64=enc["nonce_b64"],
+            attachments=None,
+        )
+        db.add(msg)
+        thread.last_message_at = now
+        thread.last_preview_encrypted = _encrypt_preview(tid_str, body_plain[:120], mk)
+        db.add(thread)
+
     await db.commit()
     await db.refresh(qs)
-    payment = _mock_payment_link(quote_id, qs.amount_minor + qs.shipping_minor)
+    payment = _mock_payment_link(quote_id, amount_total)
     return {
         "current": QuoteStateOut.model_validate(qs).model_dump(mode="json"),
         "payment": payment.model_dump(mode="json"),
         "mocked": True,
         "payment_link": payment.payment_link,
     }
+
+
+def _is_uuid(s: str) -> bool:
+    try:
+        uuid.UUID(s)
+        return True
+    except ValueError:
+        return False
 
 
 @router.post("/{quote_id}/reject", response_model=QuoteDetailOut)

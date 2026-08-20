@@ -257,3 +257,18 @@ async def proxy_mock_pay(request: Request, quote_id: str) -> JSONResponse:
 @router.post("/quotes/{quote_id}/webhook")
 async def proxy_webhook(request: Request, quote_id: str) -> JSONResponse:
     return await _proxy_generic(request, f"/quotes/{quote_id}/webhook", method="POST")
+
+
+@router.post("/payment/mock/generate")
+async def proxy_payment_generate(request: Request) -> JSONResponse:
+    return await _proxy_generic(request, "/payment/mock/generate", method="POST")
+
+
+@router.get("/payment/mock/{payment_id}")
+async def proxy_payment_get(request: Request, payment_id: str) -> JSONResponse:
+    return await _proxy_generic(request, f"/payment/mock/{payment_id}", method="GET")
+
+
+@router.post("/payment/mock/{payment_id}/pay")
+async def proxy_payment_pay(request: Request, payment_id: str) -> JSONResponse:
+    return await _proxy_generic(request, f"/payment/mock/{payment_id}/pay", method="POST")

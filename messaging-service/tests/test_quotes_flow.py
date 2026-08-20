@@ -128,7 +128,8 @@ async def test_5_round_flow_and_guards(monkeypatch):
         assert resp.json()["current"]["state"] == "approved"
         assert resp.json()["mocked"] is True
         assert "payment_link" in resp.json()
-        assert "https://pay.mock/quote/" in resp.json()["payment_link"]
+        assert resp.json()["payment_link"] == f"/payment/mock/{quote_id}"
+        assert "https://pay.mock" not in resp.json()["payment_link"]
 
         resp = await tc.post(f"/quotes/{quote_id}/mock-pay", headers={"Authorization": f"Bearer {buyer_tok}"})
         assert resp.status_code == 200, resp.text

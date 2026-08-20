@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Search, MessageCircle, Clock } from "lucide-react";
 import { fetchInbox } from "../../services/api.js";
+import { usePolling } from "../../hooks/usePolling.js";
 
 function fmtTime(iso) {
   if (!iso) return "";
@@ -44,6 +45,18 @@ export function ThreadList({ selectedId, onSelect, refreshKey = 0 }) {
   useEffect(() => {
     load(0, false);
   }, [load, refreshKey]);
+
+  const pollInInbox = useCallback(async () => {
+    try {
+      const data = await fetchInbox({ limit, offset: 0 });
+      const list = data.items || [];
+      const t = typeof data.total === "number" ? data.total : list.length;
+      setTotal(t);
+      setItems(list);
+      setOffset(0);
+    } catch {}
+  }, []);
+  usePolling(pollInInbox, 3000);
 
   const filtered = items.filter((th) => {
     if (!search.trim()) return true;

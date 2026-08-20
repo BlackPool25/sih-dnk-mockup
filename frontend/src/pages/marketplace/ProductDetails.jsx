@@ -104,13 +104,34 @@ function ProductDetails() {
     }
   };
 
-  // ✅ Updated: Request Order -> goes to Messages with order details
-  const handleOrderRequest = () => {
+  const tryCreateRealThread = async (messageText) => {
+    try {
+      const { createThread, sendThreadMessage } = await import("../../services/api.js");
+      const genUuid = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `00000000-0000-4000-a000-${String(Date.now()).slice(-12).padStart(12,"0")}`);
+      const orderId = product?.order_id || product?.orderId || product?.order_id || genUuid();
+      const sellerId = product?.seller_id || product?.sellerId || "11111111-1111-1111-1111-111111111111";
+      let buyerId = null;
+      try { const raw = localStorage.getItem("user"); if (raw) buyerId = JSON.parse(raw)?.id || null; } catch {}
+      if (!buyerId) buyerId = "22222222-2222-2222-2222-222222222222";
+      const thread = await createThread({ order_id: orderId, seller_id: sellerId, buyer_id: buyerId });
+      const tid = thread.id || thread.thread_id;
+      if (tid) {
+        try { await sendThreadMessage(tid, { body: messageText }); } catch {}
+        navigate(`/inbox?thread=${encodeURIComponent(tid)}`);
+        return true;
+      }
+    } catch {}
+    return false;
+  };
+
+  const handleOrderRequest = async () => {
     if (!isSoldOut) {
       const productName = product?.name || product?.productName || "Product";
       const sellerName = product?.seller || product?.sellerName || "Artisan";
       const totalPrice = (product?.price || 0) * quantity;
-      
+      const msg = `Hi interested in ${productName}, ${quantity} units to US`;
+      const ok = await tryCreateRealThread(msg);
+      if (ok) return;
       navigate("/marketplace/messages", {
         state: {
           newConversation: {
@@ -119,33 +140,21 @@ function ProductDetails() {
             source: "NiryatSaathi",
             productId: product?.id || product?._id,
             message: `🛒 Order Request: ${quantity} x ${productName}\nTotal: ₹${totalPrice.toLocaleString()}\n\nI'd like to place an order for this product. Please confirm availability.`,
-            orderDetails: {
-              product: productName,
-              quantity: quantity,
-              totalPrice: totalPrice,
-              productId: product?.id || product?._id,
-            }
+            orderDetails: { product: productName, quantity, totalPrice, productId: product?.id || product?._id }
           }
         }
       });
     }
   };
 
-  // ✅ Updated: Contact Seller -> goes to Messages with inquiry
-  const handleContactSeller = () => {
+  const handleContactSeller = async () => {
     const productName = product?.name || product?.productName || "Product";
     const sellerName = product?.seller || product?.sellerName || "Artisan";
-    
+    const msg = `Hi! I'm interested in your product: ${productName}`;
+    const ok = await tryCreateRealThread(msg);
+    if (ok) return;
     navigate("/marketplace/messages", {
-      state: {
-        newConversation: {
-          name: sellerName,
-          product: productName,
-          source: "NiryatSaathi",
-          productId: product?.id || product?._id,
-          message: `Hi! I'm interested in your product: ${productName}\n\nCould you tell me more about it?`,
-        }
-      }
+      state: { newConversation: { name: sellerName, product: productName, source: "NiryatSaathi", productId: product?.id || product?._id, message: msg } }
     });
   };
 

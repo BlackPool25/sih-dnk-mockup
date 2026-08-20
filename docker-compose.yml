@@ -211,6 +211,7 @@ services:
       PYTHONUNBUFFERED: "1"
       TRACK17_API_KEY: ${TRACK17_API_KEY:-}
       TRACKING_PROVIDER: mock
+      MOCK_TRACKING: "true"
     volumes:
       - ./tracking-api:/app
       - /app/.venv

@@ -11,6 +11,12 @@ export default defineConfig({
   resolve: {
     dedupe: ['react', 'react-dom'],
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],
+  },
   server: {
     port: 5173,
     proxy: {
@@ -64,6 +70,14 @@ export default defineConfig({
         changeOrigin: true,
       },
       '/payments': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/payment': {
+        target: 'http://127.0.0.1:8006',
+        changeOrigin: true,
+      },
+      '/sahayak': {
         target: 'http://127.0.0.1:8006',
         changeOrigin: true,
       },

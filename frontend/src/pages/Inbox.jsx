@@ -70,7 +70,7 @@ function InboxSahayakWrap({ children }) {
         </div>
         <div className="flex items-center gap-4">
           <HindiToggle />
-          <InboxBell pollMs={30000} />
+          <InboxBell pollMs={3000} />
           <button onClick={handleLogout} className="p-2 rounded-lg hover:bg-[#F0F4EE]"><LogOut className="w-5 h-5 text-[#6B7568]" /></button>
         </div>
       </header>
@@ -88,9 +88,9 @@ export default function Inbox() {
         <div className="container mx-auto px-6 py-8">
           <div className="flex items-center justify-between mb-2">
             <h1 className="font-['Fraunces'] text-3xl font-semibold text-[#1B2E1B]">Inbox</h1>
-            <InboxBell className="bg-white border border-[#E5EAE3]" />
+            <InboxBell pollMs={3000} className="bg-white border border-[#E5EAE3]" />
           </div>
-          <p className="font-['Figtree'] text-[#6B7568] mb-6">Global bell • paged threads • WS + poll?since= • 10MB attachments • sahayak read-only</p>
+          <p className="font-['Figtree'] text-[#6B7568] mb-6">Global bell • paged threads • WS + poll?since= 3s • 10MB attachments • sahayak read-only</p>
           <InboxInner />
         </div>
       </div>

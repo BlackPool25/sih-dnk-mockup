@@ -5,7 +5,7 @@ import DocsTabs from "../../components/Order/DocsTabs";
 import DocNotReadyBanner from "../../components/Order/DocNotReadyBanner";
 import { getOrder, getDocuments, generateDocs } from "../../services/api";
 import PricingTable from "../../components/Order/PricingTable";
-import TrackingTimeline from "../../components/Order/TrackingTimeline";
+import ShipmentTimeline from "../../components/Order/ShipmentTimeline";
 import PaymentLinkCard from "../../components/Order/PaymentLinkCard";
 import ShipmentQRCodeCard from "../../components/Order/ShipmentQRCodeCard";
 import {
@@ -318,9 +318,18 @@ export default function OrderDetails() {
             </div>
           </div>
 
-          <PricingTable orderId={displayId} order={order} />
+          <PricingTable
+            orderId={displayId}
+            order={order}
+            variant="seller"
+            actualWeight={order?.net_weight_g ?? order?.gross_weight_g ?? 280}
+            chargeableWeight={{
+              ITPS: Math.ceil((order?.net_weight_g ?? order?.gross_weight_g ?? 280) / 50) * 50,
+              EMS: Math.ceil((order?.net_weight_g ?? order?.gross_weight_g ?? 280) / 250) * 250,
+            }}
+          />
 
-          <TrackingTimeline orderId={displayId} />
+          <ShipmentTimeline orderId={displayId} />
 
           <PaymentLinkCard order={order} />
 

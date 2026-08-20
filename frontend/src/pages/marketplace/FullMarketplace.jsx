@@ -169,25 +169,39 @@ function FullMarketplace() {
     );
   };
 
-  const handleMessageSeller = (e, product) => {
+  const handleMessageSeller = async (e, product) => {
     e.stopPropagation();
-
-    const sellerName =
-      product.seller || product.sellerName || "Artisan";
-
-    const productName =
-      product.name || product.productName || "Product";
-
+    const sellerName = product.seller || product.sellerName || "Artisan";
+    const productName = product.name || product.productName || "Product";
+    const productId = product.id || product._id || product.productId || null;
+    const tryRealThread = async () => {
+      try {
+        const { createThread, sendThreadMessage } = await import("../../services/api.js");
+        const genUuid = () => (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `00000000-0000-4000-a000-${String(Date.now()).slice(-12).padStart(12,"0")}`);
+        const orderId = product.order_id || product.orderId || genUuid();
+        const sellerId = product.seller_id || product.sellerId || "11111111-1111-1111-1111-111111111111";
+        let buyerId = null;
+        try { const raw = localStorage.getItem("user"); if (raw) buyerId = JSON.parse(raw)?.id || null; } catch {}
+        if (!buyerId) buyerId = "22222222-2222-2222-2222-222222222222";
+        const thread = await createThread({ order_id: orderId, seller_id: sellerId, buyer_id: buyerId });
+        const tid = thread.id || thread.thread_id;
+        if (tid) {
+          try { await sendThreadMessage(tid, { body: `Hi interested in ${productName}${productId ? ` (${productId})` : ""} — 2 units to US` }); } catch {}
+          navigate(`/inbox?thread=${encodeURIComponent(tid)}`);
+          return true;
+        }
+      } catch {}
+      return false;
+    };
+    const ok = await tryRealThread();
+    if (ok) return;
     navigate("/marketplace/messages", {
       state: {
         newConversation: {
           name: sellerName,
           product: productName,
           source: "NiryatSaathi",
-          productId:
-            product.id ||
-            product._id ||
-            product.productId,
+          productId,
           message: `Hi! I'm interested in your product: ${productName}`,
         },
       },

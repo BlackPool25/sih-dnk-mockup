@@ -113,7 +113,6 @@ def test_simulator_advances_per_parcel(client, monkeypatch):
         json={"tracking_number": "SIM-2", "carrier": "EMS", "order_id": order_id, "parcel_id": "parcel-2"},
     )
     from app import tracking_simulator as sim_mod
-    from app.database import SessionLocal as OrigSession
 
     def _override_session():
         s = TestSession()

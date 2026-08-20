@@ -1,13 +1,23 @@
 import random
 from .base import TrackingProvider
 
-STATE_FLOW = ["Booked", "Picked Up", "In Transit", "Out for Delivery", "Delivered"]
+STATE_FLOW = [
+    "Booked",
+    "Picked Up",
+    "In Transit (Origin)",
+    "In Transit (Destination)",
+    "Out for Delivery",
+    "Delivered",
+    "Signed",
+]
 
 LOCATIONS = {
     "Picked Up": ["Pune Hub", "Mumbai Hub", "Delhi Hub"],
-    "In Transit": ["Mumbai Transit Center", "Dubai Transit Hub", "Frankfurt Transit Hub"],
+    "In Transit (Origin)": ["Mumbai Transit Center", "Delhi Origin Hub", "Pune Sorting Center"],
+    "In Transit (Destination)": ["Dubai Transit Hub", "Frankfurt Transit Hub", "Singapore Transit Hub"],
     "Out for Delivery": ["Local Delivery Center"],
     "Delivered": ["Destination Address"],
+    "Signed": ["Recipient Address - Signed"],
 }
 
 class MockProvider(TrackingProvider):

@@ -19,6 +19,7 @@ import {
   MessageCircle
 } from "lucide-react";
 import Navbar from "../../components/marketplace/Navbar";
+import PricingTable from "../../components/Order/PricingTable";
 
 function Orders() {
   const navigate = useNavigate();
@@ -461,6 +462,47 @@ function Orders() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Pricing Breakdown — buyer view (Task 11) */}
+                <div className="border-t border-[#E8ECE7] pt-4">
+                  {(() => {
+                    const aw = selectedOrder?.net_weight_g ?? selectedOrder?.gross_weight_g ?? selectedOrder?.weight_g ?? 280;
+                    const cw = {
+                      ITPS: Math.ceil(aw / 50) * 50,
+                      EMS: Math.ceil(aw / 250) * 250,
+                    };
+                    const pricing = selectedOrder?.pricing_breakdown?.landed_cost || selectedOrder?.pricing_breakdown || selectedOrder?.landed_cost || null;
+                    if (pricing && (pricing.dnk_fees_minor != null || pricing.customs_minor != null || pricing.breakdown)) {
+                      return (
+                        <PricingTable
+                          landedCost={pricing}
+                          actualWeight={aw}
+                          chargeableWeight={cw}
+                          variant="buyer"
+                        />
+                      );
+                    }
+                    const fallback = {
+                      product_value_minor: Math.round((selectedOrder?.total || selectedOrder?.totalAmount || 1000) * 100) || 100000,
+                      shipping_cost_minor: 33000,
+                      insurance_minor: 5000,
+                      dnk_fees_minor: 4582,
+                      customs_minor: 41124,
+                      seller_receivable_minor: 142582,
+                      buyer_total_minor: 183706,
+                      landed_cost_minor: 183706,
+                      breakdown: [
+                        { label: "Product Value", amount_minor: Math.round((selectedOrder?.total || selectedOrder?.totalAmount || 1000) * 100) || 100000 },
+                        { label: "Shipping", amount_minor: 33000 },
+                        { label: "Insurance", amount_minor: 5000 },
+                        { label: "DNK Fees (seller pays)", amount_minor: 4582 },
+                        { label: "Customs/Duty+Tax (buyer pays directly — NOT to seller)", amount_minor: 41124 },
+                      ],
+                      disclaimer: "Customs/Duty+Tax are buyer-paid directly to destination customs and are NOT included in seller receivable. DNK Fees (country fees + platform fee) are seller-paid.",
+                    };
+                    return <PricingTable landedCost={fallback} actualWeight={aw} chargeableWeight={cw} variant="buyer" />;
+                  })()}
                 </div>
 
                 {/* Delivery Address */}

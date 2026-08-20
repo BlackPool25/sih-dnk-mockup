@@ -23,11 +23,13 @@ def utcnow() -> datetime:
 # circular imports (models import Base from here, then we re-import them).
 from app.models.profile import SellerProfile
 from app.models.profile_document import DocumentType, ProfileDocument
+from app.models.sahayak_scan import SahayakScan
 
 __all__ = [
     "Base",
     "DocumentType",
     "ProfileDocument",
+    "SahayakScan",
     "SellerProfile",
     "utcnow",
 ]

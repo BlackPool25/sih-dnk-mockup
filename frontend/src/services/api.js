@@ -492,6 +492,55 @@ export const calculatePricing = async (payload, token) => {
   return res.json();
 };
 
+export function getBillableWeight(actualWeightG, service) {
+  const w = Math.max(1, Math.round(Number(actualWeightG) || 0));
+  if (String(service || "").toUpperCase() === "EMS") {
+    return Math.ceil(w / 250) * 250;
+  }
+  return Math.ceil(w / 50) * 50;
+}
+
+export const getPricingQuote = async (params = {}, token) => {
+  const weightG = params.weight_g ?? params.weight ?? params.actualWeight ?? params.actual_weight_g ?? 280;
+  const service = params.service ? String(params.service).toUpperCase() : null;
+  const dest = params.destination_country ?? params.destinationCountry ?? "US";
+  const category = params.category_slug ?? params.category ?? "jute-products";
+  const valueMinor = params.value_minor ?? params.valueMinor ?? 100000;
+
+  const query = new URLSearchParams();
+  query.set("weight", String(weightG));
+  if (service) query.set("service", service);
+  query.set("destination_country", String(dest));
+  if (params.currency) query.set("currency", String(params.currency));
+
+  try {
+    const res = await apiFetch(`${API_BASE}/pricing/quote?${query.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && (data.billable_weight_g != null || data.chargeable_weight_g != null || data.ITPS || data.EMS)) {
+        return data;
+      }
+      return data;
+    }
+  } catch (_) {}
+
+  const payload = {
+    destination_country: String(dest),
+    weight_g: Number(weightG),
+    category_slug: String(category),
+    value_minor: Number(valueMinor),
+  };
+  if (service) payload.service = service;
+  try {
+    const data = await calculatePricing(payload, token);
+    return data;
+  } catch (e) {
+    throw e;
+  }
+};
+
 export const synthesizeSpeech = async (token, text, language = 'hi') => {
   const res = await apiFetch(`${API_BASE}/api/voice/tts`, {
     method: 'POST',
@@ -876,12 +925,10 @@ export async function publishMarketplaceProduct(form, imageFiles) {
   const body = await res.json();
   // clear draft on success
   clearMarketplaceDraft();
-  // also cache published product locally for badge + feed optimistic
   try {
     const published = body.product || body;
     const feedCached = { product: published, hits: body.hits || null, at: new Date().toISOString(), mocked: body.mocked };
     localStorage.setItem(MARKETPLACE_FEED_CACHE_KEY + ':last_publish', JSON.stringify(feedCached));
-    // add to a local published list for Products badge
     const listRaw = localStorage.getItem('dnk_marketplace_published');
     const list = listRaw ? _safeJsonParse(listRaw, []) : [];
     if (Array.isArray(list)) {
@@ -902,10 +949,15 @@ export async function publishMarketplaceProduct(form, imageFiles) {
       localStorage.setItem('dnk_marketplace_published', JSON.stringify(list.slice(0, 50)));
     }
   } catch {}
+  try {
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(new CustomEvent('marketplace:published', { detail: { seller_id: sellerId } }));
+    }
+  } catch {}
   return body;
 }
 
-export async function fetchMarketplaceFeed(limit = 20) {
+export async function fetchMarketplaceFeed(limit = 50) {
   const res = await apiFetch(`${API_BASE}/api/marketplace/feed?limit=${encodeURIComponent(limit)}`, {
     headers: {},
   });
@@ -914,7 +966,6 @@ export async function fetchMarketplaceFeed(limit = 20) {
     try { data = await res.clone().json(); } catch { try { data = { detail: await res.text() }; } catch { data = {}; } }
     const msg = _parseDetail(data, 'Feed fetch failed');
     const err = new ApiError(msg, { status: res.status, detail: data?.detail || msg, data });
-    // cache 502 for banner fallback check
     if (res.status === 502) {
       try { localStorage.setItem(MARKETPLACE_FEED_CACHE_KEY + ':last_error', JSON.stringify({ status: 502, at: new Date().toISOString() })); } catch {}
     }
@@ -923,6 +974,52 @@ export async function fetchMarketplaceFeed(limit = 20) {
   const body = await res.json();
   try { localStorage.setItem(MARKETPLACE_FEED_CACHE_KEY, JSON.stringify({ body, at: new Date().toISOString() })); } catch {}
   return body;
+}
+
+export async function fetchMarketplaceProducts({ seller_id, category, limit } = {}) {
+  const params = new URLSearchParams();
+  if (seller_id) params.set('seller_id', seller_id);
+  if (category) params.set('category', category);
+  if (limit) params.set('limit', String(limit));
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const res = await apiFetch(`${API_BASE}/api/marketplace/products${qs}`, { headers: {} });
+  if (!res.ok) {
+    let data = {};
+    try { data = await res.clone().json(); } catch { try { data = { detail: await res.text() }; } catch { data = {}; } }
+    const msg = _parseDetail(data, 'Products fetch failed');
+    throw new ApiError(msg, { status: res.status, detail: data?.detail || msg, data });
+  }
+  return res.json();
+}
+
+export async function fetchMarketplaceProduct(productId) {
+  const pid = encodeURIComponent(String(productId));
+  const res = await apiFetch(`${API_BASE}/api/marketplace/products/${pid}`, { headers: {} });
+  if (!res.ok) {
+    let data = {};
+    try { data = await res.clone().json(); } catch { try { data = { detail: await res.text() }; } catch { data = {}; } }
+    const msg = _parseDetail(data, 'Product fetch failed');
+    throw new ApiError(msg, { status: res.status, detail: data?.detail || msg, data });
+  }
+  return res.json();
+}
+
+export function getCurrentSellerId() {
+  try {
+    const raw = localStorage.getItem('user');
+    if (raw) {
+      const u = JSON.parse(raw);
+      const cand = u?.id || u?.seller_id || u?.sellerId || null;
+      if (cand && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(cand))) {
+        return String(cand);
+      }
+    }
+  } catch {}
+  try {
+    const sid = localStorage.getItem('dnk_seller_id');
+    if (sid && /^[0-9a-fA-F-]{36}$/.test(sid)) return sid;
+  } catch {}
+  return null;
 }
 
 export function getPublishedLocalList() {
@@ -960,9 +1057,10 @@ export async function fetchThread(threadId) {
   return res.json();
 }
 
-export async function fetchThreadMessages(threadId, { limit = 20, offset = 0, before = null } = {}) {
+export async function fetchThreadMessages(threadId, { limit = 20, offset = 0, before = null, since = null } = {}) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (before) params.set('before', before);
+  if (since) params.set('since', since);
   const res = await apiFetch(`${API_BASE}/messages/threads/${encodeURIComponent(threadId)}/messages?${params.toString()}`);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
@@ -983,6 +1081,14 @@ export async function pollThread(threadId, { since = null, limit = 20 } = {}) {
   }
   return res.json();
 }
+
+export async function fetchMessages(threadId, sinceOrOpts) {
+  if (typeof sinceOrOpts === "string" || sinceOrOpts == null) {
+    return pollThread(threadId, { since: sinceOrOpts || null });
+  }
+  return pollThread(threadId, sinceOrOpts);
+}
+export const pollThreads = pollThread;
 
 export async function createThread({ order_id, seller_id, buyer_id }) {
   const res = await apiFetch(`${API_BASE}/messages/threads`, {
@@ -1132,6 +1238,95 @@ export async function mockPayQuote(quoteId) {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     const msg = _parseDetail(data, 'Mock pay failed');
+    throw new ApiError(msg, { status: res.status, detail: data.detail || msg, data });
+  }
+  return res.json();
+}
+
+export async function getPaymentMock(paymentId) {
+  const res = await apiFetch(`${API_BASE}/payment/mock/${encodeURIComponent(paymentId)}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const msg = _parseDetail(data, 'Failed to fetch payment');
+    throw new ApiError(msg, { status: res.status, detail: data.detail || msg, data });
+  }
+  return res.json();
+}
+
+export async function payPaymentMock(paymentId) {
+  const res = await apiFetch(`${API_BASE}/payment/mock/${encodeURIComponent(paymentId)}/pay`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const msg = _parseDetail(data, 'Payment failed');
+    throw new ApiError(msg, { status: res.status, detail: data.detail || msg, data });
+  }
+  return res.json();
+}
+
+export async function generatePaymentMock({ amount_minor, order_id, quote_id } = {}) {
+  const payload = {};
+  if (Number.isInteger(amount_minor)) payload.amount_minor = amount_minor;
+  if (order_id) payload.order_id = String(order_id);
+  if (quote_id) payload.quote_id = String(quote_id);
+  const res = await apiFetch(`${API_BASE}/payment/mock/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const msg = _parseDetail(data, 'Generate payment failed');
+    throw new ApiError(msg, { status: res.status, detail: data.detail || msg, data });
+  }
+  return res.json();
+}
+
+export const getPaymentMockStatus = getPaymentMock;
+export const payPaymentMockAlias = payPaymentMock;
+
+// =======================================================
+// SAHAYAK SCANS — DB-backed filtered history (TASK 10)
+// GET /sahayak/scans, POST /sahayak/scans, GET /sahayak/scans/{order_id}
+// =======================================================
+export async function getSahayakScans({ limit = 50 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const res = await apiFetch(`${API_BASE}/sahayak/scans?${params.toString()}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const msg = _parseDetail(data, 'Failed to fetch sahayak scans');
+    throw new ApiError(msg, { status: res.status, detail: data.detail || msg, data });
+  }
+  const body = await res.json();
+  return Array.isArray(body) ? body : body.scans || [];
+}
+
+export async function postSahayakScan(orderId, { lane_meta } = {}) {
+  const normalized = String(orderId || '').trim().toUpperCase();
+  if (!normalized) throw new ApiError('order_id required', { status: 422, detail: 'order_id required' });
+  const payload = { order_id: normalized };
+  if (lane_meta) payload.lane_meta = lane_meta;
+  const res = await apiFetch(`${API_BASE}/sahayak/scans`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const msg = _parseDetail(data, 'Failed to record scan');
+    throw new ApiError(msg, { status: res.status, detail: data.detail || msg, data });
+  }
+  return res.json();
+}
+
+export async function getSahayakScan(orderId) {
+  const oid = String(orderId || '').trim();
+  if (!oid) throw new ApiError('order_id required', { status: 422, detail: 'order_id required' });
+  const res = await apiFetch(`${API_BASE}/sahayak/scans/${encodeURIComponent(oid)}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    const msg = _parseDetail(data, 'Failed to fetch sahayak scan');
     throw new ApiError(msg, { status: res.status, detail: data.detail || msg, data });
   }
   return res.json();
@@ -1492,9 +1687,9 @@ class ApiService {
     }
   }
 
-  async getMarketplaceProducts() {
+  async getMarketplaceProducts(limit = 50) {
     try {
-      const feed = await fetchMarketplaceFeed(20);
+      const feed = await fetchMarketplaceFeed(limit);
       const hits = feed.hits || feed.products || [];
       if (Array.isArray(hits) && hits.length > 0) {
         const mapped = hits.map((h) => ({

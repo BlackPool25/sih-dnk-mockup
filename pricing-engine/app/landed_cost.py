@@ -380,7 +380,73 @@ def calculate_landed_cost(
     )
 
     # --------------------------------------------------------
-    # 11. Build structured result
+    # 11. Split DNK fees (seller pays) vs customs (buyer pays)
+    # --------------------------------------------------------
+    #
+    # DNK fees = country/customs processing fees + platform fee
+    #            (both seller-paid via DNK)
+    # Customs  = duty + tax
+    #            (buyer pays directly to destination customs —
+    #             EXCLUDED from seller receivable)
+    #
+    # seller_receivable = product + shipping + insurance
+    #                     + other_additions + dnk_fees
+    # buyer_total       = seller_receivable + customs
+    #                   = landed_cost_minor (identical)
+
+    dnk_fees_minor = country_fees_minor + platform_fee_minor
+    customs_minor = duty_minor + tax_minor
+
+    seller_receivable_minor = (
+        product_value_minor
+        + shipping_cost_minor
+        + insurance_minor
+        + other_additions_minor
+        + dnk_fees_minor
+    )
+
+    buyer_total_minor = seller_receivable_minor + customs_minor
+
+    breakdown = [
+        {
+            "label": "Product Value",
+            "amount_minor": product_value_minor,
+            "currency": currency,
+        },
+        {
+            "label": "Shipping",
+            "amount_minor": shipping_cost_minor,
+            "currency": currency,
+        },
+        {
+            "label": "Insurance",
+            "amount_minor": insurance_minor,
+            "currency": currency,
+        },
+        {
+            "label": "DNK Fees (seller pays)",
+            "amount_minor": dnk_fees_minor,
+            "currency": currency,
+            "note": "seller pays via DNK",
+            "components": {
+                "country_fees_minor": country_fees_minor,
+                "platform_fee_minor": platform_fee_minor,
+            },
+        },
+        {
+            "label": "Customs/Duty+Tax (buyer pays directly — NOT to seller)",
+            "amount_minor": customs_minor,
+            "currency": currency,
+            "note": "buyer pays directly to destination customs — NOT included in seller receivable",
+            "components": {
+                "duty_minor": duty_minor,
+                "tax_minor": tax_minor,
+            },
+        },
+    ]
+
+    # --------------------------------------------------------
+    # 12. Build structured result
     # --------------------------------------------------------
 
     return {
@@ -437,6 +503,14 @@ def calculate_landed_cost(
         "landed_cost_minor": (
             landed_cost_minor
         ),
+
+        # DNK vs customs split
+        "dnk_fees_minor": dnk_fees_minor,
+        "customs_minor": customs_minor,
+        "seller_receivable_minor": seller_receivable_minor,
+        "buyer_total_minor": buyer_total_minor,
+        "breakdown": breakdown,
+        "disclaimer": "Customs/Duty+Tax are buyer-paid directly to destination customs and are NOT included in seller receivable. DNK Fees (country fees + platform fee) are seller-paid.",
 
         # Data provenance
         "provenance": provenance or {},

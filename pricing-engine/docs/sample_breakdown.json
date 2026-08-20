@@ -121,6 +121,48 @@
     },
     "pre_platform_total_minor": 180274,
     "landed_cost_minor": 184879,
+    "dnk_fees_minor": 5755,
+    "customs_minor": 41124,
+    "seller_receivable_minor": 143755,
+    "buyer_total_minor": 184879,
+    "breakdown": [
+      {
+        "label": "Product Value",
+        "amount_minor": 100000,
+        "currency": "INR"
+      },
+      {
+        "label": "Shipping",
+        "amount_minor": 33000,
+        "currency": "INR"
+      },
+      {
+        "label": "Insurance",
+        "amount_minor": 5000,
+        "currency": "INR"
+      },
+      {
+        "label": "DNK Fees (seller pays)",
+        "amount_minor": 5755,
+        "currency": "INR",
+        "note": "seller pays via DNK",
+        "components": {
+          "country_fees_minor": 1150,
+          "platform_fee_minor": 4605
+        }
+      },
+      {
+        "label": "Customs/Duty+Tax (buyer pays directly — NOT to seller)",
+        "amount_minor": 41124,
+        "currency": "INR",
+        "note": "buyer pays directly to destination customs — NOT included in seller receivable",
+        "components": {
+          "duty_minor": 13800,
+          "tax_minor": 27324
+        }
+      }
+    ],
+    "disclaimer": "Customs/Duty+Tax are buyer-paid directly to destination customs and are NOT included in seller receivable. DNK Fees (country fees + platform fee) are seller-paid.",
     "provenance": {}
   }
 }

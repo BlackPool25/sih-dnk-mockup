@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Send, Paperclip, AlertTriangle, Eye, Loader2, IndianRupee, Package, Truck, History, Check, X, Edit3, CreditCard } from "lucide-react";
-import { fetchThread, fetchThreadMessages, sendThreadMessage, getQuotesByOrder, getQuote, createQuote, approveQuote, rejectQuote, reviseQuote, mockPayQuote } from "../../services/api.js";
+import { fetchThread, fetchThreadMessages, sendThreadMessage, getQuotesByOrder, getQuote, createQuote, approveQuote, rejectQuote, reviseQuote, mockPayQuote, pollThread } from "../../services/api.js";
 import useThreadWS from "../../hooks/useThreadWS.js";
+import { usePolling } from "../../hooks/usePolling.js";
+import PaymentLinkCard from "../Order/PaymentLinkCard.jsx";
 
 function getRole() {
   try {
@@ -270,8 +272,20 @@ export function ThreadView({ threadId, onRequireRefresh }) {
   const [quotesError, setQuotesError] = useState(null);
   const [quoteActionError, setQuoteActionError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState({ price_minor: 10000, qty: 1, shipping_minor: 500, notes: "" });
+  const [createForm, setCreateForm] = useState({ title: "", price_minor: 480000, qty: 2, shipping_minor: 33000, notes: "" });
   const [creating, setCreating] = useState(false);
+  const cancelledRef = useRef(false);
+  const abortRef = useRef(null);
+  const failCountRef = useRef(0);
+  const skipRef = useRef(0);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+      if (abortRef.current) { try { abortRef.current.abort(); } catch {} abortRef.current = null; }
+    };
+  }, [threadId]);
 
   const appendIncoming = useCallback((msg) => {
     if (!msg || !msg.id) return;
@@ -293,37 +307,85 @@ export function ThreadView({ threadId, onRequireRefresh }) {
     },
   });
 
+  const pollSince = useCallback(async () => {
+    if (!threadId) return;
+    if (cancelledRef.current) return;
+    if (skipRef.current > 0) {
+      skipRef.current -= 1;
+      return;
+    }
+    if (abortRef.current) { try { abortRef.current.abort(); } catch {} }
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    if (controller) abortRef.current = controller;
+    try {
+      const since = lastSinceRef.current;
+      const data = await pollThread(threadId, { since, limit: 20 });
+      if (cancelledRef.current || controller?.signal?.aborted) return;
+      const items = data.items || data.messages || [];
+      if (items.length > 0) {
+        let maxIso = since;
+        for (const m of items) {
+          if (m && m.id) appendIncoming(m);
+          const iso = m.created_at || m.createdAt;
+          if (iso && (!maxIso || iso > maxIso)) maxIso = iso;
+        }
+        if (maxIso && maxIso !== since) lastSinceRef.current = maxIso;
+      }
+      failCountRef.current = 0;
+      skipRef.current = 0;
+    } catch (e) {
+      if (cancelledRef.current || controller?.signal?.aborted) return;
+      if (e?.name === "AbortError") return;
+      const s = e?.status;
+      if (s === 429 || (s >= 500 && s < 600)) {
+        const c = ++failCountRef.current;
+        skipRef.current = Math.min(c, 3);
+      }
+    } finally {
+      if (controller && abortRef.current === controller) abortRef.current = null;
+    }
+  }, [threadId, appendIncoming]);
+
+  usePolling(pollSince, threadId ? 3000 : null);
+
   const load = useCallback(async ({ reset = false, nextBefore = null } = {}) => {
     if (!threadId) return;
-    setLoading(true);
-    setError(null);
+    if (cancelledRef.current) return;
+    if (!cancelledRef.current) { setLoading(true); setError(null); }
     try {
       const pBefore = reset ? null : (nextBefore ?? before);
       const pOffset = reset ? 0 : offset;
       const data = await fetchThreadMessages(threadId, { limit, offset: pOffset, before: pBefore || undefined });
+      if (cancelledRef.current) return;
       const items = data.items || [];
       const t = typeof data.total === "number" ? data.total : items.length;
-      setTotal(t);
+      if (!cancelledRef.current) setTotal(t);
       if (reset) {
         const sorted = [...items].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        setMessages(sorted);
-        setOffset(items.length);
+        if (!cancelledRef.current) {
+          setMessages(sorted);
+          setOffset(items.length);
+        }
         if (sorted.length > 0) lastSinceRef.current = sorted[sorted.length - 1].created_at;
       } else {
-        setMessages((prev) => {
-          const merged = [...prev];
-          for (const it of items) {
-            if (!merged.find((m) => String(m.id) === String(it.id))) merged.push(it);
-          }
-          merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-          return merged;
-        });
-        setOffset((o) => o + items.length);
+        if (!cancelledRef.current) {
+          setMessages((prev) => {
+            const merged = [...prev];
+            for (const it of items) {
+              if (!merged.find((m) => String(m.id) === String(it.id))) merged.push(it);
+            }
+            merged.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+            return merged;
+          });
+          setOffset((o) => o + items.length);
+        }
       }
     } catch (e) {
-      setError(e?.detail || e?.message || "Failed to load messages");
+      if (cancelledRef.current) return;
+      if (e?.name === "AbortError") return;
+      if (!cancelledRef.current) setError(e?.detail || e?.message || "Failed to load — Retry");
     } finally {
-      setLoading(false);
+      if (!cancelledRef.current) setLoading(false);
     }
   }, [threadId, limit, offset, before]);
 
@@ -485,14 +547,23 @@ export function ThreadView({ threadId, onRequireRefresh }) {
 
   const handleCreateQuote = async () => {
     if (!orderId) { setQuotesError("No order_id for quote"); return; }
+    const p = Number(createForm.price_minor);
+    const s = Number(createForm.shipping_minor);
+    if (!Number.isFinite(p) || p < 0) { setQuotesError("price_minor must be >= 0"); return; }
+    if (!Number.isFinite(s) || s < 0) { setQuotesError("shipping_minor must be >= 0"); return; }
+    const qtyVal = createForm.qty ? Number(createForm.qty) : null;
+    const mergedNotes = [createForm.title?.trim(), createForm.notes?.trim()].filter(Boolean).join(" — ") || null;
     setCreating(true);
     setQuotesError(null);
     try {
-      await createQuote({ order_id: orderId, price_minor: Number(createForm.price_minor), qty: createForm.qty ? Number(createForm.qty) : null, shipping_minor: Number(createForm.shipping_minor), notes: createForm.notes || null, thread_id: threadId });
+      await createQuote({ order_id: orderId, price_minor: p, qty: qtyVal, shipping_minor: s, notes: mergedNotes, thread_id: threadId });
       setShowCreate(false);
       await loadQuotes(orderId);
     } catch (e) {
-      setQuotesError(e?.detail || e?.message || "Create quote failed");
+      const status = e?.status;
+      if (status === 403) setQuotesError("Only seller can create quotes (403) — buyer/sahayak blocked");
+      else if (status === 409) setQuotesError("Quote already exists for this order (409) — use Revise");
+      else setQuotesError(e?.detail || e?.message || "Create quote failed");
     } finally {
       setCreating(false);
     }
@@ -519,7 +590,7 @@ export function ThreadView({ threadId, onRequireRefresh }) {
         <div className="text-center">
           <Eye className="w-10 h-10 text-[#E5EAE3] mx-auto mb-3" />
           <p className="font-['Figtree'] text-sm text-[#6B7568]">Select a thread to view messages</p>
-          <p className="font-['Figtree'] text-xs text-[#6B7568] mt-1">Messages paged GET /messages/threads/&#123;id&#125;/messages?limit&amp;offset&amp;before + WS + poll?since=15s</p>
+          <p className="font-['Figtree'] text-xs text-[#6B7568] mt-1">Messages paged GET /messages/threads/&#123;id&#125;/messages?limit&amp;offset&amp;before + WS + poll?since=3s</p>
         </div>
       </div>
     );
@@ -530,7 +601,7 @@ export function ThreadView({ threadId, onRequireRefresh }) {
       <div className="px-4 py-3 border-b border-[#E8ECE7] flex items-center justify-between">
         <div>
           <p className="font-['Figtree'] text-sm font-medium text-[#1B2E1B]">Thread {String(threadId).slice(0, 8)} • Order {orderId ? String(orderId).slice(0, 8) : "…"}</p>
-          <p className="font-['Figtree'] text-xs text-[#6B7568]">WS: {wsStatus} • poll fallback every 15s • {total} msgs • {quotes.length} quotes</p>
+          <p className="font-['Figtree'] text-xs text-[#6B7568]">WS: {wsStatus} • poll fallback every 3s • {total} msgs • {quotes.length} quotes</p>
         </div>
         <button onClick={handleLoadOlder} disabled={loading || messages.length >= total} className={`px-3 py-1.5 rounded-lg font-['Figtree'] text-xs ${loading || messages.length >= total ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-[#F0F5EE] text-[#1B2E1B] hover:bg-[#E8F0E6]"}`}>
           {loading ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null}
@@ -568,6 +639,7 @@ export function ThreadView({ threadId, onRequireRefresh }) {
       </div>
       {showCreate ? (
         <div className="px-4 py-3 border-b border-[#E8ECE7] bg-white space-y-2">
+          <input value={createForm.title} onChange={(e) => setCreateForm((s) => ({ ...s, title: e.target.value }))} placeholder="Product title (e.g. Pashmina — 2 units to US)" className="w-full px-3 py-2 rounded-lg border border-[#E5EAE3] font-['Figtree'] text-sm" />
           <div className="grid grid-cols-3 gap-2">
             <label className="font-['Figtree'] text-xs text-[#6B7568]">price_minor
               <input type="number" value={createForm.price_minor} onChange={(e) => setCreateForm((s) => ({ ...s, price_minor: Number(e.target.value) }))} className="mt-1 w-full px-2 py-1.5 rounded-lg border border-[#E5EAE3] text-sm" />
@@ -575,15 +647,16 @@ export function ThreadView({ threadId, onRequireRefresh }) {
             <label className="font-['Figtree'] text-xs text-[#6B7568]">qty
               <input type="number" value={createForm.qty ?? ""} onChange={(e) => setCreateForm((s) => ({ ...s, qty: e.target.value ? Number(e.target.value) : null }))} className="mt-1 w-full px-2 py-1.5 rounded-lg border border-[#E5EAE3] text-sm" />
             </label>
-            <label className="font-['Figtree'] text-xs text-[#6B7568]">shipping
+            <label className="font-['Figtree'] text-xs text-[#6B7568]">shipping (minor)
               <input type="number" value={createForm.shipping_minor} onChange={(e) => setCreateForm((s) => ({ ...s, shipping_minor: Number(e.target.value) }))} className="mt-1 w-full px-2 py-1.5 rounded-lg border border-[#E5EAE3] text-sm" />
             </label>
           </div>
-          <input value={createForm.notes} onChange={(e) => setCreateForm((s) => ({ ...s, notes: e.target.value }))} placeholder="notes (optional)" className="w-full px-3 py-2 rounded-lg border border-[#E5EAE3] font-['Figtree'] text-sm" />
+          <p className="font-['Figtree'] text-[11px] text-[#6B7568]">Example: 480000 = ₹4800 (2×2400) • 33000 = ₹330 shipping</p>
+          <input value={createForm.notes} onChange={(e) => setCreateForm((s) => ({ ...s, notes: e.target.value }))} placeholder="notes (optional) — e.g. 2 units to US" className="w-full px-3 py-2 rounded-lg border border-[#E5EAE3] font-['Figtree'] text-sm" />
           <button onClick={handleCreateQuote} disabled={creating} className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-[#1B2E1B] text-white font-['Figtree'] text-sm disabled:opacity-50">
-            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}Create quote (POST /quotes)
+            {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}Create quote (POST /quotes seller-only)
           </button>
-          <p className="font-['Figtree'] text-[11px] text-[#6B7568]">seller creates quote versioned draft→sent ; buyer cannot create</p>
+          <p className="font-['Figtree'] text-[11px] text-[#6B7568]">seller-only • buyer gets 403 • sahayak 403 • appears chronologically as sent → buyer Approve</p>
         </div>
       ) : null}
       {quoteActionError ? <div className="px-4 py-2 bg-red-50 border-b border-red-200 font-['Figtree'] text-xs text-red-700">{quoteActionError}</div> : null}
@@ -604,6 +677,14 @@ export function ThreadView({ threadId, onRequireRefresh }) {
               );
             }
             const m = item.data;
+            const isPaymentMsg = String(m.body || "").includes("/payment/mock/");
+            if (isPaymentMsg) {
+              return (
+                <div key={String(m.id)} className="flex justify-center">
+                  <PaymentLinkCard message={m} />
+                </div>
+              );
+            }
             const mine = String(m.sender_id) === String(selfId);
             const who = m.sender_role || (mine ? role : "peer");
             return (

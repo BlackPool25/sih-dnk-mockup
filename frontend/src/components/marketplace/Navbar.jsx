@@ -95,7 +95,7 @@ function Navbar() {
 
         <div className="flex items-center gap-4">
           <HindiToggle />
-          {isAuthenticated ? <InboxBell className="bg-white/20 hover:bg-white/30" /> : null}
+          {isAuthenticated ? <InboxBell pollMs={3000} className="bg-white/20 hover:bg-white/30" /> : null}
           {isAuthenticated ? (
             <div className="relative" ref={dropdownRef}>
               <button

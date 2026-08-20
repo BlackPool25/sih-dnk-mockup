@@ -43,6 +43,9 @@ UserDep = Annotated[AuthUser, Depends(get_current_user)]
 
 
 def _master_key() -> bytes:
+    hex_env = os.environ.get("ENCRYPTION_MASTER_KEY")
+    if hex_env is not None and hex_env != "":
+        return bytes.fromhex(hex_env)
     try:
         from storage.config import settings as s  # type: ignore[import-untyped]
 
@@ -51,8 +54,7 @@ def _master_key() -> bytes:
             return bytes.fromhex(hk)
     except Exception:
         pass
-    hex_env = os.environ.get("ENCRYPTION_MASTER_KEY") or "00" * 32
-    return bytes.fromhex(hex_env)
+    return bytes.fromhex("00" * 32)
 
 
 def _encrypt_preview(tid: str, preview: str, mk: bytes) -> str:

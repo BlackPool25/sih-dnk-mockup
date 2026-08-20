@@ -87,6 +87,9 @@ class Settings(BaseModel):
     SARVAM_API_KEY: str | None = None
     SARVAM_ENABLED: bool = False
 
+    # -- Tracking ---------------------------------------------------------------
+    MOCK_TRACKING: bool = True
+
     # -- Downstream engine URLs ------------------------------------------------
     VALIDATION_ENGINE_URL: str = "http://validation-engine:8000"
     PRICING_ENGINE_URL: str = "http://pricing-engine:8000"
@@ -135,6 +138,15 @@ class Settings(BaseModel):
         if v not in allowed:
             raise ValueError(f"JWT_ALGORITHM must be one of {sorted(allowed)}, got: {v!r}")
         return v
+
+    @field_validator("MOCK_TRACKING", mode="before")
+    @classmethod
+    def _parse_mock_tracking(cls, v: object) -> bool:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in ("true", "1", "yes")
+        return bool(v)
 
     @field_validator(
         "RATE_LIMIT_LOGIN",

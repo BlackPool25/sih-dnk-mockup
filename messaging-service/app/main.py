@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.messages import router as messages_router
+from app.routers.payment_mock import router as payment_mock_router
 from app.routers.quotes import router as quotes_router
 from app.routers.ws import router as ws_router
 
@@ -31,6 +32,7 @@ app.add_middleware(
 app.include_router(quotes_router)
 app.include_router(messages_router)
 app.include_router(ws_router)
+app.include_router(payment_mock_router)
 
 
 @app.get("/health")

@@ -276,6 +276,32 @@ async def list_products_endpoint(
     return {"products": prods, "total": len(prods), "mocked": True}
 
 
+@app.get("/marketplace/products/{product_id}")
+async def get_product_endpoint(product_id: str) -> dict[str, object]:
+    from fastapi import HTTPException as _HTTPExc
+
+    prod = get_product(product_id)
+    if prod is None:
+        # also check listings as fallback — product_id may be listing id
+        from app.store import get_listing
+
+        li = get_listing(product_id)
+        if li is not None:
+            prod = get_product(li["product_id"])
+            if prod is not None:
+                return {"product": prod, "listing": li, "mocked": True}
+        raise _HTTPExc(status_code=404, detail="product not found")
+    # attach listing if exists
+    from app.store import get_listing as _get_li
+
+    listing = None
+    for li in list_listings():
+        if li["product_id"] == product_id or li["id"] == product_id:
+            listing = li
+            break
+    return {"product": prod, "listing": listing, "mocked": True}
+
+
 # ---------------------------------------------------------------------------
 # Listings
 # ---------------------------------------------------------------------------

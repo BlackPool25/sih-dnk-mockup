@@ -82,6 +82,10 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # 0. Skip auth for public endpoints -----------------------------------------
         if request.url.path in PUBLIC_AUTH_PATHS:
             return await call_next(request)
+        if request.url.path.startswith("/api/marketplace/products"):
+            return await call_next(request)
+        if request.url.path.startswith("/api/marketplace/feed"):
+            return await call_next(request)
 
         # 1. Extract Bearer token -------------------------------------------------
         auth_header = request.headers.get("Authorization")

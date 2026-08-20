@@ -332,6 +332,14 @@ class PlatformFeeResponse(StrictBaseModel):
     provenance: dict = Field(default_factory=dict)
 
 
+class BreakdownLineResponse(StrictBaseModel):
+    label: str
+    amount_minor: int
+    currency: str
+    note: str | None = None
+    components: dict | None = None
+
+
 class LandedCostResponse(StrictBaseModel):
     currency: str
     destination_country: str
@@ -347,6 +355,12 @@ class LandedCostResponse(StrictBaseModel):
     platform_fee: PlatformFeeResponse
     pre_platform_total_minor: int
     landed_cost_minor: int
+    dnk_fees_minor: int | None = None
+    customs_minor: int | None = None
+    seller_receivable_minor: int | None = None
+    buyer_total_minor: int | None = None
+    breakdown: list[BreakdownLineResponse] | None = None
+    disclaimer: str | None = None
     provenance: dict = Field(default_factory=dict)
 
 

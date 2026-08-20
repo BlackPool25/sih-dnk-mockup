@@ -49,6 +49,40 @@ TEST_SETTINGS = Settings(**TEST_SETTINGS_DATA)
 @pytest.fixture(autouse=True)
 def _patch_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("storage.config.settings", TEST_SETTINGS)
+    # auth.middleware imports settings at top-level, so its binding must be patched too
+    # (monkeypatching storage.config.settings alone doesn't update the already-imported reference).
+    try:
+        import auth.middleware as auth_mw
+
+        monkeypatch.setattr(auth_mw, "settings", TEST_SETTINGS)
+    except ImportError:
+        pass
+    # Also patch other top-level importers that cache the singleton
+    for mod_name in (
+        "auth.routes",
+        "auth.cli.__main__",
+        "app.routers.documents",
+        "app.routers.proxy",
+        "app.routers.qr",
+        "app.routers.marketplace_proxy",
+        "app.routers.messaging_proxy",
+        "app.routers.verification_proxy",
+        "app.middleware.rate_limiter",
+        "app.services.profile_crypto",
+        "app.services.val_client",
+        "app.services.payment_client",
+        "app.services.tracking_client",
+        "app.services.translation",
+        "app.services.pricing_client",
+    ):
+        try:
+            import importlib
+
+            mod = importlib.import_module(mod_name)
+            if hasattr(mod, "settings"):
+                monkeypatch.setattr(mod, "settings", TEST_SETTINGS)
+        except ImportError:
+            pass
 
 
 @pytest.fixture(autouse=True)

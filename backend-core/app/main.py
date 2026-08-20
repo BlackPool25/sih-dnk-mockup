@@ -24,6 +24,7 @@ from app.routers.guidance import router as guidance_router
 from app.routers.marketplace_proxy import router as marketplace_proxy_router
 from app.routers.messaging_proxy import router as messaging_proxy_router
 from app.routers.tracking import router as tracking_router
+from app.routers.sahayak import router as sahayak_router
 from app.routers.verification_proxy import router as verification_proxy_router
 from auth.routes import router as auth_router
 
@@ -39,6 +40,16 @@ auth_mw.PUBLIC_AUTH_PATHS = auth_mw.PUBLIC_AUTH_PATHS | {
     "/api/marketplace/ranking/preview",
     "/api/marketplace/products",
 }
+
+_orig_dispatch = auth_mw.JWTAuthMiddleware.dispatch
+
+async def _patched_dispatch(self, request, call_next):
+    p = request.url.path
+    if p in auth_mw.PUBLIC_AUTH_PATHS or p.startswith("/api/marketplace/products") or p.startswith("/api/marketplace/feed"):
+        return await call_next(request)
+    return await _orig_dispatch(self, request, call_next)
+
+auth_mw.JWTAuthMiddleware.dispatch = _patched_dispatch
 
 app = FastAPI(
     title="SIH-DNK Backend Core",
@@ -91,6 +102,8 @@ app.include_router(marketplace_proxy_router)
 app.include_router(messaging_proxy_router)
 
 app.include_router(verification_proxy_router)
+
+app.include_router(sahayak_router)
 
 
 register_error_handlers(app)

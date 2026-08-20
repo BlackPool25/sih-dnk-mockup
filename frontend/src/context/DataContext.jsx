@@ -201,8 +201,8 @@ export function DataProvider({ children }) {
     return result;
   };
 
-  const loadProducts = async () => {
-    const result = await fetchData(() => apiService.getProducts());
+  const loadProducts = async (limit = 50) => {
+    const result = await fetchData(() => apiService.getMarketplaceProducts(limit));
     if (result) setProducts(result);
     return result;
   };
@@ -247,8 +247,9 @@ export function DataProvider({ children }) {
   };
 
   // ===== MARKETPLACE =====
-  const loadMarketplaceProducts = async () => {
-    const result = await fetchData(() => apiService.getMarketplaceProducts());
+  const loadMarketplaceProducts = async (limit = 50) => {
+    const result = await fetchData(() => apiService.getMarketplaceProducts(limit));
+    if (result) setProducts(result);
     return result;
   };
 

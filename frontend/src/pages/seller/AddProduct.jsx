@@ -1,5 +1,5 @@
 // src/pages/seller/AddProduct.jsx
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Layout from "../../components/seller/Layout";
 import {
@@ -8,9 +8,13 @@ import {
   clearMarketplaceDraft,
   publishMarketplaceProduct,
   fetchMarketplaceFeed,
+  transcribeAudio,
+  getAccessToken,
   MAX_IMAGE_BYTES,
   ApiError,
 } from "../../services/api";
+import { parseVoiceTranscript } from "../../utils/parseVoiceTranscript";
+import { useHindi } from "../../context/HindiContext";
 import {
   ArrowLeft,
   Plus,
@@ -24,7 +28,9 @@ import {
 
 function AddProduct() {
   const navigate = useNavigate();
+  const { hindiHelp } = useHindi();
   const [isVoiceFilling, setIsVoiceFilling] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
@@ -47,6 +53,10 @@ function AddProduct() {
     unit: "piece",
   });
 
+  const mediaRecorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+
   useEffect(() => {
     const draft = loadMarketplaceDraft();
     if (draft && draft.form) {
@@ -56,37 +66,128 @@ function AddProduct() {
     }
   }, []);
 
-  const handleVoiceFilling = () => {
-    setIsVoiceFilling(!isVoiceFilling);
-    if (!isVoiceFilling) {
-      setTimeout(() => {
-        const voiceText = "Handwoven Silk Shawl, Textiles, 2400, 12, Beautiful handwoven silk shawl, Pure Silk, 200cm x 90cm, 250g, Weavers of Varanasi, Varanasi, piece";
-        const parts = voiceText.split(',');
-        const parsedData = {
-          name: "", category: "", price: "", stock: "", description: "", material: "", dimensions: "", weight: "", manufacturer: "", location: "", unit: "piece",
-        };
-        const fieldOrder = ["name", "category", "price", "stock", "description", "material", "dimensions", "weight", "manufacturer", "location", "unit"];
-        parts.forEach((part, index) => {
-          const trimmed = part.trim();
-          if (index < fieldOrder.length) {
-            parsedData[fieldOrder[index]] = trimmed;
-          }
-        });
-        setProductForm({
-          name: parsedData.name || productForm.name,
-          category: parsedData.category || productForm.category,
-          price: parsedData.price || productForm.price,
-          stock: parsedData.stock || productForm.stock,
-          description: parsedData.description || productForm.description,
-          material: parsedData.material || productForm.material,
-          dimensions: parsedData.dimensions || productForm.dimensions,
-          weight: parsedData.weight || productForm.weight,
-          manufacturer: parsedData.manufacturer || productForm.manufacturer,
-          location: parsedData.location || productForm.location,
-          unit: parsedData.unit || productForm.unit,
-        });
+  // cleanup on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((t) => t.stop());
+        }
+      } catch {}
+    };
+  }, []);
+
+  const stopRecording = () => {
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state === "recording") {
+      try { mr.stop(); } catch {}
+    }
+  };
+
+  const applyParsed = (parsed) => {
+    setProductForm((prev) => ({
+      name: parsed.name || prev.name,
+      category: parsed.category || prev.category,
+      price: parsed.price || prev.price,
+      stock: parsed.stock || prev.stock,
+      description: parsed.description || prev.description,
+      material: parsed.material || prev.material,
+      dimensions: parsed.dimensions || prev.dimensions,
+      weight: parsed.weight || prev.weight,
+      manufacturer: parsed.manufacturer || prev.manufacturer,
+      location: parsed.location || prev.location,
+      unit: parsed.unit || prev.unit || "piece",
+    }));
+  };
+
+  const handleVoiceFilling = async () => {
+    // toggle stop if already recording
+    if (isVoiceFilling) {
+      stopRecording();
+      return;
+    }
+    // start recording
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setBanner({ type: "error", text: "Voice not supported in this browser. Please type manually." });
+      return;
+    }
+    setFieldError(null);
+    setBanner(null);
+    chunksRef.current = [];
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      let mimeType = "";
+      if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported) {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) mimeType = "audio/webm;codecs=opus";
+        else if (MediaRecorder.isTypeSupported("audio/webm")) mimeType = "audio/webm";
+        else if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) mimeType = "audio/ogg;codecs=opus";
+      }
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      mr.onstop = async () => {
         setIsVoiceFilling(false);
-      }, 3000);
+        try {
+          stream.getTracks().forEach((t) => t.stop());
+        } catch {}
+        const blobType = mr.mimeType || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type: blobType });
+        if (!blob || blob.size === 0) {
+          setBanner({ type: "error", text: "No audio captured — try again." });
+          return;
+        }
+        setIsTranscribing(true);
+        try {
+          const token = getAccessToken();
+          const hint = hindiHelp ? "hi" : "en";
+          const result = await transcribeAudio(token, blob, hint);
+          const transcript = String(result?.transcript ?? result?.text ?? result?.data?.transcript ?? "").trim();
+          if (!transcript) {
+            setBanner({ type: "error", text: "Couldn't hear that, try again" });
+            return;
+          }
+          const parsed = parseVoiceTranscript(transcript);
+          applyParsed(parsed);
+          const conf = result?.confidence ?? result?.data?.confidence ?? null;
+          const low = result?.low_confidence ?? result?.data?.low_confidence ?? (typeof conf === "number" && conf < 0.6);
+          if (low) {
+            setBanner({ type: "warn", text: `Transcribed: "${transcript}" — low confidence, please verify fields.` });
+          } else {
+            setBanner({ type: "success", text: `Transcribed: "${transcript}"` });
+          }
+          // auto-dismiss success after 4s
+          setTimeout(() => setBanner((b) => (b?.text?.startsWith("Transcribed:") ? null : b)), 4000);
+        } catch (err) {
+          const msg = err?.message || String(err);
+          if (msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("notallowed")) {
+            setBanner({ type: "error", text: "Microphone permission denied — allow mic in browser settings." });
+          } else {
+            setBanner({ type: "error", text: msg || "Transcription failed, try again" });
+          }
+        } finally {
+          setIsTranscribing(false);
+        }
+      };
+      mr.onerror = () => {
+        setIsVoiceFilling(false);
+        setBanner({ type: "error", text: "Recording failed — try again." });
+      };
+      mr.start(100);
+      setIsVoiceFilling(true);
+    } catch (err) {
+      const msg = String(err?.message || err);
+      const name = err?.name || "";
+      if (name === "NotAllowedError" || msg.toLowerCase().includes("permission")) {
+        setBanner({ type: "error", text: "Microphone permission denied — allow mic in browser settings." });
+      } else if (name === "NotFoundError") {
+        setBanner({ type: "error", text: "No microphone found." });
+      } else {
+        setBanner({ type: "error", text: `Mic access failed: ${msg}` });
+      }
+      setIsVoiceFilling(false);
     }
   };
 
@@ -263,22 +364,33 @@ function AddProduct() {
                 </div>
                 <button
                   onClick={handleVoiceFilling}
-                  disabled={isVoiceFilling}
+                  disabled={isTranscribing}
+                  data-testid="mp-voice-btn"
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-['Figtree'] text-sm font-medium transition-all whitespace-nowrap ${
                     isVoiceFilling
                       ? "bg-red-500 text-white animate-pulse"
+                      : isTranscribing
+                      ? "bg-amber-400 text-[#1B2E1B] cursor-wait"
                       : "bg-[#A8C3A0] text-[#1B2E1B] hover:bg-[#98B890]"
                   }`}
                 >
                   <Volume2 className="w-4 h-4" />
-                  {isVoiceFilling ? "Listening..." : "Tap to Speak"}
+                  {isVoiceFilling ? "Listening... Tap to stop" : isTranscribing ? "Transcribing..." : "Tap to Speak"}
                 </button>
               </div>
               {isVoiceFilling && (
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex items-center gap-2" data-testid="mp-voice-listening">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
                   <span className="font-['Figtree'] text-xs text-[#6B7568]">
-                    🎤 Speak the product details...
+                    🎤 Speak the product details... Tap again to stop
+                  </span>
+                </div>
+              )}
+              {isTranscribing && (
+                <div className="mt-3 flex items-center gap-2" data-testid="mp-voice-transcribing">
+                  <span className="w-4 h-4 border-2 border-[#1B2E1B] border-t-transparent rounded-full animate-spin"></span>
+                  <span className="font-['Figtree'] text-xs text-[#6B7568]">
+                    Transcribing via /api/voice/transcribe…
                   </span>
                 </div>
               )}

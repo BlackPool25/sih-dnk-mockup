@@ -1,8 +1,152 @@
-import { useState, useEffect, useRef } from "react";
-import { CreditCard, Copy, Check, ExternalLink, RefreshCw, AlertTriangle, IndianRupee } from "lucide-react";
-import { createPaymentLink, getPaymentLinkStatus } from "../../services/api";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { CreditCard, Copy, Check, ExternalLink, RefreshCw, AlertTriangle, IndianRupee, Shield } from "lucide-react";
+import { createPaymentLink, getPaymentLinkStatus, getPaymentMock } from "../../services/api";
+import { usePolling } from "../../hooks/usePolling.js";
 
-export default function PaymentLinkCard({ order }) {
+// helpers for mock bubble
+function extractPaymentId(text) {
+  if (!text) return null;
+  const m = String(text).match(/\/payment\/mock\/([a-zA-Z0-9-]+)/);
+  return m ? m[1] : null;
+}
+
+function extractAmountMinor(text) {
+  if (!text) return null;
+  const m = String(text).match(/amount_minor[:\s]*([0-9]+)/i) || String(text).match(/₹\s*([0-9,]+\.[0-9]{2})/);
+  if (m) {
+    const raw = m[1].replace(/[,]/g, "");
+    const n = Number(raw);
+    if (Number.isFinite(n)) {
+      if (String(m[0]).includes("₹")) return Math.round(n * 100);
+      return n;
+    }
+  }
+  return null;
+}
+
+function fmtMinor(minor) {
+  const n = Number(minor);
+  if (!Number.isFinite(n)) return "—";
+  return `₹${(n / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Bubbles when rendered inside ThreadView via message
+function MockBubble({ message }) {
+  const body = message?.body || "";
+  const paymentId = extractPaymentId(body);
+  const initialAmount = extractAmountMinor(body);
+  const isVerifiedText = /verified/i.test(body) || /paid_held/i.test(body);
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
+  const abortRef = useRef(null);
+  const cancelledRef = useRef(false);
+  const failCountRef = useRef(0);
+  const skipRef = useRef(0);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+      if (abortRef.current) {
+        try { abortRef.current.abort(); } catch {}
+        abortRef.current = null;
+      }
+    };
+  }, [paymentId]);
+
+  const fetchStatus = useCallback(async () => {
+    if (!paymentId) return;
+    if (cancelledRef.current) return;
+    if (skipRef.current > 0) {
+      skipRef.current -= 1;
+      return;
+    }
+    if (abortRef.current) {
+      try { abortRef.current.abort(); } catch {}
+    }
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    if (controller) abortRef.current = controller;
+    try {
+      const res = await getPaymentMock(paymentId);
+      if (cancelledRef.current || controller?.signal?.aborted) return;
+      setData(res);
+      setErr(null);
+      failCountRef.current = 0;
+      skipRef.current = 0;
+    } catch (e) {
+      if (cancelledRef.current || controller?.signal?.aborted) return;
+      if (e?.name === "AbortError") return;
+      const s = e?.status;
+      if (s === 429 || (s >= 500 && s < 600)) {
+        const c = ++failCountRef.current;
+        skipRef.current = Math.min(c, 3);
+      }
+      if (!cancelledRef.current) setErr(e?.message || "Failed to fetch payment");
+    } finally {
+      if (controller && abortRef.current === controller) abortRef.current = null;
+    }
+  }, [paymentId]);
+
+  useEffect(() => {
+    if (!paymentId) return;
+    fetchStatus();
+  }, [paymentId, fetchStatus]);
+
+  const statusRaw = String(data?.status || (isVerifiedText ? "paid_held" : "initiated")).toLowerCase();
+  const isPaid = statusRaw === "paid_held" || statusRaw === "verified" || isVerifiedText;
+  // poll every 3s if not paid — cleanup via usePolling(null) when paid, abort handled above, backoff via skipRef
+  usePolling(fetchStatus, isPaid || !paymentId ? null : 3000);
+
+  const amountMinor = data?.amount_minor ?? data?.amount ?? initialAmount ?? null;
+  const dnkFees = data?.dnk_fees ?? 0;
+
+  if (!paymentId) return null;
+
+  return (
+    <div
+      data-testid="payment-link-card"
+      className={`rounded-xl border p-4 shadow-sm max-w-[420px] ${isPaid ? "bg-green-50 border-green-200" : "bg-white border-[#E1E7DF]"}`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-['Figtree'] text-xs font-semibold text-[#1B2E1B] flex items-center gap-1.5">
+          <CreditCard className="w-4 h-4 text-[#6FAF6F]" /> Payment Link
+        </span>
+        <span
+          data-testid="payment-status-badge"
+          className={`px-2.5 py-1 rounded-full text-xs font-medium border font-['Figtree'] ${isPaid ? "bg-green-100 text-green-700 border-green-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}
+        >
+          {isPaid ? "Payment verified ✓" : data?.status || "initiated"}
+        </span>
+      </div>
+
+      {amountMinor != null ? (
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-['Figtree'] text-xs text-[#6B7568] uppercase tracking-wider flex items-center gap-1"><IndianRupee className="w-3 h-3" />Amount</span>
+          <span className="font-['Fraunces'] text-sm font-semibold text-[#1B2E1B]">{fmtMinor(amountMinor)}</span>
+        </div>
+      ) : null}
+
+      <div className="rounded-lg bg-[#F8FAF7] border border-[#E8ECE7] p-2.5 mb-2">
+        <p className="font-['Figtree'] text-xs text-[#6B7568]">DNK fees included / customs excluded</p>
+        {dnkFees ? <p className="font-['Figtree'] text-xs text-[#6B7568]">DNK fees: {fmtMinor(dnkFees)} included</p> : null}
+      </div>
+
+      <Link
+        to={`/payment/mock/${paymentId}`}
+        data-testid="payment-link"
+        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg font-['Figtree'] text-sm font-medium w-full justify-center ${isPaid ? "bg-green-600 text-white hover:bg-green-700" : "bg-[#6FAF6F] text-white hover:bg-[#5A9A5A]"}`}
+      >
+        {isPaid ? <Shield className="w-4 h-4" /> : <CreditCard className="w-4 h-4" />}
+        {isPaid ? "View Payment ✓" : "Pay securely"}
+      </Link>
+      <p className="font-['Figtree'] text-[11px] text-[#6B7568] mt-2 text-center">Internal link • no external redirect • poll 3s</p>
+      {err ? <p className="font-['Figtree'] text-xs text-red-600 mt-1">{err}</p> : null}
+    </div>
+  );
+}
+
+function LegacyPaymentCard({ order }) {
   const orderId = order?.id;
   const valueMinor = typeof order?.value_minor === "number" ? order.value_minor : null;
   const amountRupees = valueMinor != null ? (valueMinor / 100).toLocaleString("en-IN") : "—";
@@ -12,6 +156,20 @@ export default function PaymentLinkCard({ order }) {
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
   const pollRef = useRef(null);
+  const cancelledRef = useRef(false);
+  const failCountRef = useRef(0);
+  const skipRef = useRef(0);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, []);
 
   const amountMinor = valueMinor;
   const canCreate = Number.isInteger(amountMinor) && amountMinor > 0;
@@ -32,12 +190,13 @@ export default function PaymentLinkCard({ order }) {
         order_id: orderId,
         notes: { order_id: orderId },
       });
+      if (cancelledRef.current) return;
       setLink(res);
       setStatusData(res);
     } catch (e) {
-      setError(e.message || "Create payment link failed");
+      if (!cancelledRef.current) setError(e.message || "Create payment link failed");
     } finally {
-      setCreating(false);
+      if (!cancelledRef.current) setCreating(false);
     }
   }
 
@@ -45,18 +204,35 @@ export default function PaymentLinkCard({ order }) {
     if (!link?.payment_link_id) return;
     const id = link.payment_link_id;
     async function poll() {
+      if (cancelledRef.current) return;
+      if (skipRef.current > 0) {
+        skipRef.current -= 1;
+        return;
+      }
       try {
         const data = await getPaymentLinkStatus(id);
+        if (cancelledRef.current) return;
         setStatusData(data);
+        failCountRef.current = 0;
+        skipRef.current = 0;
         const st = String(data.status || data.payment_status || "").toLowerCase();
         if (st === "paid" || st === "captured" || data.amount_paid > 0) {
-          if (pollRef.current) clearInterval(pollRef.current);
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
         }
-      } catch {}
+      } catch (e) {
+        const s = e?.status;
+        if (s === 429 || (s >= 500 && s < 600)) {
+          const c = ++failCountRef.current;
+          skipRef.current = Math.min(c, 3);
+        }
+      }
     }
     poll();
-    pollRef.current = setInterval(poll, 10000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    pollRef.current = setInterval(poll, 3000);
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   }, [link?.payment_link_id]);
 
   async function handleCopy() {
@@ -90,7 +266,7 @@ export default function PaymentLinkCard({ order }) {
           <CreditCard className="w-5 h-5 text-[#6FAF6F]" />
           Razorpay Payment Link <span className="px-2 py-0.5 rounded-full bg-[#F8FAF7] border border-[#E1E7DF] text-xs font-['Figtree'] font-normal text-[#6B7568]">mock</span>
         </h3>
-        <span className="px-2 py-1 bg-[#F8FAF7] border border-[#E1E7DF] rounded-lg font-['Figtree'] text-xs text-[#6B7568]">POST /payments/link · GET /payments/link/{`{id}`} 10s poll</span>
+        <span className="px-2 py-1 bg-[#F8FAF7] border border-[#E1E7DF] rounded-lg font-['Figtree'] text-xs text-[#6B7568]">POST /payments/link · GET /payments/link/{`{id}`} 3s poll</span>
       </div>
 
       <div className="rounded-lg border border-[#E1E7DF] bg-[#F8FAF7] p-4 mb-4">
@@ -132,7 +308,7 @@ export default function PaymentLinkCard({ order }) {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className={`px-3 py-1 rounded-full text-xs font-['Figtree'] font-medium border ${String(status).toLowerCase() === "paid" || String(status).toLowerCase() === "captured" ? "bg-green-100 text-green-700 border-green-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>status: {String(status)}</span>
               {amountPaid != null && <span className="px-2 py-1 rounded-full bg-white border border-[#E1E7DF] font-['Figtree'] text-xs text-[#6B7568]">amount_paid: {amountPaid}</span>}
-              <span className="px-2 py-1 rounded-full bg-white border border-[#E1E7DF] font-['Figtree'] text-xs text-[#6B7568] flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" style={{ animationDuration: "10s" }} /> polls 10s</span>
+              <span className="px-2 py-1 rounded-full bg-white border border-[#E1E7DF] font-['Figtree'] text-xs text-[#6B7568] flex items-center gap-1"><RefreshCw className="w-3 h-3 animate-spin" style={{ animationDuration: "3s" }} /> polls 3s</span>
             </div>
           </div>
 
@@ -147,7 +323,14 @@ export default function PaymentLinkCard({ order }) {
 
       {error && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 font-['Figtree'] text-sm text-red-700">{error}</div>}
 
-      <p className="mt-4 font-['Figtree'] text-xs text-[#6B7568]">Proof: amount guard blocks invalid minor · POST /payments/link returns short_url · GET /payments/link/{`{id}`} polled 10s · copy button writes clipboard.</p>
+      <p className="mt-4 font-['Figtree'] text-xs text-[#6B7568]">Proof: amount guard blocks invalid minor · POST /payments/link returns short_url · GET /payments/link/{`{id}`} polled 3s · copy button writes clipboard.</p>
     </div>
   );
+}
+
+export default function PaymentLinkCard({ order, message }) {
+  const body = message?.body || "";
+  const isMock = !!(message && String(body).includes("/payment/mock/"));
+  if (isMock) return <MockBubble message={message} />;
+  return <LegacyPaymentCard order={order} />;
 }

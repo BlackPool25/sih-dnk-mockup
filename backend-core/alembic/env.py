@@ -46,7 +46,7 @@ target_metadata = Base.metadata
 # ── Tables owned by backend-core (whitelist for autogenerate diff) ──────────
 # Any table reflected into target_metadata for FK resolution will NOT appear
 # in the migration diff unless listed here.
-_CORE_TABLES = frozenset({"seller_profiles", "profile_documents", "orders", "doc_packs"})
+_CORE_TABLES = frozenset({"seller_profiles", "profile_documents", "sahayak_scans", "orders", "doc_packs"})
 
 _VERSION_TABLE = "core_alembic_version"
 

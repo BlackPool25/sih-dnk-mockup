@@ -23,7 +23,7 @@ function inboxTargetForRole(role) {
   return "/inbox";
 }
 
-export function InboxBell({ className = "", pollMs = 30000 }) {
+export function InboxBell({ className = "", pollMs = 3000 }) {
   const navigate = useNavigate();
   const [unread, setUnread] = useState(0);
   const [total, setTotal] = useState(0);

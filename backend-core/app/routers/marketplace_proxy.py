@@ -171,6 +171,21 @@ async def marketplace_feed_proxy(
     return await _proxy_get("/marketplace/feed", request, params)
 
 
+@router.get("/products")
+async def marketplace_products_proxy(
+    request: Request,
+    seller_id: str | None = None,
+    category: str | None = None,
+) -> JSONResponse:
+    params: dict[str, str | int | None] = {"seller_id": seller_id, "category": category}
+    return await _proxy_get("/marketplace/products", request, params)
+
+
+@router.get("/products/{product_id}")
+async def marketplace_product_proxy(request: Request, product_id: str) -> JSONResponse:
+    return await _proxy_get(f"/marketplace/products/{product_id}", request)
+
+
 @router.get("/metrics")
 async def marketplace_metrics_proxy(request: Request) -> JSONResponse:
     return await _proxy_get("/marketplace/metrics", request)
