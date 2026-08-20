@@ -378,16 +378,20 @@ async def test_get_order_pdf_streams_existing_docs(
     monkeypatch: pytest.MonkeyPatch,
     val_fake: FakeValClient,
 ) -> None:
-    """Docs exist → stream the PDF without regenerating."""
+    """Docs exist + ready → stream the PDF without regenerating."""
     _patch_pdf_engine(monkeypatch)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         await _create_profile(client, test_seller["token"])
         created = await _create_order(client, test_seller["token"])
+        # mark order ready so pdf guard passes
+        if isinstance(val_fake.order, dict) and isinstance(val_fake.order.get("order"), dict):
+            val_fake.order["order"]["validation_state"] = "ready"
+            val_fake.order["order"]["last_report"] = {"validation_state": "ready"}
 
         pdf_resp = await client.get(
-            f"/orders/{created['id']}/pdf",
+            f"/orders/{created['id']}/pdf?doc_type=INVOICE",
             headers={"Authorization": f"Bearer {test_seller['token']}"},
         )
 
@@ -403,7 +407,7 @@ async def test_get_order_pdf_auto_generates_docs(
     monkeypatch: pytest.MonkeyPatch,
     val_fake: FakeValClient,
 ) -> None:
-    """No documents yet → generate-docs-all runs, then the PDF is streamed."""
+    """No documents yet → 422 DOC_NOT_READY (no silent auto-generate)."""
     _patch_pdf_engine(monkeypatch)
     val_fake.documents_payload = {"order_id": "x", "documents": []}
 
@@ -413,13 +417,13 @@ async def test_get_order_pdf_auto_generates_docs(
         created = await _create_order(client, test_seller["token"])
 
         pdf_resp = await client.get(
-            f"/orders/{created['id']}/pdf",
+            f"/orders/{created['id']}/pdf?doc_type=INVOICE",
             headers={"Authorization": f"Bearer {test_seller['token']}"},
         )
 
-    assert pdf_resp.status_code == 200
-    assert pdf_resp.headers["content-type"] == "application/pdf"
-    assert "generate_docs_all" in val_fake.calls
+    assert pdf_resp.status_code == 422
+    assert pdf_resp.json()["detail"]["code"] == "DOC_NOT_READY"
+    assert "generate_docs_all" not in val_fake.calls
 
 
 # ---------------------------------------------------------------------------

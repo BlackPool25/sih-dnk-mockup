@@ -256,15 +256,39 @@ async def _iter_response_bytes(resp: httpx.Response) -> AsyncIterator[bytes]:
         yield chunk
 
 
-async def _stream_order_pdf(order_id: str) -> StreamingResponse:
-    """Stream the INVOICE PDF from validation-engine as a StreamingResponse."""
+_ALLOWED_PDF_TYPES: frozenset[str] = frozenset(
+    {"INVOICE", "PACKING_LIST", "PACKING", "CN22", "CN23", "PBE_IV"}
+)
+_PDF_FILENAME: dict[str, str] = {
+    "INVOICE": "invoice",
+    "PACKING_LIST": "packing-list",
+    "PACKING": "packing-list",
+    "CN22": "cn22",
+    "CN23": "cn23",
+    "PBE_IV": "pbe-iv",
+}
+
+
+def _normalize_doc_type(raw: str) -> str:
+    """Normalize PACKING → PACKING_LIST; upper-case."""
+    upper = raw.strip().upper()
+    if upper == "PACKING":
+        return "PACKING_LIST"
+    return upper
+
+
+async def _stream_order_pdf(order_id: str, doc_type: str, parcel_id: str | None = None) -> StreamingResponse:
+    """Stream the requested doc PDF from validation-engine as a StreamingResponse."""
     base = _get_settings().VALIDATION_ENGINE_URL.rstrip("/")
     url = f"{base}/orders/{order_id}/pdf"
     timeout = httpx.Timeout(60.0, connect=10.0)
+    params: dict[str, str] = {"doc_type": doc_type}
+    if parcel_id is not None:
+        params["parcel_id"] = parcel_id
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
-            resp = await client.get(url, params={"doc_type": "INVOICE"})
+            resp = await client.get(url, params=params)
         except httpx.ConnectError as exc:
             raise HTTPException(
                 status_code=503, detail="validation-engine is currently unavailable"
@@ -278,10 +302,11 @@ async def _stream_order_pdf(order_id: str) -> StreamingResponse:
             detail=f"validation-engine could not render the PDF (status {resp.status_code})",
         )
 
+    fname = _PDF_FILENAME.get(doc_type, doc_type.lower())
     return StreamingResponse(
         _iter_response_bytes(resp),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="invoice-{order_id}.pdf"'},
+        headers={"Content-Disposition": f'inline; filename="{fname}-{order_id}.pdf"'},
     )
 
 
@@ -442,28 +467,72 @@ async def get_order(
 async def get_order_pdf(
     request: Request,
     order_id: str,
+    doc_type: str = Query(..., description="Document type: INVOICE, PACKING, PACKING_LIST, CN22, CN23, PBE_IV"),
+    parcel_id: str | None = Query(None),
 ) -> StreamingResponse:
-    """Stream the INVOICE PDF; auto-generates documents if none exist yet."""
+    """Stream a document PDF — requires doc_type; never silent-generates.
+
+    Checks the generated documents list for the requested doc_type.  If missing
+    or the order's validation_state is not ready/validated, returns 422
+    DOC_NOT_READY with the available docs.  Explicit generation is only via
+    POST /orders/{id}/generate-docs.  PBE_III is forbidden (guardrail).
+    """
+    # Guardrail: PBE_III never generated
+    normalized = _normalize_doc_type(doc_type)
+    if normalized == "PBE_III":
+        raise HTTPException(status_code=422, detail={"code": "DOC_NOT_READY", "doc_type": doc_type, "docs": [], "reason": "PBE_III is not generated via this flow"})
+    if normalized not in _ALLOWED_PDF_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "DOC_NOT_READY", "doc_type": doc_type, "docs": [], "reason": f"unsupported doc_type {doc_type!r}"},
+        )
+
     user = request.state.user
 
     order_data = await _get_order_or_404(order_id)
     order, _line_items = _split_order_data(order_data)
     _check_order_access(order, user)
 
+    # Best-effort English consignee before proxy if needed
+    consignee = order.get("consignee")
+    if isinstance(consignee, str) and consignee.strip():
+        try:
+            redis_client = get_redis()
+        except (ValueError, ConnectionError):
+            redis_client = None
+        try:
+            await ensure_english_free_text([("consignee", consignee)], redis=redis_client)
+        except Exception:
+            pass
+
     try:
-        docs = await val_client.get_order_documents(order_id)
+        docs_result = await val_client.get_order_documents(order_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ServiceUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    existing = docs.get("documents", [])
-    if not (isinstance(existing, list) and existing):
-        try:
-            await val_client.generate_docs_all(order_id)
-        except NotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except InvalidInputError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except ServiceUnavailable as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+    raw_docs = docs_result.get("documents", [])
+    doc_list: list[dict[str, object]] = [d for d in raw_docs if isinstance(d, dict)] if isinstance(raw_docs, list) else []
 
-    return await _stream_order_pdf(order_id)
+    # Validation-state check — ready or validated are ok; others are not ready.
+    last_report = order_data.get("last_report")
+    if not isinstance(last_report, dict):
+        maybe = order.get("last_report")
+        last_report = maybe if isinstance(maybe, dict) else {}
+    validation_state = str(order.get("validation_state") or (last_report.get("validation_state") if isinstance(last_report, dict) else "") or docs_result.get("validation_state") or "").strip().lower()
+    is_ready = validation_state in ("ready", "validated", "complete")
+
+    # Find matching doc — INVOICE etc; PACKING alias handled.
+    target_types = {normalized}
+    if normalized == "PACKING_LIST":
+        target_types.add("PACKING")
+    has_doc = any(str(d.get("doc_type") or "").upper() in target_types for d in doc_list)
+
+    if not has_doc or not is_ready:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "DOC_NOT_READY", "doc_type": doc_type, "docs": doc_list, "validation_state": validation_state or None},
+        )
+
+    return await _stream_order_pdf(order_id, normalized, parcel_id=parcel_id)
