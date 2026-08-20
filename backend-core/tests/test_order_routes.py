@@ -32,7 +32,7 @@ SELLER_PROFILE_PAYLOAD: dict[str, str] = {
     "ifsc": "SBIN0001234",
     "bank_branch": "Mumbai Main",
     "iec": "1234567890",
-    "ad_code": "9876543",
+    "ad_code": "12345678901234",
     "gstin": "22AAAAA0000A1Z5",
     "address_line1": "123 Shipping Lane",
     "address_line2": "Andheri East",
@@ -179,7 +179,7 @@ async def test_create_order_profile_auto_fill(
     assert data["bank_name"] == "State Bank of India"
     assert data["ifsc"] == "SBIN0001234"
     assert data["bank_account"] == "12345678901"
-    assert data["ad_code"] == "9876543"
+    assert data["ad_code"] == "12345678901234"
     assert data["exporter_name"] == "Test Exports Ltd"
     assert "Mumbai" in data["exporter_address"]
     assert data["state_code"] == "MH"  # Maharashtra → 2-char code

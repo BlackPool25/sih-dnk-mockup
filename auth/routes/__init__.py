@@ -185,8 +185,8 @@ async def _revoke_all_refresh_tokens_for_user(user_id: str) -> None:
 
 @router.post("/register", status_code=201, response_model=RegisterResponse)
 async def register(body: RegisterRequest) -> dict[str, object]:
-    if body.role not in ("seller", "buyer"):
-        raise HTTPException(status_code=400, detail="Forbidden role: use 'seller' or 'buyer'")
+    if body.role not in ("seller", "buyer", "sahayak"):
+        raise HTTPException(status_code=400, detail="Forbidden role: use 'seller', 'buyer' or 'sahayak'")
 
     async with get_session()() as session:
         existing = await session.execute(select(User).where(User.email == body.email))

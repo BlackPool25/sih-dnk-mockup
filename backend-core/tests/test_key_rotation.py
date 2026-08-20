@@ -243,7 +243,7 @@ async def test_rotate_profiles_reencrypts_with_new_key(
         "firm_name": "Rotation Test Exports",
         "pan": "ABCDE1234F",
         "bank_account": "12345678901",
-        "ad_code": "9876543",
+        "ad_code": "12345678901234",
         "gstin": "22AAAAA0000A1Z5",
         "state": "Maharashtra",
     }
@@ -280,4 +280,4 @@ async def test_rotate_profiles_reencrypts_with_new_key(
     assert profile.ad_code_encrypted is not None
     assert profile.pan_encrypted["key_version"] == 2
     assert decrypt_field(profile.pan_encrypted, test_seller["user_id"], new_key) == "ABCDE1234F"
-    assert decrypt_field(profile.ad_code_encrypted, test_seller["user_id"], new_key) == "9876543"
+    assert decrypt_field(profile.ad_code_encrypted, test_seller["user_id"], new_key) == "12345678901234"

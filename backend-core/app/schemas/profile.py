@@ -54,8 +54,33 @@ class BuyerProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(..., min_length=1, max_length=255)
     email: str | None = Field(None, max_length=320)
-    country: str | None = Field(None, max_length=64)
-    phone: str | None = Field(None, max_length=20)
+    country: str | None = Field(None, max_length=2, pattern=r"^[A-Za-z]{2}$")
+    phone: str | None = Field(None, max_length=20, pattern=r"^\+[\d\-\s]{7,20}$")
+    address: str | None = Field(None, max_length=500)
+    passport_mock: str | None = Field(None, max_length=2000)
+
+
+class SahayakProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    center_code: str = Field(..., pattern=r"^DNK-(BLR|DEL|MUM)-\d{2}$")
+    employee_id: str = Field(..., pattern=r"^DNK-EMP-\d{4}$")
+    email: str = Field(..., max_length=320)
+    phone: str = Field(..., max_length=20)
+
+
+class SahayakProfileResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sahayak_id: str
+    center_code: str
+    employee_id: str
+    email: str | None = None
+    phone: str | None = None
+    mocked: bool = True
+    verification_mode: str = "mock"
+    is_verified: bool = True
+    trust_level: str = "L0"
+    trust_score: int = 25
+    note: str = "sahayak allowlist verified (mock)"
 
 
 class BuyerProfileResponse(BaseModel):

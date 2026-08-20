@@ -38,7 +38,7 @@ SELLER_PROFILE_PAYLOAD: dict[str, str] = {
     "ifsc": "SBIN0001234",
     "bank_branch": "Mumbai Main",
     "iec": "1234567890",
-    "ad_code": "9876543",
+    "ad_code": "12345678901234",
     "gstin": "22AAAAA0000A1Z5",
     "address_line1": "123 Shipping Lane",
     "address_line2": "Andheri East",
@@ -299,7 +299,7 @@ async def test_docs_access_seller_200(
     assert data["gstin"] == "22AAAAA0000A1Z5"
     assert data["iec"] == "1234567890"
     assert data["bank_account"] == "12345678901"
-    assert data["ad_code"] == "9876543"
+    assert data["ad_code"] == "12345678901234"
     assert "pan" not in data
     assert isinstance(data["documents"], list)
     assert len(data["documents"]) == 4

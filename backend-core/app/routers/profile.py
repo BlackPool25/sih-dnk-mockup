@@ -25,6 +25,8 @@ from app.schemas.profile import (
     ProfileCreateRequest,
     ProfileResponse,
     ProfileUpdateRequest,
+    SahayakProfileRequest,
+    SahayakProfileResponse,
 )
 from app.services.profile_crypto import (
     ENCRYPTED_FIELDS,
@@ -240,15 +242,30 @@ async def update_profile(request: Request, body: ProfileUpdateRequest) -> dict[s
         decrypt_profile_fields(crypto_dict, user_id)
         return _build_response(profile, crypto_dict)
 
+_SAHAYAK_ALLOWLIST: set[str] = {"DNK-BLR-01", "DNK-DEL-01", "DNK-MUM-01", "DNK-DEL-02"}
+
 @router.post("/buyer", status_code=201, dependencies=[Depends(get_current_user)])
 async def create_buyer_profile(request: Request, body: BuyerProfileRequest) -> dict[str, object]:
     user_id: str = str(request.state.user["user_id"])
-    return {"buyer_id": user_id,"name": body.name,"email": body.email or request.state.user.get("email"),"country": body.country,"phone": body.phone,"mocked": True,"verification_mode": "mock","pan_required": False,"note": "buyer foreign minimal mock — no PAN","is_verified": False,"trust_level": "L0","trust_score": 10,"payouts_frozen": False}
+    country_upper = body.country.upper() if body.country else None
+    return {"buyer_id": user_id,"name": body.name,"email": body.email or request.state.user.get("email"),"country": country_upper,"phone": body.phone,"address": body.address,"passport_mock": bool(body.passport_mock),"mocked": True,"verification_mode": "mock","pan_required": False,"note": "foreign buyer — no PAN verification","is_verified": True,"trust_level": "L0","trust_score": 25,"payouts_frozen": False,"provider": "mock_cashfree"}
 
 @router.get("/buyer", dependencies=[Depends(get_current_user)])
 async def get_buyer_profile(request: Request) -> dict[str, object]:
     user_id: str = str(request.state.user["user_id"])
-    return {"buyer_id": user_id,"name": request.state.user.get("email", "buyer"),"email": request.state.user.get("email"),"country": None,"phone": None,"mocked": True,"verification_mode": "mock","pan_required": False,"note": "buyer foreign minimal mock — no PAN","is_verified": False,"trust_level": "L0"}
+    return {"buyer_id": user_id,"name": request.state.user.get("email", "buyer"),"email": request.state.user.get("email"),"country": None,"phone": None,"mocked": True,"verification_mode": "mock","pan_required": False,"note": "foreign buyer — no PAN verification","is_verified": True,"trust_level": "L0"}
+
+@router.post("/sahayak", status_code=201, response_model=SahayakProfileResponse, dependencies=[Depends(get_current_user)])
+async def create_sahayak_profile(request: Request, body: SahayakProfileRequest) -> dict[str, object]:
+    user_id: str = str(request.state.user["user_id"])
+    if body.center_code not in _SAHAYAK_ALLOWLIST:
+        raise HTTPException(status_code=403, detail=f"center_code not in allowlist {sorted(_SAHAYAK_ALLOWLIST)}")
+    return {"sahayak_id": user_id,"center_code": body.center_code,"employee_id": body.employee_id,"email": body.email,"phone": body.phone,"mocked": True,"verification_mode": "mock","is_verified": True,"trust_level": "L0","trust_score": 25,"note": "sahayak allowlist verified (mock)"}
+
+@router.get("/sahayak", dependencies=[Depends(get_current_user)])
+async def get_sahayak_profile(request: Request) -> dict[str, object]:
+    user_id: str = str(request.state.user["user_id"])
+    return {"sahayak_id": user_id,"mocked": True,"verification_mode": "mock","is_verified": False,"trust_level": "L0","note": "sahayak allowlist verified (mock)", "allowlist": sorted(_SAHAYAK_ALLOWLIST)}
 
 @router.post("/bindings/confirm-human-gate", dependencies=[Depends(get_current_user), Depends(require_role("seller"))])
 async def confirm_human_gate_profile(request: Request, body: dict) -> dict[str, object]:

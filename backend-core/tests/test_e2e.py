@@ -38,7 +38,7 @@ PROFILE_PAYLOAD: dict[str, str] = {
     "ifsc": "SBIN0001234",
     "bank_branch": "Mumbai Main",
     "iec": "1234567890",
-    "ad_code": "9876543",
+    "ad_code": "12345678901234",
     "gstin": "22AAAAA0000A1Z5",
     "address_line1": "123 Shipping Lane",
     "address_line2": "Andheri East",
@@ -407,7 +407,7 @@ async def test_e2e_04_order_auto_fill_from_profile(
     assert odata["bank_name"] == "State Bank of India"
     assert odata["ifsc"] == "SBIN0001234"
     assert odata["bank_account"] == "12345678901"
-    assert odata["ad_code"] == "9876543"
+    assert odata["ad_code"] == "12345678901234"
     assert odata["exporter_name"] == "Test Exports Ltd"
     assert "Mumbai" in odata["exporter_address"]
     assert odata["state_code"] == "MH"  # Maharashtra → 2-char ISO code

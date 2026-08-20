@@ -13,7 +13,7 @@ SELLER_PROFILE_PAYLOAD: dict[str, str] = {
     "ifsc": "SBIN0001234",
     "bank_branch": "Mumbai Main",
     "iec": "1234567890",
-    "ad_code": "9876543",
+    "ad_code": "12345678901234",
     "gstin": "22AAAAA0000A1Z5",
     "address_line1": "123 Shipping Lane",
     "address_line2": "Andheri East",
@@ -39,7 +39,7 @@ async def test_create_profile(test_seller: dict[str, str]) -> None:
     assert data["firm_name"] == "Test Exports Ltd"
     assert data["pan"] == "ABCDE1234F"
     assert data["bank_account"] == "12345678901"
-    assert data["ad_code"] == "9876543"
+    assert data["ad_code"] == "12345678901234"
     assert data["gstin"] == "22AAAAA0000A1Z5"
     assert data["profile_version"] == 1
     assert "id" in data
@@ -79,7 +79,7 @@ async def test_get_profile(test_seller: dict[str, str]) -> None:
     data = get_resp.json()
     assert data["pan"] == "ABCDE1234F"
     assert data["bank_account"] == "12345678901"
-    assert data["ad_code"] == "9876543"
+    assert data["ad_code"] == "12345678901234"
     assert data["gstin"] == "22AAAAA0000A1Z5"
     assert data["firm_name"] == "Test Exports Ltd"
 

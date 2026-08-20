@@ -9,7 +9,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.providers.mock_cashfree import mock_cashfree_bundle
-from app.state import confirm_human_gate, get_trust, mock_l0, mock_l1, mock_l2, mock_liveness, mock_verify
+from app.state import confirm_human_gate, get_trust, mock_buyer, mock_l0, mock_l1, mock_l2, mock_liveness, mock_sahayak, mock_verify
 from app.state import VerificationLevel
 
 router = APIRouter(prefix="/verify", tags=["verify"])
@@ -94,9 +94,46 @@ async def verify_liveness(body: LivenessRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=result.get("error", "liveness failed"))
     return result
 
+class BuyerVerifyRequest(BaseModel):
+    email: str = Field(..., max_length=320)
+    phone: str = Field(..., description="E164 international e.g. +14155551234 or +971501234567", max_length=20)
+    country: str = Field(..., description="ISO2 e.g. US, AE, GB", min_length=2, max_length=2)
+    address: str | None = Field(None, max_length=500)
+    passport_mock: str | None = Field(None, description="base64 or file ref mocked", max_length=2000)
+    user_id: str | None = None
+    seller_id: str | None = None
+
+class SahayakVerifyRequest(BaseModel):
+    center_code: str = Field(..., description="DNK center allowlist code")
+    employee_id: str = Field(..., pattern=r"^DNK-EMP-\d{4}$")
+    email: str = Field(..., max_length=320)
+    phone: str = Field(..., max_length=20)
+    user_id: str | None = None
+    seller_id: str | None = None
+
+@router.post("/buyer")
+async def verify_buyer(body: BuyerVerifyRequest) -> dict[str, Any]:
+    sid = _resolve_seller_id(body.seller_id, body.user_id)
+    result = mock_buyer(body.phone, body.country, body.email, sid, body.address, body.passport_mock)
+    if result.get("status") == "failed":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=422, detail=result.get("error", "buyer validation failed"))
+    return result
+
+@router.post("/sahayak")
+async def verify_sahayak(body: SahayakVerifyRequest) -> dict[str, Any]:
+    sid = _resolve_seller_id(body.seller_id, body.user_id)
+    result = mock_sahayak(body.center_code, body.employee_id, body.email, body.phone, sid)
+    if result.get("status") == "failed":
+        from fastapi import HTTPException
+        err = result.get("error", "sahayak validation failed")
+        code = 403 if "allowlist" in str(err) else 422
+        raise HTTPException(status_code=code, detail=err)
+    return result
+
 @trust_router.get("/trust/{user_id}")
-async def get_trust_level(user_id: str) -> dict[str, Any]:
-    return get_trust(user_id)
+async def get_trust_level(user_id: str, role: str | None = None) -> dict[str, Any]:
+    return get_trust(user_id, role)
 
 class HumanGateRequest(BaseModel):
     seller_id: str | None = None

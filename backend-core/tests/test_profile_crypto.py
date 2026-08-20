@@ -56,7 +56,7 @@ def _profile(*, gstin: str | None = "22AAAAA0000A1Z5") -> dict:
         "iec": "1234567890",
         "pan": "ABCDE1234F",
         "bank_account": "12345678901",
-        "ad_code": "9876543",
+        "ad_code": "12345678901234",
     }
     if gstin is not None:
         data["gstin"] = gstin
@@ -77,7 +77,7 @@ def test_roundtrip() -> None:
 
     assert decrypted["pan"] == "ABCDE1234F"
     assert decrypted["bank_account"] == "12345678901"
-    assert decrypted["ad_code"] == "9876543"
+    assert decrypted["ad_code"] == "12345678901234"
     assert decrypted["gstin"] == "22AAAAA0000A1Z5"
 
 

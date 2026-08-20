@@ -28,7 +28,7 @@ SELLER_PROFILE_PAYLOAD: dict[str, str] = {
     "ifsc": "SBIN0001234",
     "bank_branch": "Mumbai Main",
     "iec": "1234567890",
-    "ad_code": "9876543",
+    "ad_code": "12345678901234",
     "gstin": "22AAAAA0000A1Z5",
     "address_line1": "123 Shipping Lane",
     "address_line2": "Andheri East",

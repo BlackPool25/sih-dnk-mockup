@@ -59,6 +59,12 @@ _IEC_RE = re.compile(r"^\d{10}$")
 _AD_RE = re.compile(r"^\d{14}$")
 _IFSC_RE = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
 
+_E164_RE = re.compile(r"^\+\d{7,15}$")
+_ISO2_RE = re.compile(r"^[A-Z]{2}$")
+_EMP_RE = re.compile(r"^DNK-EMP-\d{4}$")
+SAHAYAK_CENTERS: list[str] = ["DNK-BLR-01", "DNK-DEL-01", "DNK-MUM-01", "DNK-DEL-02"]
+_SAHAYAK_CENTER_SET: set[str] = set(SAHAYAK_CENTERS)
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -124,11 +130,42 @@ def mock_liveness(selfie: str | None, seller_id: str) -> dict[str, object]:
     _TRUST_STORE[seller_id] = existing
     return result
 
-def get_trust(seller_id: str) -> dict[str, object]:
+def mock_buyer(phone: str, country: str, email: str, seller_id: str, address: str | None = None, passport_mock: str | None = None) -> dict[str, object]:
+    if not _E164_RE.match(phone):
+        return {"level": "L0","status": "failed","mocked": True,"verification_mode": "mock","provider": "mock_cashfree","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": 0,"is_verified": False,"error": "invalid buyer phone — must be E164 e.g. +14155551234"}
+    if not _ISO2_RE.match(country.upper()):
+        return {"level": "L0","status": "failed","mocked": True,"verification_mode": "mock","provider": "mock_cashfree","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": 0,"is_verified": False,"error": "invalid country — must be ISO2 e.g. US, AE"}
+    if "@" not in email:
+        return {"level": "L0","status": "failed","mocked": True,"verification_mode": "mock","provider": "mock_cashfree","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": 0,"is_verified": False,"error": "invalid email"}
+    _ = (address, passport_mock)
+    rec: dict[str, object] = {"level": "L0","status": "success","role": "buyer","mocked": True,"verification_mode": "mock","provider": "mock_cashfree","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": _SCORE["L0"],"is_verified": True,"note": "foreign buyer — no PAN verification","country": country.upper(),"phone": phone,"email": email,"passport_mock": bool(passport_mock),"address": address}
+    _TRUST_STORE[seller_id] = {"level": "L0","score": _SCORE["L0"],"is_verified": True,"role": "buyer","country": country.upper(),"phone": phone,"email": email,"human_gate_confirmed": False,"updated_at": _now().isoformat()}
+    return rec
+
+def mock_sahayak(center_code: str, employee_id: str, email: str, phone: str, seller_id: str) -> dict[str, object]:
+    if center_code not in _SAHAYAK_CENTER_SET:
+        return {"level": "L0","status": "failed","mocked": True,"verification_mode": "mock","provider": "mock_sahayak_allowlist","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": 0,"is_verified": False,"error": f"center_code not in allowlist {SAHAYAK_CENTERS}","allowlist": SAHAYAK_CENTERS}
+    if not _EMP_RE.match(employee_id):
+        return {"level": "L0","status": "failed","mocked": True,"verification_mode": "mock","provider": "mock_sahayak_allowlist","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": 0,"is_verified": False,"error": "invalid employee_id — must match ^DNK-EMP-\\d{4}$"}
+    if "@" not in email:
+        return {"level": "L0","status": "failed","mocked": True,"verification_mode": "mock","provider": "mock_sahayak_allowlist","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": 0,"is_verified": False,"error": "invalid email"}
+    if not _E164_RE.match(phone) and not _PHONE_RE.match(phone):
+        return {"level": "L0","status": "failed","mocked": True,"verification_mode": "mock","provider": "mock_sahayak_allowlist","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": 0,"is_verified": False,"error": "invalid phone — must be E164 (+...) or Indian 10-digit"}
+    is_dnk_domain = email.lower().endswith("@dnk.gov.in")
+    rec2: dict[str, object] = {"level": "L0","status": "success","role": "sahayak","mocked": True,"verification_mode": "mock","provider": "mock_sahayak_allowlist","provider_request_id": _provider_id(),"trust_level": "L0","trust_score": _SCORE["L0"],"is_verified": True,"center_code": center_code,"employee_id": employee_id,"email": email,"phone": phone,"email_domain_ok": is_dnk_domain,"note": "sahayak allowlist verified (mock)","allowlist": SAHAYAK_CENTERS}
+    _TRUST_STORE[seller_id] = {"level": "L0","score": _SCORE["L0"],"is_verified": True,"role": "sahayak","center_code": center_code,"employee_id": employee_id,"email": email,"phone": phone,"human_gate_confirmed": False,"updated_at": _now().isoformat()}
+    return rec2
+
+def get_trust(seller_id: str, role: str | None = None) -> dict[str, object]:
     rec = _TRUST_STORE.get(seller_id)
     if rec is None:
-        return {"seller_id": seller_id,"level": "L0","trust_level": "L0","trust_score": 0,"score": 0,"is_verified": False,"mocked": True,"verification_mode": "mock"}
-    return {"seller_id": seller_id,"level": rec.get("level","L0"),"trust_level": rec.get("level","L0"),"trust_score": rec.get("score",0),"score": rec.get("score",0),"is_verified": rec.get("is_verified",False),"human_gate_confirmed": rec.get("human_gate_confirmed",False),"mocked": True,"verification_mode": "mock","updated_at": rec.get("updated_at"),"validUpto": rec.get("validUpto")}
+        return {"seller_id": seller_id,"level": "L0","trust_level": "L0","trust_score": 0,"score": 0,"is_verified": False,"mocked": True,"verification_mode": "mock","role": role}
+    base: dict[str, object] = {"seller_id": seller_id,"level": rec.get("level","L0"),"trust_level": rec.get("level","L0"),"trust_score": rec.get("score",0),"score": rec.get("score",0),"is_verified": rec.get("is_verified",False),"human_gate_confirmed": rec.get("human_gate_confirmed",False),"mocked": True,"verification_mode": "mock","role": rec.get("role", role),"updated_at": rec.get("updated_at"),"validUpto": rec.get("validUpto")}
+    if rec.get("role") == "buyer":
+        base.update({"country": rec.get("country"),"phone": rec.get("phone")})
+    if rec.get("role") == "sahayak":
+        base.update({"center_code": rec.get("center_code"),"employee_id": rec.get("employee_id")})
+    return base
 
 def confirm_human_gate(seller_id: str, current_ad: str, proposed_ad: str, current_ifsc: str | None = None, proposed_ifsc: str | None = None) -> dict[str, object]:
     side_by_side = {"current_ad": current_ad,"proposed_ad": proposed_ad,"current_ifsc": current_ifsc,"proposed_ifsc": proposed_ifsc,"current_bank": (current_ifsc[:4] if current_ifsc else None),"proposed_bank": (proposed_ifsc[:4] if proposed_ifsc else None)}
