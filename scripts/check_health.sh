@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# check_health.sh — verify all 8 SIH-DNK compose services are healthy.
+# check_health.sh — verify all 10 SIH-DNK compose services are healthy (9/9+frontend =10, 9 API + db/redis).
 # Usage:  scripts/check_health.sh [--timeout 60]
 #   Probes host ports with 60s retry loop; exits 0 if all healthy, non-zero if any fail.
 set -euo pipefail
 
 TIMEOUT="${1:-60}"
-# Allow --timeout flag
 if [[ "${1:-}" == "--timeout" ]]; then
   TIMEOUT="${2:-60}"
 fi
@@ -16,15 +15,16 @@ declare -A ENDPOINTS=(
   ["tracking-api"]="http://127.0.0.1:8004/healthz"
   ["backend-core"]="http://127.0.0.1:8006/health"
   ["voice-pipeline"]="http://127.0.0.1:8002/healthz"
+  ["marketplace"]="http://127.0.0.1:8007/health"
+  ["verification-service"]="http://127.0.0.1:8008/health"
+  ["frontend"]="http://127.0.0.1:8005/"
 )
 
-# db/redis are not HTTP — checked via docker inspect health if compose is up
 PASS=0
 FAIL=0
 
 echo "Waiting up to ${TIMEOUT}s for services to become healthy..."
 
-# retry loop
 elapsed=0
 interval=3
 all_ok=false
@@ -59,7 +59,6 @@ for svc in $(echo "${!ENDPOINTS[@]}" | tr ' ' '\n' | sort); do
   fi
 done
 
-# Check db/redis via docker inspect if available
 if command -v docker >/dev/null 2>&1; then
   for svc in sih-dnk-postgres sih-dnk-redis; do
     if docker inspect --format='{{.State.Health.Status}}' "$svc" >/dev/null 2>&1; then

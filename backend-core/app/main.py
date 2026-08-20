@@ -21,11 +21,20 @@ from app.routers.profile import router as profile_router
 from app.routers.proxy import router as proxy_router
 from app.routers.qr import router as qr_router
 from app.routers.guidance import router as guidance_router
+from app.routers.marketplace_proxy import router as marketplace_proxy_router
 from app.routers.tracking import router as tracking_router
 from auth.routes import router as auth_router
 
 # Extend public auth paths so the /health and webhook endpoints are accessible without a token.
-auth_mw.PUBLIC_AUTH_PATHS = auth_mw.PUBLIC_AUTH_PATHS | {"/health", "/payments/webhook", "/guidance/signup"}
+auth_mw.PUBLIC_AUTH_PATHS = auth_mw.PUBLIC_AUTH_PATHS | {
+    "/health",
+    "/payments/webhook",
+    "/guidance/signup",
+    "/api/marketplace/feed",
+    "/api/marketplace/metrics",
+    "/api/marketplace/ranking/preview",
+    "/api/marketplace/products",
+}
 
 app = FastAPI(
     title="SIH-DNK Backend Core",
@@ -72,6 +81,8 @@ app.include_router(payments_router)
 app.include_router(proxy_router)
 
 app.include_router(guidance_router)
+
+app.include_router(marketplace_proxy_router)
 
 
 register_error_handlers(app)

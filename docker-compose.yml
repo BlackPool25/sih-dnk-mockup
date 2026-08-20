@@ -277,6 +277,7 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - SARVAM_API_KEY=${SARVAM_API_KEY:-}
       - SARVAM_ENABLED=${SARVAM_ENABLED:-false}
+      - MARKETPLACE_URL=http://marketplace:8000
     volumes:
       - .:/app
     working_dir: /opt/backend-core

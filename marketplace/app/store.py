@@ -391,8 +391,55 @@ def seed_demo() -> None:
         }
     )
 
-    # extra synthetic cold listings to fill 20 for cap tests (optional)
-    # add few more for seller diversity instrumentation
+    for idx, (title, sid_suffix) in enumerate(
+        [
+            ("Madhubani Painting Small", "44444444-4444-4444-8444-444444444444"),
+            ("Dhokra Brass Figurine", "55555555-5555-4555-8555-555555555555"),
+            ("Pattachitra Scroll", "66666666-6666-4666-8666-666666666666"),
+            ("Warli Art Wall Hanging", "77777777-7777-4777-8777-777777777777"),
+            ("Kalamkari Dupatta", "88888888-8888-4888-8888-888888888888"),
+            ("Zardozi Clutch Bag", "99999999-9999-4999-8999-999999999999"),
+            ("Banarasi Silk Stole", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+            ("Chikankari Kurta", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"),
+            ("Phulkari Table Runner", "cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+            ("Leather Jutti Pair", "dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+            ("Stone Inlay Coaster Set", "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"),
+            ("Bamboo Lamp Shade", "ffffffff-ffff-4fff-8fff-ffffffffffff"),
+            ("Block Print Bedsheet", "10101010-1010-4101-8101-101010101010"),
+            ("Mirror Work Cushion", "20202020-2020-4202-8202-202020202020"),
+            ("Resin Art Tray", "30303030-3030-4303-8303-303030303030"),
+            ("Ceramic Tea Set", "40404040-4040-4404-8404-404040404040"),
+            ("Macrame Wall Decor", "50505050-5050-4505-8505-505050505050"),
+            ("Sisal Basket Large", "60606060-6060-4606-8606-606060606060"),
+            ("Paper Mache Box", "70707070-7070-4707-8707-707070707070"),
+            ("Wood Carved Panel", "80808080-8080-4808-8808-808080808080"),
+        ]
+    ):
+        p_extra = create_product(
+            {
+                "id": f"e0000000-0000-4000-e000-00000000{idx:04d}",
+                "seller_id": sid_suffix,
+                "category_slug": "handicrafts",
+                "title": title,
+                "description": f"Handcrafted {title} by artisan {idx}",
+                "base_cost_minor": 30000 + idx * 5000,
+                "margin_pct": 20.0,
+                "make_time_days": 3,
+                "status": "active",
+            }
+        )
+        create_listing(
+            {
+                "id": f"e1000000-0000-4000-e000-00000000{idx:04d}",
+                "product_id": p_extra["id"],
+                "seller_id": sid_suffix,
+                "title": title,
+                "sales_count": idx % 3,
+                "views": 10 + idx * 2,
+                "published_at": (now - timedelta(days=idx + 1)).isoformat(),
+                "created_at": (now - timedelta(days=idx + 1)).isoformat(),
+            }
+        )
 
 
 # Seed on import for tests/dev
