@@ -14,6 +14,7 @@ app = FastAPI(title="SIH DNK Pricing Engine", version="0.1.0", description="Pric
 
 
 @app.get("/healthz", tags=["health"])
+@app.get("/health", tags=["health"])
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
 

@@ -104,19 +104,20 @@ services:
       SARVAM_API_KEY: ${SARVAM_API_KEY:-}
       SARVAM_ENABLED: ${SARVAM_ENABLED:-false}
     volumes:
-      - .:/app
+      - ./validation-engine:/app
+      - /app/.venv
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+    command: ["uv", "run", "uvicorn", "app.api:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      # No app entrypoint yet (placeholder stays alive) — liveness = PID 1 alive.
-      test: ["CMD-SHELL", "kill -0 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 10s
     networks:
       - dbnet
 
@@ -137,13 +138,14 @@ services:
     volumes:
       - ./voice-pipeline:/app
       - ./voice-pipeline/models:/app/models
+      - /app/.venv
     command: ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD-SHELL", "kill -0 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 10s
     networks:
       - dbnet
 
@@ -158,14 +160,31 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8003:8000"
+    env_file:
+      - ./.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      RAZORPAY_CURRENCY: ${RAZORPAY_CURRENCY:-INR}
+      RAZORPAY_API_BASE: ${RAZORPAY_API_BASE:-https://api.razorpay.com/v1}
     volumes:
       - ./pricing-engine:/app
+      - /app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     healthcheck:
-      test: ["CMD-SHELL", "kill -0 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/healthz || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-      start_period: 5s
+      start_period: 10s
     networks:
       - dbnet
 
@@ -188,6 +207,7 @@ services:
       TRACKING_PROVIDER: mock
     volumes:
       - ./tracking-api:/app
+      - /app/.venv
     depends_on:
       db:
         condition: service_healthy
@@ -259,6 +279,7 @@ services:
       - SARVAM_ENABLED=${SARVAM_ENABLED:-false}
     volumes:
       - .:/app
+    working_dir: /opt/backend-core
     networks:
       - dbnet
     healthcheck:

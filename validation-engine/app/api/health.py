@@ -18,6 +18,7 @@ from app.db import engine
 router = APIRouter(prefix="/health", tags=["health"])
 
 
+@router.get("")
 @router.get("/")
 def health_check() -> JSONResponse:
     db_healthy = True

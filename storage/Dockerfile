@@ -3,6 +3,10 @@
 # only `FROM sih-dnk-storage-base` and add their own deps on top.
 FROM python:3.12-slim AS runtime
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 # uv for dependency management (copies instead of symlinks — slim-friendly)
 RUN pip install --no-cache-dir uv
 ENV UV_LINK_MODE=copy
