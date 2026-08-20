@@ -20,6 +20,7 @@ Every turn:
 from __future__ import annotations
 
 import json
+import re
 import time
 import unicodedata
 import uuid
@@ -508,6 +509,21 @@ async def run_turn(
         expected_field,
         state["filled_fields"],
     )
+
+    # Ensure value_minor is captured and never repeatedly asked if user provided a value
+    if _sentinel(state["filled_fields"].get("value_minor")):
+        val_match = re.search(r"(?:value|price|cost|मूल्य|कीमत|दाम)\s*(?:of|is|:|-)?\s*(?:₹|\$|rs\.?|inr)?\s*(\d[\d,]*)", body.message, re.IGNORECASE)
+        if val_match:
+            state["filled_fields"]["value_minor"] = int(val_match.group(1).replace(",", "")) * 100
+        elif expected_field == "value_minor":
+            m_k = re.search(r"(\d+(?:\.\d+)?)\s*(?:k|thousand|हज़ार|हजार)", body.message, re.IGNORECASE)
+            if m_k:
+                state["filled_fields"]["value_minor"] = int(float(m_k.group(1)) * 1000 * 100)
+            else:
+                m_num = re.search(r"(\d[\d,]*)", body.message)
+                if m_num:
+                    state["filled_fields"]["value_minor"] = int(m_num.group(1).replace(",", "")) * 100
+
     state["candidates"] = []
     newly_filled = _newly_filled_fields(filled_before, state["filled_fields"])
 

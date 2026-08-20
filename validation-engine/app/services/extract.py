@@ -978,14 +978,27 @@ def _extract_value_utterance(
     (b) a price marker hugs a number run not pinned to a quantity/weight/time
     unit, or (c) the caller explicitly asked for the value (``expected ==
     "value_minor"``) and the run is not pinned to a unit.  Returns
-    ``(VALUE_UNSTATED, set())`` when nothing qualifies.  The consumed indices
-    are unioned into ``_extract_quantity``'s exclude set so a value number is
-    never re-read as the quantity.
+    ``(VALUE_UNSTATED, set())`` when nothing qualifies.
     """
     span = _currency_amount_span(normalized)
     if span is not None:
         start, end = span
         return _extract_value_minor(normalized), _token_indices_over(tokens, start, end)
+
+    if expected == "value_minor":
+        m_k = re.search(r"(\d+(?:\.\d+)?)\s*(?:k|thousand|हज़ार|हजार)", normalized)
+        if m_k:
+            val_rupees = int(float(m_k.group(1)) * 1000)
+            return val_rupees * 100, _token_indices_over(tokens, m_k.start(), m_k.end())
+        m_lakh = re.search(r"(\d+(?:\.\d+)?)\s*(?:lakh|लाख|lac)", normalized)
+        if m_lakh:
+            val_rupees = int(float(m_lakh.group(1)) * 100000)
+            return val_rupees * 100, _token_indices_over(tokens, m_lakh.start(), m_lakh.end())
+        m_num = re.search(r"(\d[\d,]*)", normalized)
+        if m_num:
+            val_rupees = int(m_num.group(1).replace(",", ""))
+            return val_rupees * 100, _token_indices_over(tokens, m_num.start(), m_num.end())
+
     index = 0
     while index < len(tokens):
         if _number_value(tokens[index][0]) is None:
