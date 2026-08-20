@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "marketplace"
+version = "0.1.0"
+description = "SIH-DNK marketplace — feed, ranking, catalog, sales ledger (Meilisearch stub)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "sqlalchemy>=2.0,<3",
+    "psycopg[binary]>=3.2,<4",
+    "alembic>=1.13,<2",
+    "pydantic>=2.7,<3",
+    "python-dotenv>=1.0,<2",
+    "httpx>=0.27,<1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27,<1",
+    "pytest>=8,<10",
+    "ruff>=0.14,<1",
+    "basedpyright>=1.18,<2",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W605"]
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+include = ["."]
+exclude = ["tests", "alembic", ".venv", "__pycache__"]
+reportAny = false
+reportExplicitAny = true
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportMissingTypeStubs = false
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

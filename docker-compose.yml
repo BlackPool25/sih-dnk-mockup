@@ -289,3 +289,71 @@ services:
       retries: 5
       start_period: 10s
     command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+  # ---------------------------------------------------------------------------
+  # Service 9: marketplace — FastAPI, 127.0.0.1:8007 -> 8000
+  # ---------------------------------------------------------------------------
+  marketplace:
+    build:
+      context: ./marketplace
+    image: sih-dnk-marketplace
+    container_name: sih-dnk-marketplace
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8007:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      MEILI_HOST: ${MEILI_HOST:-http://meilisearch:7700}
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
+    volumes:
+      - ./marketplace:/app
+      - /app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dbnet
+
+  # ---------------------------------------------------------------------------
+  # Service 10: verification-service — FastAPI (mocked), 127.0.0.1:8008 -> 8000
+  # ---------------------------------------------------------------------------
+  verification-service:
+    build:
+      context: ./verification-service
+    image: sih-dnk-verification-service
+    container_name: sih-dnk-verification-service
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8008:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${DB_PASSWORD:?error}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      MOCK_VERIFICATION: "true"
+      VERIFICATION_MODE: mock
+    volumes:
+      - ./verification-service:/app
+      - /app/.venv
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - dbnet
