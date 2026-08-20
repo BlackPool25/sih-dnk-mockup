@@ -236,40 +236,50 @@ body {
 /* Chat Bubbles */
 .chat-message {
   max-width: 82%;
-  padding: 0.75rem 1rem;
-  border-radius: 1rem;
+  padding: 0.875rem 1.125rem;
+  border-radius: 1.125rem;
   margin-bottom: 0.875rem;
-  line-height: 1.5;
+  line-height: 1.55;
   font-size: 0.9375rem;
   animation: slideIn 0.2s ease-out forwards;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(27, 46, 27, 0.04);
 }
 
 .chat-message.user {
-  background: var(--chat-user-bg);
-  color: var(--chat-user-text);
-  border: 1px solid var(--accent-hover);
+  background: #E8F0E6;
+  color: #1B2E1B;
+  border: 1px solid #C8DBC4;
   align-self: flex-end;
   border-bottom-right-radius: 0.25rem;
   margin-left: auto;
 }
 
+.chat-message.user .role-tag {
+  justify-content: flex-end;
+  color: #3D6638;
+}
+
 .chat-message.assistant {
-  background: var(--chat-assistant-bg);
-  color: var(--chat-assistant-text);
-  border: 1px solid var(--border-color);
+  background: #FFFFFF;
+  color: #1B2E1B;
+  border: 1px solid #E1E7DF;
   align-self: flex-start;
   border-bottom-left-radius: 0.25rem;
+  margin-right: auto;
+}
+
+.chat-message.assistant .role-tag {
+  justify-content: flex-start;
+  color: #2E7D32;
 }
 
 .chat-message .role-tag {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.375rem;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-muted);
 }
 
 /* Prominent Mic Button */
@@ -277,8 +287,8 @@ body {
   width: 3.25rem;
   height: 3.25rem;
   border-radius: 50%;
-  background: var(--accent);
-  color: #ffffff;
+  background: #A8C3A0;
+  color: #1B2E1B;
   border: none;
   padding: 0;
   display: flex;
@@ -286,33 +296,35 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 10px rgba(99, 153, 34, 0.35);
+  box-shadow: 0 2px 6px rgba(46, 125, 50, 0.2);
   flex-shrink: 0;
 }
 
 .mic-btn-large:hover {
-  background: var(--accent-hover);
-  transform: scale(1.05);
-  box-shadow: 0 6px 14px rgba(99, 153, 34, 0.4);
+  background: #98B890;
+  transform: scale(1.04);
+  box-shadow: 0 4px 10px rgba(46, 125, 50, 0.3);
 }
 
 .mic-btn-large:active {
-  transform: scale(0.98);
+  transform: scale(0.96);
 }
 
 .mic-btn-large.recording {
-  background: var(--danger);
+  background: #EF4444 !important;
+  color: #FFFFFF !important;
   animation: pulse-red 1.5s infinite;
-  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4);
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.45);
 }
 
 .mic-btn-large.recording:hover {
-  background: #B91C1C;
+  background: #DC2626 !important;
 }
 
 .mic-btn-large.transcribing {
-  background: var(--accent-hover);
-  box-shadow: 0 4px 10px rgba(99, 153, 34, 0.3);
+  background: #98B890;
+  color: #FFFFFF;
+  box-shadow: 0 4px 10px rgba(46, 125, 50, 0.25);
 }
 
 /* Voice Status Alert Bar */
@@ -320,45 +332,45 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem 0.875rem;
-  margin-bottom: 0.625rem;
-  border-radius: 0.5rem;
+  padding: 0.625rem 1rem;
+  margin-bottom: 0.75rem;
+  border-radius: 0.75rem;
   font-size: 0.8125rem;
   animation: slideIn 0.2s ease-out;
 }
 
 .voice-status-bar.recording {
-  background: var(--danger-light);
-  border: 1px solid var(--danger-border);
+  background: #FEE2E2;
+  border: 1px solid #FCA5A5;
   color: #991B1B;
   font-weight: 500;
 }
 
 .voice-status-bar.transcribing {
-  background: var(--accent-light);
-  border: 1px solid #C4DF9E;
-  color: #2D520D;
+  background: #E8F0E6;
+  border: 1px solid #C8DBC4;
+  color: #1B2E1B;
   font-weight: 500;
 }
 
 .voice-status-bar.error {
-  background: var(--danger-light);
-  border: 1px solid var(--danger-border);
+  background: #FEE2E2;
+  border: 1px solid #FCA5A5;
   color: #991B1B;
   justify-content: space-between;
 }
 
 .voice-status-bar.tts-pending {
-  background: var(--accent-light);
-  border: 1px solid #C4DF9E;
-  color: #2D520D;
+  background: #E8F0E6;
+  border: 1px solid #C8DBC4;
+  color: #1B2E1B;
   justify-content: space-between;
 }
 
 .recording-dot {
-  width: 8px;
-  height: 8px;
-  background-color: var(--danger);
+  width: 9px;
+  height: 9px;
+  background-color: #EF4444;
   border-radius: 50%;
   animation: blink 1s infinite;
   flex-shrink: 0;
