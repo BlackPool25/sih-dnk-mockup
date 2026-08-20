@@ -177,9 +177,92 @@ async def save_state(redis, conv_id: str, state: dict[str, Any]) -> None:
     await redis.expire(key, ttl_seconds)
 
 
-# ---------------------------------------------------------------------------
-# Turn-loop helpers
-# ---------------------------------------------------------------------------
+def _clean_field_prefix(text: str, prefixes: list[str]) -> str:
+    cleaned = text.strip()
+    lower = cleaned.lower()
+    for p in sorted(prefixes, key=len, reverse=True):
+        if lower.startswith(p.lower()):
+            cleaned = cleaned[len(p):].strip(" :,।-\n\r\t")
+            lower = cleaned.lower()
+    return cleaned
+
+
+def _process_buyer_name_and_address(
+    message: str,
+    extracted_consignee: object,
+    expected_field: str | None,
+    filled_fields: dict[str, Any],
+) -> None:
+    """Handle separate buyer name and delivery address extraction."""
+    name_prefixes = [
+        "buyer name is", "buyer is", "my buyer is", "buyer name:", "buyer:",
+        "recipient name is", "recipient is", "recipient name:", "recipient:", "recipient",
+        "consignee is", "consignee name is", "consignee:", "send to",
+        "name is", "name:", "buyer",
+        "खरीदार का नाम", "खरीदार है", "खरीदार:", "खरीदार",
+        "प्राप्तकर्ता का नाम", "प्राप्तकर्ता है", "प्राप्तकर्ता:", "प्राप्तकर्ता",
+        "नाम है", "नाम:", "को भेजना है", "को भेजना",
+    ]
+    addr_prefixes = [
+        "address is", "delivery address is", "delivery address:", "address:",
+        "location is", "delivery address", "street is", "street:",
+        "पता है", "पता:", "डिलीवरी पता है", "डिलीवरी पता:", "डिलीवरी पता", "स्थान है",
+    ]
+
+    has_buyer_name = not _sentinel(filled_fields.get("buyer_name"))
+
+    # Case 1: Answering address when expected_field is buyer_address
+    if expected_field == "buyer_address":
+        cleaned_addr = _clean_field_prefix(message, addr_prefixes)
+        if cleaned_addr:
+            filled_fields["buyer_address"] = cleaned_addr
+            b_name = filled_fields.get("buyer_name", "")
+            filled_fields["consignee"] = f"{b_name}, {cleaned_addr}" if b_name else cleaned_addr
+        return
+
+    # Case 2: User explicitly provided address via address prefix
+    has_addr_prefix = any(message.lower().strip().startswith(p) for p in addr_prefixes)
+    if has_addr_prefix and has_buyer_name:
+        cleaned_addr = _clean_field_prefix(message, addr_prefixes)
+        if cleaned_addr:
+            filled_fields["buyer_address"] = cleaned_addr
+            b_name = filled_fields.get("buyer_name", "")
+            filled_fields["consignee"] = f"{b_name}, {cleaned_addr}" if b_name else cleaned_addr
+        return
+
+    # Case 3: Answering buyer name
+    has_name_prefix = any(message.lower().strip().startswith(p) for p in name_prefixes)
+    is_extracted = not _sentinel(extracted_consignee) and isinstance(extracted_consignee, str)
+
+    if expected_field in ("buyer_name", "consignee") or has_name_prefix or is_extracted:
+        candidate = extracted_consignee if is_extracted else message
+
+        # Check if the user provided BOTH name and address in one message
+        has_comma = "," in candidate
+        has_addr_marker = any(
+            kw in candidate.lower()
+            for kw in (
+                "street", "road", "strasse", "str.", "rd.", "ave", "lane", "box", "nagar",
+                "block", "apt", "flat", "house", "बर्लिन", "मार्ग", "रोड", "गली", "मकान"
+            )
+        )
+        has_digits = any(c.isdigit() for c in candidate)
+
+        if (has_comma and has_addr_marker) or (has_digits and has_addr_marker):
+            if has_comma:
+                parts = [p.strip() for p in candidate.split(",", 1) if p.strip()]
+                filled_fields["buyer_name"] = _clean_field_prefix(parts[0], name_prefixes)
+                filled_fields["buyer_address"] = parts[1]
+                filled_fields["consignee"] = f"{filled_fields['buyer_name']}, {filled_fields['buyer_address']}"
+            else:
+                filled_fields["consignee"] = candidate
+                filled_fields["buyer_name"] = candidate
+                filled_fields["buyer_address"] = candidate
+        else:
+            cleaned_name = _clean_field_prefix(candidate, name_prefixes)
+            if cleaned_name:
+                filled_fields["buyer_name"] = cleaned_name
+                filled_fields["consignee"] = "unknown"
 
 
 def merge_draft(previous: dict[str, Any], extracted: dict[str, Any]) -> dict[str, Any]:
@@ -193,14 +276,15 @@ def merge_draft(previous: dict[str, Any], extracted: dict[str, Any]) -> dict[str
 
 
 def _filled_snapshot(filled_fields: dict[str, Any]) -> tuple[object, ...]:
-    """The six FIELD_ORDER values — the turn-over-turn diff basis."""
-    return tuple(filled_fields.get(f) for f in FIELD_ORDER)
+    """The FIELD_ORDER values plus buyer_name and buyer_address."""
+    return tuple(filled_fields.get(f) for f in (*FIELD_ORDER, "buyer_name", "buyer_address"))
 
 
 def _newly_filled_fields(before: tuple[object, ...], after: dict[str, Any]) -> list[str]:
     """Field names whose value changed this turn and is now non-sentinel."""
     now = _filled_snapshot(after)
-    return [f for f, old, new in zip(FIELD_ORDER, before, now) if old != new and not _sentinel(new)]
+    all_fields = (*FIELD_ORDER, "buyer_name", "buyer_address")
+    return [f for f, old, new in zip(all_fields, before, now) if old != new and not _sentinel(new)]
 
 
 def pending_fields(draft: dict[str, Any]) -> list[str]:
@@ -216,7 +300,16 @@ def pick_next_field(draft: dict[str, Any], report: dict[str, Any] | None) -> str
             if field in FIELD_ORDER:
                 return field
     pending = pending_fields(draft)
-    return pending[0] if pending else None
+    if not pending:
+        return None
+    field = pending[0]
+    if field == "consignee":
+        if _sentinel(draft.get("buyer_name")):
+            return "buyer_name"
+        if _sentinel(draft.get("buyer_address")):
+            return "buyer_address"
+        return "consignee"
+    return field
 
 
 def build_reply(
@@ -277,9 +370,21 @@ def _resolve_category_pick(message: str, candidates: list[dict[str, Any]]) -> st
 
 
 def _expected_field(state: dict[str, Any]) -> str | None:
-    """The head of the pending fields — the field this turn is answering."""
+    """The field this turn is answering."""
+    step = state.get("current_step")
+    if step and step not in ("init", "collecting", "done", "category_disambiguation"):
+        return str(step)
     pending = state.get("pending_fields") or []
-    return str(pending[0]) if pending else None
+    if pending:
+        field = pending[0]
+        if field == "consignee":
+            if _sentinel(state.get("filled_fields", {}).get("buyer_name")):
+                return "buyer_name"
+            if _sentinel(state.get("filled_fields", {}).get("buyer_address")):
+                return "buyer_address"
+            return "consignee"
+        return str(field)
+    return None
 
 
 async def _maybe_translate_consignee(
@@ -369,6 +474,12 @@ async def run_turn(
 
     filled_before = _filled_snapshot(state["filled_fields"])
     state["filled_fields"] = merge_draft(state["filled_fields"], dict(result.draft))
+    _process_buyer_name_and_address(
+        body.message,
+        result.draft.get("consignee"),
+        expected_field,
+        state["filled_fields"],
+    )
     state["candidates"] = []
     newly_filled = _newly_filled_fields(filled_before, state["filled_fields"])
 
@@ -494,17 +605,19 @@ async def run_turn(
         # Off-topic acceptance: the seller volunteered a field we were not
         # asking for — the merge already kept it (never lose data); acknowledge
         # it and re-ask the STILL-pending field with a different phrasing.
-        volunteered = [f for f in newly_filled if f != "consignee"]
+        volunteered = [f for f in newly_filled if f not in ("consignee", "buyer_name", "buyer_address")]
         reply = offtopic_reply(
             lang, volunteered, state["filled_fields"], state["db_info"], next_field, rotation
         )
-        if "consignee" in newly_filled:
-            readback = consignee_readback(lang, state["filled_fields"].get("consignee"))
+        if "consignee" in newly_filled or "buyer_name" in newly_filled:
+            val = state["filled_fields"].get("buyer_name") or state["filled_fields"].get("consignee")
+            readback = consignee_readback(lang, val)
             reply = f"{readback} {reply}"
-    elif "consignee" in newly_filled and next_field is not None:
-        # Consignee answered this turn while another field is still pending:
+    elif ("consignee" in newly_filled or "buyer_name" in newly_filled) and next_field is not None:
+        # Consignee / buyer name answered this turn while another field is still pending:
         # read the name back once, folded into the normal next ask.
-        readback = consignee_readback(lang, state["filled_fields"].get("consignee"))
+        val = state["filled_fields"].get("buyer_name") or state["filled_fields"].get("consignee")
+        readback = consignee_readback(lang, val)
         reply = f"{readback} {build_reply(lang, state['filled_fields'], state['db_info'], next_field, [], changed_fields=newly_filled, has_greeted=bool(state.get('has_greeted')))}"
     else:
         reply = build_reply(lang, state["filled_fields"], state["db_info"], next_field, [], changed_fields=newly_filled, has_greeted=bool(state.get('has_greeted')))

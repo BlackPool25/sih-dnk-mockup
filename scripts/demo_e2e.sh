@@ -91,15 +91,18 @@ next_answer() {
     weight_grams)       echo "वजन 500 ग्राम";;
     destination_country) echo "जर्मनी";;
     value_minor)        echo "मात्रा 12 कीमत ₹15000";;
+    buyer_name)         echo "प्राप्तकर्ता जॉन डो";;
+    buyer_address)      echo "बर्लिन स्ट्रासे 12";;
     consignee)          echo "प्राप्तकर्ता जॉन डो, बर्लिन स्ट्रासे 12";;
     *)                  echo "अगला क्षेत्र $field भरें";;
   esac
 }
 READY=false; TURNS=0; FILLED_JSON=""
 while [ "$TURNS" -lt 8 ]; do
+  STEP_REQ=$(printf '%s' "$CHAT" | python3 -c "import sys,json;d=json.load(sys.stdin);s=d.get('current_step');p=d.get('pending_fields') or [];print(s if s and s not in ('init','collecting','done') else (p[0] if p else 'done'))")
   STATE=$(curl -s -m 120 -X POST "$BE_URL/api/llm/chat" "${AUTH[@]}" \
     -H 'content-type: application/json' \
-    -d "{\"conversation_id\":\"$CONV\",\"message\":\"$(next_answer "$(printf '%s' "$CHAT" | python3 -c "import sys,json;d=json.load(sys.stdin);p=d.get('pending_fields') or [];print(p[0] if p else 'done')")")\",\"language\":\"hi\"}")
+    -d "{\"conversation_id\":\"$CONV\",\"message\":\"$(next_answer "$STEP_REQ")\",\"language\":\"hi\"}")
   CHAT="$STATE"
   TURNS=$((TURNS+1))
   READY=$(printf '%s' "$STATE" | python3 -c "import sys,json;print('true' if json.load(sys.stdin).get('document_ready') else 'false')")

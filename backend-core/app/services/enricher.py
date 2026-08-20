@@ -24,6 +24,8 @@ _FIELD_LABELS: dict[str, dict[str, str]] = {
         "weight_grams": "वज़न",
         "destination_country": "देश",
         "value_minor": "मूल्य",
+        "buyer_name": "खरीदार का नाम",
+        "buyer_address": "खरीदार का पता",
         "consignee": "प्राप्तकर्ता",
     },
     "en": {
@@ -32,16 +34,29 @@ _FIELD_LABELS: dict[str, dict[str, str]] = {
         "weight_grams": "weight",
         "destination_country": "country",
         "value_minor": "value",
+        "buyer_name": "buyer name",
+        "buyer_address": "buyer address",
         "consignee": "recipient",
     },
 }
+
+_ALL_DRAFT_FIELDS = (
+    "product_category",
+    "destination_country",
+    "quantity",
+    "weight_grams",
+    "value_minor",
+    "buyer_name",
+    "buyer_address",
+    "consignee",
+)
 
 
 def _render_draft(lang: str, draft: dict[str, Any]) -> str:
     """Non-sentinel draft values, rendered verbatim with per-field labels."""
     labels = _FIELD_LABELS.get(lang, _FIELD_LABELS["en"])
     parts: list[str] = []
-    for field in FIELD_ORDER:
+    for field in _ALL_DRAFT_FIELDS:
         value = draft.get(field)
         if value in _SENTINELS:
             continue

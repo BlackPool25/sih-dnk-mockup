@@ -28,6 +28,8 @@ const I18N = {
     needQuantity: "How many pieces or units are in this order?",
     needWeight: "What is the total package weight (in grams)?",
     needDestination: "Which destination country are you shipping to?",
+    needBuyerName: "Who is the buyer or recipient? What is their full name?",
+    needBuyerAddress: "What is the delivery address for the buyer?",
     needConsignee: "Who is the recipient (name and delivery address)?",
     needValue: "What is the total declared value in INR?",
     detailsTitle: "Details So Far",
@@ -83,6 +85,8 @@ const I18N = {
     needQuantity: "पार्सल में कितने पीस या वस्तुएं हैं?",
     needWeight: "पार्सल का कुल वजन (ग्राम में) कितना है?",
     needDestination: "पार्सल किस देश में भेजा जा रहा है?",
+    needBuyerName: "प्राप्तकर्ता (खरीदार) का नाम क्या है?",
+    needBuyerAddress: "प्राप्तकर्ता का डिलीवरी पता क्या है?",
     needConsignee: "प्राप्तकर्ता का नाम और पता क्या है?",
     needValue: "पार्सल का कुल मूल्य (रुपयों में) कितना है?",
     detailsTitle: "अब तक का विवरण",
@@ -451,13 +455,19 @@ function VoiceChatbot() {
     if (filledCount === 6) {
       return t.readyMessage;
     }
+    const currentStep = sessionState?.current_step;
+    if (currentStep === 'buyer_name') return `${t.needMoreDetails} ${t.needBuyerName || t.needConsignee}`;
+    if (currentStep === 'buyer_address') return `${t.needMoreDetails} ${t.needBuyerAddress || t.needConsignee}`;
     const pendingList = sessionState?.pending_fields || requiredKeys.filter(k => !filledFields[k]);
     const nextField = pendingList[0];
     if (nextField === 'product_category') return `${t.needMoreDetails} ${t.needProduct}`;
     if (nextField === 'quantity') return `${t.needMoreDetails} ${t.needQuantity}`;
     if (nextField === 'weight_grams') return `${t.needMoreDetails} ${t.needWeight}`;
     if (nextField === 'destination_country') return `${t.needMoreDetails} ${t.needDestination}`;
-    if (nextField === 'consignee') return `${t.needMoreDetails} ${t.needConsignee}`;
+    if (nextField === 'consignee') {
+      if (!filledFields.buyer_name) return `${t.needMoreDetails} ${t.needBuyerName || t.needConsignee}`;
+      return `${t.needMoreDetails} ${t.needBuyerAddress || t.needConsignee}`;
+    }
     if (nextField === 'value_minor') return `${t.needMoreDetails} ${t.needValue}`;
     return t.startTitle;
   };
@@ -745,8 +755,12 @@ function VoiceChatbot() {
 
                 <div className="field-pill full-width">
                   <span className="field-pill-label">{t.fieldConsignee}</span>
-                  {filledFields.consignee ? (
+                  {filledFields.consignee && filledFields.consignee !== 'unknown' ? (
                     <span className="field-pill-value text-xs">{filledFields.consignee}</span>
+                  ) : filledFields.buyer_name ? (
+                    <span className="field-pill-value text-xs font-medium text-amber-700">
+                      {filledFields.buyer_name} <span className="text-gray-400 font-normal">({selectedLang === 'hi' ? 'पता बाकी' : 'address pending'})</span>
+                    </span>
                   ) : (
                     <span className="field-pill-value pending">{t.waiting}</span>
                   )}
