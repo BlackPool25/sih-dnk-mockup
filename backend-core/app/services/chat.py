@@ -193,7 +193,7 @@ def _process_buyer_name_and_address(
     expected_field: str | None,
     filled_fields: dict[str, Any],
 ) -> None:
-    """Handle separate buyer name and delivery address extraction."""
+    """Handle separate or combined buyer name and delivery address extraction."""
     name_prefixes = [
         "buyer name is", "buyer is", "my buyer is", "buyer name:", "buyer:",
         "recipient name is", "recipient is", "recipient name:", "recipient:", "recipient",
@@ -209,9 +209,37 @@ def _process_buyer_name_and_address(
         "पता है", "पता:", "डिलीवरी पता है", "डिलीवरी पता:", "डिलीवरी पता", "स्थान है",
     ]
 
+    # 1. Pattern-based extraction from full message (handles "buyer is X. address is Y")
+    import re
+    m_name_en = re.search(r"(?:(?:the\s+)?buyer(?:\x27s)?\s+name\s+is|buyer(?:\x27s)?\s+is|recipient(?:\x27s)?\s+name\s+is|recipient\s+is|consignee\s+is|name\s+is)\s*[:\-]?\s*([A-Za-z\s]+?)(?=(?:\.|\b(?:his|her|the)\s+address|\baddress\b|$))", message, re.IGNORECASE)
+    m_name_hi = re.search(r"(?:खरीदार\s+का\s+नाम|प्राप्तकर्ता\s+का\s+नाम|प्राप्तकर्ता|खरीदार)\s*(?:है|:|-)?\s*([\u0900-\u097FA-Za-z\s]+?)(?=(?:\.|।|पता|डिलीवरी\s+पता|है|$))", message, re.IGNORECASE)
+    found_name = m_name_en.group(1).strip() if m_name_en else (m_name_hi.group(1).strip() if m_name_hi else None)
+
+    m_addr_en = re.search(r"(?:(?:his|her|the)\s+)?(?:delivery\s+)?(?:address|location)\s+is\s*[:\-]?\s*([^.\n]+)", message, re.IGNORECASE)
+    m_addr_hi = re.search(r"(?:डिलीवरी\s+)?पता\s*(?:है|:|-)?\s*([\u0900-\u097FA-Za-z0-9\s,]+?)(?=(?:\.|।|$))", message, re.IGNORECASE)
+    found_addr = m_addr_en.group(1).strip() if m_addr_en else (m_addr_hi.group(1).strip() if m_addr_hi else None)
+
+    if found_name and found_addr:
+        filled_fields["buyer_name"] = found_name
+        filled_fields["buyer_address"] = found_addr
+        filled_fields["consignee"] = f"{found_name}, {found_addr}"
+        return
+
+    if found_addr:
+        filled_fields["buyer_address"] = found_addr
+        b_name = filled_fields.get("buyer_name")
+        if b_name and not _sentinel(b_name):
+            filled_fields["consignee"] = f"{b_name}, {found_addr}"
+        return
+
+    if found_name and expected_field != "buyer_address":
+        filled_fields["buyer_name"] = found_name
+        filled_fields["consignee"] = "unknown"
+        return
+
+    # 2. Step-driven or prefix-driven extraction
     has_buyer_name = not _sentinel(filled_fields.get("buyer_name"))
 
-    # Case 1: Answering address when expected_field is buyer_address
     if expected_field == "buyer_address":
         cleaned_addr = _clean_field_prefix(message, addr_prefixes)
         if cleaned_addr:
@@ -220,7 +248,6 @@ def _process_buyer_name_and_address(
             filled_fields["consignee"] = f"{b_name}, {cleaned_addr}" if b_name else cleaned_addr
         return
 
-    # Case 2: User explicitly provided address via address prefix
     has_addr_prefix = any(message.lower().strip().startswith(p) for p in addr_prefixes)
     if has_addr_prefix and has_buyer_name:
         cleaned_addr = _clean_field_prefix(message, addr_prefixes)
@@ -230,14 +257,13 @@ def _process_buyer_name_and_address(
             filled_fields["consignee"] = f"{b_name}, {cleaned_addr}" if b_name else cleaned_addr
         return
 
-    # Case 3: Answering buyer name
     has_name_prefix = any(message.lower().strip().startswith(p) for p in name_prefixes)
     is_extracted = not _sentinel(extracted_consignee) and isinstance(extracted_consignee, str)
 
     if expected_field in ("buyer_name", "consignee") or has_name_prefix or is_extracted:
         candidate = extracted_consignee if is_extracted else message
 
-        # Check if the user provided BOTH name and address in one message
+        # Check if candidate contains BOTH name and address
         has_comma = "," in candidate
         has_addr_marker = any(
             kw in candidate.lower()
@@ -251,9 +277,11 @@ def _process_buyer_name_and_address(
         if (has_comma and has_addr_marker) or (has_digits and has_addr_marker):
             if has_comma:
                 parts = [p.strip() for p in candidate.split(",", 1) if p.strip()]
-                filled_fields["buyer_name"] = _clean_field_prefix(parts[0], name_prefixes)
-                filled_fields["buyer_address"] = parts[1]
-                filled_fields["consignee"] = f"{filled_fields['buyer_name']}, {filled_fields['buyer_address']}"
+                b_name = _clean_field_prefix(parts[0], name_prefixes)
+                b_addr = parts[1]
+                filled_fields["buyer_name"] = b_name
+                filled_fields["buyer_address"] = b_addr
+                filled_fields["consignee"] = f"{b_name}, {b_addr}"
             else:
                 filled_fields["consignee"] = candidate
                 filled_fields["buyer_name"] = candidate
