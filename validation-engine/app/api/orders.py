@@ -78,6 +78,111 @@ class QrTokenPayload(BaseModel):
     exp: str | None = None
 
 
+class PaidHeldRequest(BaseModel):
+    payment_id: str | None = None
+    payment_link_id: str | None = None
+    event: str | None = None
+    event_id: str | None = None
+    amount: int | None = None
+    currency: str | None = None
+
+
+class OrderStatusPatchRequest(BaseModel):
+    status: str
+    payment_id: str | None = None
+    payment_link_id: str | None = None
+    event: str | None = None
+    event_id: str | None = None
+
+
+# Allowed pre-states that may transition to paid_held.
+_PAID_HELD_SOURCES: frozenset[OrderStatus] = frozenset(
+    {OrderStatus.quote_accepted, OrderStatus.confirmed}
+)
+
+# States at or beyond paid_held — idempotent, no downgrade.
+_POST_PAID_STATUSES: frozenset[OrderStatus] = frozenset(
+    {
+        OrderStatus.paid_held,
+        OrderStatus.in_transit,
+        OrderStatus.delivered,
+        OrderStatus.disputed,
+        OrderStatus.settled,
+        OrderStatus.refunded,
+    }
+)
+
+
+def _apply_paid_held(
+    order: Order,
+    *,
+    payment_id: str | None,
+    payment_link_id: str | None,
+    event: str | None,
+    event_id: str | None,
+) -> tuple[bool, dict[str, object]]:
+    """Idempotent transition to paid_held; returns (changed, payment_meta).
+
+    Idempotency key is (payment_id, payment_link_id). Stored in
+    ``last_report.payment`` for deduplication. If already paid_held with
+    same key, returns not-changed.
+    """
+    existing_payment: dict[str, object] = {}
+    if isinstance(order.last_report, dict):
+        maybe = order.last_report.get("payment")
+        if isinstance(maybe, dict):
+            existing_payment = dict(maybe)
+
+    incoming_key = f"{payment_id or ''}|{payment_link_id or ''}"
+    existing_key = f"{existing_payment.get('payment_id') or ''}|{existing_payment.get('payment_link_id') or ''}"
+
+    # Already beyond paid_held or already paid_held — idempotent.
+    if order.status in _POST_PAID_STATUSES:
+        if incoming_key and existing_key and incoming_key == existing_key:
+            return False, existing_payment
+        if order.status == OrderStatus.paid_held and not existing_key and incoming_key:
+            # First payment metadata for already-paid order — store it without status change.
+            pass
+        elif order.status != OrderStatus.paid_held:
+            # In_transit etc — never downgrade.
+            return False, existing_payment
+
+    # Validate source state.
+    if order.status not in _PAID_HELD_SOURCES and order.status not in _POST_PAID_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"cannot transition from {order.status.value!r} to 'paid_held'",
+        )
+
+    # If already paid_held with same key, idempotent no-op.
+    if order.status == OrderStatus.paid_held and incoming_key and existing_key and incoming_key == existing_key:
+        return False, existing_payment
+
+    payment_meta: dict[str, object] = {
+        "payment_id": payment_id,
+        "payment_link_id": payment_link_id,
+        "event": event,
+        "event_id": event_id,
+        "money_location": "RAZORPAY_MERCHANT_BALANCE",
+        "paid_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Prune Nones for clean JSON.
+    payment_meta = {k: v for k, v in payment_meta.items() if v is not None}
+
+    # Merge into last_report.
+    last = dict(order.last_report) if isinstance(order.last_report, dict) else {}
+    last["payment"] = payment_meta
+    # Also store top-level idempotency keys for quick lookup.
+    if payment_id:
+        last["payment_id"] = payment_id
+    if payment_link_id:
+        last["payment_link_id"] = payment_link_id
+    order.last_report = last
+    order.status = OrderStatus.paid_held
+    order.version = (order.version or 0) + 1
+    return True, payment_meta
+
+
 @router.get("")
 def list_orders(
     seller_id: str | None = None,
@@ -212,6 +317,70 @@ def set_qr_token(order_id: str, payload: QrTokenPayload) -> dict:
         order.qr_tokens = existing
         order.qr_token_jti = payload.jti
     return {"order_id": order_id, "qr_token_jti": payload.jti, "qr_tokens": existing, "parcel_id": parcel_id}
+
+
+@router.post("/{order_id}/paid_held")
+def mark_paid_held(order_id: str, payload: PaidHeldRequest) -> dict:
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"invalid order_id {order_id!r}") from None
+    with SessionLocal.begin() as session:
+        order = session.execute(select(Order).where(Order.id == oid).with_for_update()).scalar_one_or_none()
+        if order is None:
+            raise HTTPException(status_code=404, detail=f"order {order_id!r} not found")
+        changed, meta = _apply_paid_held(
+            order,
+            payment_id=payload.payment_id,
+            payment_link_id=payload.payment_link_id,
+            event=payload.event,
+            event_id=payload.event_id,
+        )
+        session.flush()
+        return {
+            "order_id": order_id,
+            "status": order.status.value,
+            "changed": changed,
+            "payment": meta,
+            "order": _order_dict(order),
+        }
+
+
+@router.patch("/{order_id}/status")
+def patch_order_status(order_id: str, payload: OrderStatusPatchRequest) -> dict:
+    target = payload.status.strip()
+    try:
+        desired = OrderStatus(target)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid status {target!r} — expected one of {[s.value for s in OrderStatus]}",
+        ) from None
+    if desired != OrderStatus.paid_held:
+        raise HTTPException(status_code=422, detail="only transition to 'paid_held' is supported via this endpoint")
+    try:
+        oid = uuid.UUID(order_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"invalid order_id {order_id!r}") from None
+    with SessionLocal.begin() as session:
+        order = session.execute(select(Order).where(Order.id == oid).with_for_update()).scalar_one_or_none()
+        if order is None:
+            raise HTTPException(status_code=404, detail=f"order {order_id!r} not found")
+        changed, meta = _apply_paid_held(
+            order,
+            payment_id=payload.payment_id,
+            payment_link_id=payload.payment_link_id,
+            event=payload.event,
+            event_id=payload.event_id,
+        )
+        session.flush()
+        return {
+            "order_id": order_id,
+            "status": order.status.value,
+            "changed": changed,
+            "payment": meta,
+            "order": _order_dict(order),
+        }
 
 
 __all__ = ["router"]

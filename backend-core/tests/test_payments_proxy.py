@@ -204,3 +204,124 @@ async def test_amount_guard_uses_server_value(test_seller: dict[str, str], monke
     assert resp.status_code == 201
     # guard replaced 1 with 99999
     assert captured_amount["amount"] == 99999
+
+
+async def test_webhook_drives_paid_held(monkeypatch: pytest.MonkeyPatch, val_fake) -> None:  # noqa: ANN001
+    import uuid
+
+    order_id = str(uuid.uuid4())
+    val_fake.order = {
+        "order": {"id": order_id, "status": "quote_accepted", "value_minor": 50000, "seller_id": "s1"},
+        "line_items": [],
+        "last_report": {},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/payment/webhook"
+        return httpx.Response(
+            200,
+            json={
+                "status": "accepted",
+                "event": "payment.captured",
+                "event_id": "evt_1",
+                "payment_id": "pay_123",
+                "payment_link_id": "plink_456",
+                "money_location": "RAZORPAY_MERCHANT_BALANCE",
+            },
+        )
+
+    client = _make_payment_client(handler)
+    monkeypatch.setattr("app.services.payment_client.payment_client", client)
+    monkeypatch.setattr("app.routers.payments.payment_client", client)
+
+    transport = ASGITransport(app=app)
+    payload = {
+        "event": "payment.captured",
+        "payload": {
+            "payment": {"entity": {"id": "pay_123", "notes": {"order_id": order_id}}},
+            "payment_link": {"entity": {"id": "plink_456"}},
+        },
+    }
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post(
+            "/payments/webhook",
+            content=json.dumps(payload).encode(),
+            headers={"X-Razorpay-Signature": "sig", "Content-Type": "application/json", "x-razorpay-event-id": "evt_1"},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["money_location"] == "RAZORPAY_MERCHANT_BALANCE"
+    assert "mark_paid_held" in val_fake.calls
+    assert resp.json().get("order_status") == "paid_held"
+
+
+async def test_webhook_idempotent_double(monkeypatch: pytest.MonkeyPatch, val_fake) -> None:  # noqa: ANN001
+    import uuid
+    from unittest.mock import AsyncMock
+
+    order_id = str(uuid.uuid4())
+    val_fake.order = {
+        "order": {"id": order_id, "status": "quote_accepted", "value_minor": 50000},
+        "line_items": [],
+        "last_report": {},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"status": "accepted", "event": "payment.captured", "payment_id": "pay_dup", "payment_link_id": "plink_dup", "money_location": "RAZORPAY_MERCHANT_BALANCE"},
+        )
+
+    client = _make_payment_client(handler)
+    monkeypatch.setattr("app.services.payment_client.payment_client", client)
+    monkeypatch.setattr("app.routers.payments.payment_client", client)
+
+    transport = ASGITransport(app=app)
+    payload = {
+        "event": "payment.captured",
+        "payload": {"payment": {"entity": {"id": "pay_dup", "notes": {"order_id": order_id}}}, "payment_link": {"entity": {"id": "plink_dup"}}},
+    }
+    body = json.dumps(payload).encode()
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        r1 = await ac.post("/payments/webhook", content=body, headers={"X-Razorpay-Signature": "sig", "Content-Type": "application/json"})
+        r2 = await ac.post("/payments/webhook", content=body, headers={"X-Razorpay-Signature": "sig", "Content-Type": "application/json"})
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert val_fake.calls.count("mark_paid_held") == 2
+
+
+async def test_webhook_invalid_signature_400(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"detail": {"error": "INVALID_WEBHOOK_SIGNATURE", "message": "Webhook signature verification failed"}})
+
+    client = _make_payment_client(handler)
+    monkeypatch.setattr("app.services.payment_client.payment_client", client)
+    monkeypatch.setattr("app.routers.payments.payment_client", client)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post(
+            "/payments/webhook",
+            content=b'{"event":"payment.captured"}',
+            headers={"X-Razorpay-Signature": "bad", "Content-Type": "application/json"},
+        )
+    assert resp.status_code == 400
+    assert "INVALID_WEBHOOK_SIGNATURE" in resp.text
+
+
+async def test_webhook_non_captured_no_transition(monkeypatch: pytest.MonkeyPatch, val_fake) -> None:  # noqa: ANN001
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"status": "accepted", "event": "payment.failed", "money_location": None})
+
+    client = _make_payment_client(handler)
+    monkeypatch.setattr("app.services.payment_client.payment_client", client)
+    monkeypatch.setattr("app.routers.payments.payment_client", client)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        resp = await ac.post(
+            "/payments/webhook",
+            content=json.dumps({"event": "payment.failed", "payload": {"payment": {"entity": {"id": "pay_x"}}}}).encode(),
+            headers={"X-Razorpay-Signature": "sig", "Content-Type": "application/json"},
+        )
+    assert resp.status_code == 200
+    assert "mark_paid_held" not in val_fake.calls

@@ -129,6 +129,7 @@ def _mock_val_client(monkeypatch: pytest.MonkeyPatch) -> FakeValClient:
     monkeypatch.setattr("app.routers.orders.val_client", fake)
     monkeypatch.setattr("app.routers.docs.val_client", fake)
     monkeypatch.setattr("app.routers.qr.val_client", fake)
+    monkeypatch.setattr("app.routers.payments.val_client", fake)
 
     import app.cli.__main__ as cli_main
 

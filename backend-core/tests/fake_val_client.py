@@ -333,3 +333,32 @@ class FakeValClient:
             if isinstance(inner, dict):
                 inner["qr_token_jti"] = jti
         return {"order_id": order_id, "qr_token_jti": jti}
+
+    async def mark_paid_held(
+        self,
+        order_id: str,
+        payment_id: str | None = None,
+        payment_link_id: str | None = None,
+        event: str | None = None,
+        event_id: str | None = None,
+    ) -> dict[str, object]:
+        self.calls.append("mark_paid_held")
+        if self.order is not None:
+            inner = self.order.get("order")
+            if isinstance(inner, dict) and str(inner.get("id")) == order_id:
+                inner["status"] = "paid_held"
+                inner["last_report"] = {
+                    "payment": {
+                        "payment_id": payment_id,
+                        "payment_link_id": payment_link_id,
+                        "event": event,
+                        "event_id": event_id,
+                        "money_location": "RAZORPAY_MERCHANT_BALANCE",
+                    }
+                }
+        return {"order_id": order_id, "status": "paid_held", "changed": True}
+
+    async def patch_order_status(
+        self, order_id: str, status: str, payment_id: str | None = None, payment_link_id: str | None = None, event: str | None = None, event_id: str | None = None
+    ) -> dict[str, object]:
+        return await self.mark_paid_held(order_id, payment_id=payment_id, payment_link_id=payment_link_id, event=event, event_id=event_id)

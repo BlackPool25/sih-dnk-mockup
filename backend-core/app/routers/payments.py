@@ -13,6 +13,8 @@ stay server-side in pricing-engine.
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -47,10 +49,58 @@ def _map_error(exc: Exception) -> HTTPException:
     if isinstance(exc, PayNotFound):
         return HTTPException(status_code=404, detail=str(exc))
     if isinstance(exc, PayInvalid):
-        return HTTPException(status_code=422, detail=str(exc))
+        msg = str(exc)
+        if "INVALID_WEBHOOK_SIGNATURE" in msg:
+            return HTTPException(status_code=400, detail=msg)
+        if "INVALID_PAYMENT_SIGNATURE" in msg:
+            return HTTPException(status_code=400, detail=msg)
+        return HTTPException(status_code=422, detail=msg)
     if isinstance(exc, PayUnavailable):
         return HTTPException(status_code=503, detail=str(exc))
     return HTTPException(status_code=502, detail=str(exc))
+
+
+def _extract_order_id(payload: dict) -> str | None:
+    try:
+        candidates: list[str | None] = []
+        payload_section = payload.get("payload", {}) if isinstance(payload.get("payload"), dict) else {}
+        pay = payload_section.get("payment", {}).get("entity", {}) if isinstance(payload_section.get("payment"), dict) else {}
+        if isinstance(pay.get("notes"), dict):
+            candidates.append(pay["notes"].get("order_id"))
+            candidates.append(pay["notes"].get("reference_id"))
+        pl = payload_section.get("payment_link", {}).get("entity", {}) if isinstance(payload_section.get("payment_link"), dict) else {}
+        if isinstance(pl.get("notes"), dict):
+            candidates.append(pl["notes"].get("order_id"))
+            candidates.append(pl["notes"].get("reference_id"))
+        ord_ent = payload_section.get("order", {}).get("entity", {}) if isinstance(payload_section.get("order"), dict) else {}
+        if isinstance(ord_ent.get("notes"), dict):
+            candidates.append(ord_ent["notes"].get("order_id"))
+        if isinstance(payload.get("notes"), dict):
+            candidates.append(payload["notes"].get("order_id"))
+        candidates.append(payload.get("order_id") if isinstance(payload.get("order_id"), str) else None)
+        candidates.append(payload.get("reference_id") if isinstance(payload.get("reference_id"), str) else None)
+        for c in candidates:
+            if isinstance(c, str) and c.strip():
+                return c.strip()
+    except Exception:
+        return None
+    return None
+
+
+def _extract_payment_ids(payload: dict) -> tuple[str | None, str | None]:
+    try:
+        ps = payload.get("payload", {}) if isinstance(payload.get("payload"), dict) else {}
+        pay = ps.get("payment", {}).get("entity", {}) if isinstance(ps.get("payment"), dict) else {}
+        pl = ps.get("payment_link", {}).get("entity", {}) if isinstance(ps.get("payment_link"), dict) else {}
+        pid = pay.get("id") if isinstance(pay.get("id"), str) else None
+        plid = pl.get("id") if isinstance(pl.get("id"), str) else None
+        if not pid and isinstance(payload.get("payment_id"), str):
+            pid = payload.get("payment_id")
+        if not plid and isinstance(payload.get("payment_link_id"), str):
+            plid = payload.get("payment_link_id")
+        return pid, plid
+    except Exception:
+        return None, None
 
 
 async def _guard_amount(order_id: str | None, client_amount: int | None) -> int | None:
@@ -201,13 +251,42 @@ async def verify_payment(request: Request) -> JSONResponse:
 
 @router.post("/webhook")
 async def webhook(request: Request) -> JSONResponse:
-    """Proxy Razorpay webhook — no auth, but signature is verified downstream."""
+    """Proxy Razorpay webhook — no auth, signature verified downstream, then drive paid_held."""
     signature = request.headers.get("X-Razorpay-Signature") or request.headers.get("x-razorpay-signature") or ""
     event_id = request.headers.get("x-razorpay-event-id") or request.headers.get("X-Razorpay-Event-Id")
     raw = await request.body()
-    # allow empty body → let downstream decide
     try:
         data = await payment_client.proxy_webhook(raw, signature, event_id=event_id, headers=_fwd_headers(request))
     except (PayNotFound, PayInvalid, PayUnavailable) as exc:
         raise _map_error(exc) from exc
+
+    try:
+        payload = json.loads(raw.decode()) if raw else {}
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    event = payload.get("event") if isinstance(payload.get("event"), str) else data.get("event") if isinstance(data.get("event"), str) else None
+    allowed = {"payment.captured", "payment_link.paid", "order.paid"}
+    if event in allowed:
+        order_id = _extract_order_id(payload)
+        if order_id:
+            pid, plid = _extract_payment_ids(payload)
+            if not pid:
+                pid = data.get("payment_id") if isinstance(data.get("payment_id"), str) else None
+            if not plid:
+                plid = data.get("payment_link_id") if isinstance(data.get("payment_link_id"), str) else None
+            try:
+                await val_client.mark_paid_held(
+                    order_id,
+                    payment_id=pid,
+                    payment_link_id=plid,
+                    event=event,
+                    event_id=event_id,
+                )
+                data = {**data, "order_id": order_id, "order_status": "paid_held"}
+            except Exception:
+                pass
+
     return JSONResponse(status_code=200, content=data)

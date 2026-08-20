@@ -196,6 +196,50 @@ class ValClient:
         """POST /orders/{order_id}/qr-token — attach a QR token JTI to an order."""
         return await self._post_json(f"/orders/{order_id}/qr-token", json={"jti": jti})
 
+    async def mark_paid_held(
+        self,
+        order_id: str,
+        *,
+        payment_id: str | None = None,
+        payment_link_id: str | None = None,
+        event: str | None = None,
+        event_id: str | None = None,
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {}
+        if payment_id is not None:
+            payload["payment_id"] = payment_id
+        if payment_link_id is not None:
+            payload["payment_link_id"] = payment_link_id
+        if event is not None:
+            payload["event"] = event
+        if event_id is not None:
+            payload["event_id"] = event_id
+        return await self._post_json(f"/orders/{order_id}/paid_held", json=payload)
+
+    async def patch_order_status(
+        self,
+        order_id: str,
+        status: str,
+        *,
+        payment_id: str | None = None,
+        payment_link_id: str | None = None,
+        event: str | None = None,
+        event_id: str | None = None,
+    ) -> dict[str, object]:
+        payload: dict[str, object] = {"status": status}
+        if payment_id is not None:
+            payload["payment_id"] = payment_id
+        if payment_link_id is not None:
+            payload["payment_link_id"] = payment_link_id
+        if event is not None:
+            payload["event"] = event
+        if event_id is not None:
+            payload["event_id"] = event_id
+        data = await self._request("PATCH", f"/orders/{order_id}/status", json=payload)
+        if not isinstance(data, dict):
+            raise ValClientError(f"expected an object at PATCH /orders/{order_id}/status")
+        return data
+
 val_client = ValClient()
 
 
