@@ -179,7 +179,23 @@ The user's requested workflow (verbatim intent, 2026-08-09):
 
 ---
 
-## 8. Guardrails (from the completed plan — keep these)
+## 8. Wave 5 — messaging-service (port 8009, container 8000)
+
+Verified 2026-08-20. FastAPI mocked messaging service on `sih-dnk-python-base`, loopback `127.0.0.1:8009→8000`, DB `messaging_alembic_version` head `001`, 4 tables `messaging_threads`, `messaging_messages`, `quote_states`, `quote_versions`. Auth is mocked JWT via `storage.config` `JWT_SECRET_KEY` (fallback env), `Authorization: Bearer` or `?token=` (WS). Sahayak `3333...` is read-only observer (inbox/poll/WS read allowed, POST 403).
+
+- **Threads** — one per order, `order_id` UNIQUE idempotent create (existing check plus ON CONFLICT fallback). `GET /messages/inbox` paged by `last_message_at` desc, sahayak sees all, others filtered by seller/buyer.
+- **Messages** — multipart `POST /messages/threads/{id}/messages` encrypts body via per-thread HKDF `sha256(thread_id)` + `dnk-msg-v1-{thread_id}` → AES-256-GCM random 12-byte nonce, stores `body_ciphertext` + `enc_nonce_b64`, metadata-only attachment inline JSONB (10 MB, `image/*`, `text/*`, `application/pdf`). Thread preview encrypted same way. `GET /messages/threads/{id}/messages` paged chrono with `before` ISO8601, decrypt on read. `GET /messages/threads/{id}/poll?since=ISO8601` is the offline queue.
+- **WS** — `ws://127.0.0.1:8009/messages/ws/threads/{id}?token=<JWT>` mocked, no Redis, DB is the queue. Connect returns `{"type":"connected"}`, send `{"type":"send","body":"..."}` echoes `{"type":"message","data":{mocked:true}}`. Invalid token or non-member closes 1008, sahayak send returns error. OpenAPI includes `/messages/ws` info endpoint so `openapi.json` covers `ws`. Polling recovers after disconnect.
+- **Quotes** — `POST /quotes` seller-only (buyer via `X-Buyer-Id`), state machine `draft→sent→counter→approved→paid_held` checked via `quote_state.next_state` exhaustive match, immutable `quote_versions`. Flow: `sent` (v1) → `reject` `counter` (v2) → `revise` `sent` (v3) → `approve` `approved` (v4, returns mocked `https://pay.mock/quote/{id}`) → `mock-pay` `paid_held` (v5, terminal, `webhook` alias same). Guards: role checks, owner checks, state transition 422.
+- **Seed** — `messaging-service/scripts/seed_demo.py` idempotent. Deterministic `DEMO_ORDER_ID=uuid5(dns,"sih-dnk-demo-order-v1")` (=`1a9e5632-bb48-506f-9fa4-78faac6ad41f`), seller `1111...`, buyer `2222...`, sahayak `3333...` (mocked JWT subs, not auth DB rows), one thread, 2 encrypted messages (seller hello, buyer reply), one quote lifecycle above (5 versions, terminal `paid_held`). Uses `AsyncSession` against `postgresql+psycopg` `DATABASE_URL`, prints ids, re-run reuses rows (`count` checks). Verified via `docker exec psql` counts 1/2/1/5.
+- **Docs** — `messaging-service/README.md` has health, OpenAPI, and 12 curl blocks covering every required surface: `GET /health`, `POST /threads`, `POST /threads/{id}/messages` with attachment, `GET /inbox` paged, `GET /threads/{id}/messages` paged, `GET /threads/{id}/poll?since=`, `POST /quotes`, `POST /quotes/{id}/reject`, `POST /quotes/{id}/revise`, `POST /quotes/{id}/approve`, `POST /quotes/{id}/mock-pay`, WS `wss ...?token=`. `GET /openapi.json | jq .paths` contains `inbox`, `threads`, `quotes`, `ws`; `GET /docs` 200.
+- **Quality gates** — `uv run ruff check .` pass, `uv run basedpyright` 0 errors (`reportAny false`, `reportExplicitAny true`, no `Any` in app), `uv run pytest -q` **41 passed** (threshold 30), `uv run --with pytest-cov pytest --cov=app` **68%** on `app/` (messages router uncovered error branches remain; 80% requires live Postgres JSONB integration — documented, not a regression). `docker compose config -q` valid, `scripts/check_health.sh` now probes 9 HTTP endpoints plus db/redis docker health (11 services total, includes `127.0.0.1:8009/health`).
+
+Run: `uv run alembic upgrade head && uv run python scripts/seed_demo.py && uv run pytest -q` from `messaging-service/`. Live verify: `curl -fsS http://127.0.0.1:8009/health | jq`, `curl -fsS http://127.0.0.1:8009/openapi.json | jq .paths`, `curl -fsS http://127.0.0.1:8009/docs | head`.
+
+---
+
+## 9. Guardrails (from the completed plan — keep these)
 
 - The LLM is NEVER passed the conversation transcript; re-prompts carry only the Shipment object minus raw_transcript.
 - The LLM NEVER validates — `validate.py` + Pydantic are the only verifiers.

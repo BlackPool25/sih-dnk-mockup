@@ -1,4 +1,4 @@
-"""Pydantic stubs mapping quote_* DB tables."""
+"""Pydantic schemas for quote lifecycle."""
 
 from __future__ import annotations
 
@@ -64,3 +64,37 @@ class QuoteVersionOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- Router-facing schemas ---
+
+
+class QuoteCreateRequest(BaseModel):
+    order_id: uuid.UUID
+    thread_id: uuid.UUID | None = None
+    price_minor: int = Field(ge=0)
+    qty: int | None = Field(default=None, ge=1)
+    shipping_minor: int = Field(default=0, ge=0)
+    notes: str | None = None
+
+
+class QuoteRejectRequest(BaseModel):
+    reason: str = Field(min_length=1)
+
+
+class QuoteReviseRequest(BaseModel):
+    price_minor: int = Field(ge=0)
+    qty: int | None = Field(default=None, ge=1)
+    shipping_minor: int = Field(default=0, ge=0)
+
+
+class QuoteDetailOut(BaseModel):
+    current: QuoteStateOut
+    versions: list[QuoteVersionOut]
+
+
+class MockPaymentOut(BaseModel):
+    mocked: bool = True
+    payment_link: str
+    quote_id: uuid.UUID
+    amount_minor: int

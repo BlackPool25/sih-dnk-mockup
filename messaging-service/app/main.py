@@ -8,6 +8,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers.messages import router as messages_router
+from app.routers.quotes import router as quotes_router
+from app.routers.ws import router as ws_router
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
@@ -23,6 +27,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(quotes_router)
+app.include_router(messages_router)
+app.include_router(ws_router)
 
 
 @app.get("/health")
