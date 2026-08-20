@@ -110,9 +110,7 @@ def _primary_hs(data: DocumentData) -> dict | None:
 def _summary_rows(data: DocumentData) -> list[dict]:
     """Rows for the CN22/CN23/INVOICE/PACKING_LIST forms (no PBE schema rows).
 
-    ``value_minor`` / ``consignee`` are the optional CLI fields — rendered as
-    "—" when omitted (user-requirement: optional details are only filled when
-    the user supplies them).
+    Includes Exporter/Seller details from profile alongside Consignee and shipment specs.
     """
     hs = _primary_hs(data)
     desc = hs["description"] if hs else "—"
@@ -124,7 +122,14 @@ def _summary_rows(data: DocumentData) -> list[dict]:
     ]
     if data.form_type == "CN22":
         return common + [{"label": "Destination country", "value": data.destination_country}]
+
+    sender_display = data.sender.name_address or data.field_values.get("exporter_name") or "—"
+    if isinstance(sender_display, str) and "\n" in sender_display:
+        sender_display = sender_display.replace("\n", ", ")
+
     rows: list[dict] = [
+        {"label": "Exporter / Seller", "value": sender_display},
+        {"label": "Exporter IEC", "value": data.iec or data.sender.sender_ref or "—"},
         {"label": "Consignee", "value": data.consignee or "—"},
         {"label": "Destination country", "value": data.destination_country},
         *common,

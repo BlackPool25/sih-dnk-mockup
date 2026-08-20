@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../../context/DataContext";
 import Layout from "../../components/seller/Layout";
-import { Search, Plus, ChevronRight } from "lucide-react";
+import { Search, Plus, ChevronRight, QrCode } from "lucide-react";
 import InlineFallback from "../../components/InlineFallback";
 import { isDemoMode } from "../../utils/demoMode";
 
@@ -239,13 +239,22 @@ function Orders() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <button 
-                          onClick={() => navigate(`/seller/order/${orderId}`)}
-                          className="flex items-center gap-1 font-['Figtree'] text-sm text-[#6FAF6F] hover:text-[#5A9A5A] transition-colors"
-                        >
-                          View Details
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-3">
+                          <button 
+                            onClick={() => navigate(`/seller/order/${orderId}`)}
+                            className="flex items-center gap-1 font-['Figtree'] text-sm text-[#6FAF6F] hover:text-[#5A9A5A] transition-colors"
+                          >
+                            Details
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => navigate(`/seller/order/${orderId}`)}
+                            className="p-1.5 hover:bg-[#E8F5E9] text-[#2E7D32] rounded-lg border border-[#C8E6C9] transition-colors"
+                            title="View QR Code & Statutory Documents"
+                          >
+                            <QrCode className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

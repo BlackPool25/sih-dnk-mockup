@@ -35,7 +35,9 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "ask.quantity": "कितने टुकड़े भेजने हैं?",
         "ask.weight": "कुल वज़न कितना है? (जैसे 400 ग्राम या 2 किलो)",
         "ask.value": "माल की घोषित कीमत क्या है? (जैसे ₹500)",
-        "ask.consignee": "प्राप्तकर्ता का नाम और पता बताइए।",
+        "ask.buyer_name": "प्राप्तकर्ता (खरीदार) का नाम बताइए।",
+        "ask.buyer_address": "प्राप्तकर्ता का डिलीवरी पता बताइए।",
+        "ask.consignee": "प्राप्तकर्ता (खरीदार) का नाम बताइए।",
         "ask.category": "किस उत्पाद श्रेणी में भेज रहे हैं? (जैसे जूट उत्पाद, लकड़ी के सामान)",
         "disambiguate.category": "मुझे श्रेणी नहीं समझ आई। कृपया चुनें — {options}",
         "echo": "मैंने समझा — {echo_parts}।",
@@ -50,7 +52,9 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "ask.quantity": "How many pieces are you shipping?",
         "ask.weight": "What is the total weight? (e.g. 400 grams or 2 kilos)",
         "ask.value": "What is the declared value? (e.g. ₹500)",
-        "ask.consignee": "Please tell me the recipient's name and address.",
+        "ask.buyer_name": "Please tell me the buyer's (recipient's) name.",
+        "ask.buyer_address": "Please tell me the buyer's delivery address.",
+        "ask.consignee": "Please tell me the buyer's (recipient's) name.",
         "ask.category": "Which product category is this? (e.g. jute products, wooden items)",
         "disambiguate.category": "I couldn't pin down the category. Please choose — {options}",
         "echo": "Got it — {echo_parts}.",
@@ -67,6 +71,8 @@ ECHO_PARTS: dict[str, str] = {
     "weight_grams": "{value} ग्राम",
     "destination_country": "{value}",
     "value_minor": "{value} रुपये",
+    "buyer_name": "खरीदार {value}",
+    "buyer_address": "पता {value}",
     "consignee": "{value} को भेजना",
 }
 
@@ -76,6 +82,8 @@ ECHO_PARTS_EN: dict[str, str] = {
     "weight_grams": "{value} grams",
     "destination_country": "{value}",
     "value_minor": "₹{value}",
+    "buyer_name": "buyer {value}",
+    "buyer_address": "address {value}",
     "consignee": "send to {value}",
 }
 
@@ -110,14 +118,13 @@ def echo_line(lang: str, draft: dict[str, Any], db_info: dict[str, Any] | None =
     fields = only_fields if only_fields is not None else list(FIELD_ORDER)
     parts: list[str] = []
     for field in fields:
-        if field not in FIELD_ORDER:
-            continue
         raw = draft.get(field)
         display = _display_value(lang, field, raw, db_info)
         if display is None:
             continue
         template = ECHO_PARTS if lang == "hi" else ECHO_PARTS_EN
-        parts.append(template[field].format(name=display, value=display))
+        if field in template:
+            parts.append(template[field].format(name=display, value=display))
     if not parts:
         return ""
     return (TEMPLATES[lang]["echo"]).format(echo_parts=", ".join(parts))
@@ -138,6 +145,8 @@ _ASK_KEY: dict[str, str] = {
     "quantity": "ask.quantity",
     "weight_grams": "ask.weight",
     "value_minor": "ask.value",
+    "buyer_name": "ask.buyer_name",
+    "buyer_address": "ask.buyer_address",
     "consignee": "ask.consignee",
 }
 

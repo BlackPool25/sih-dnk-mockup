@@ -54,7 +54,7 @@ STT=$(curl -s -m 300 -X POST "$BE_URL/api/voice/transcribe" "${AUTH[@]}" \
   -F "file=@$ART_DIR/src.wav" -F 'language_hint=hi')
 TRANSCRIPT=$(printf '%s' "$STT" | python3 -c "import sys,json;print(json.load(sys.stdin).get('transcript',''))")
 LANG_CODE=$(printf '%s' "$STT" | python3 -c "import sys,json;print(json.load(sys.stdin).get('language',''))")
-if [ -n "$TRANSCRIPT" ] && [ "$LANG_CODE" = "hi" ]; then
+if [ -n "$TRANSCRIPT" ] && [[ "$LANG_CODE" == hi* ]]; then
   ok "transcript='${TRANSCRIPT:0:80}…' language=$LANG_CODE"
 else
   bad "STT failed — body: $STT" "stt"
@@ -91,15 +91,18 @@ next_answer() {
     weight_grams)       echo "वजन 500 ग्राम";;
     destination_country) echo "जर्मनी";;
     value_minor)        echo "मात्रा 12 कीमत ₹15000";;
+    buyer_name)         echo "प्राप्तकर्ता जॉन डो";;
+    buyer_address)      echo "बर्लिन स्ट्रासे 12";;
     consignee)          echo "प्राप्तकर्ता जॉन डो, बर्लिन स्ट्रासे 12";;
     *)                  echo "अगला क्षेत्र $field भरें";;
   esac
 }
 READY=false; TURNS=0; FILLED_JSON=""
 while [ "$TURNS" -lt 8 ]; do
+  STEP_REQ=$(printf '%s' "$CHAT" | python3 -c "import sys,json;d=json.load(sys.stdin);s=d.get('current_step');p=d.get('pending_fields') or [];print(s if s and s not in ('init','collecting','done') else (p[0] if p else 'done'))")
   STATE=$(curl -s -m 120 -X POST "$BE_URL/api/llm/chat" "${AUTH[@]}" \
     -H 'content-type: application/json' \
-    -d "{\"conversation_id\":\"$CONV\",\"message\":\"$(next_answer "$(printf '%s' "$CHAT" | python3 -c "import sys,json;d=json.load(sys.stdin);p=d.get('pending_fields') or [];print(p[0] if p else 'done')")")\",\"language\":\"hi\"}")
+    -d "{\"conversation_id\":\"$CONV\",\"message\":\"$(next_answer "$STEP_REQ")\",\"language\":\"hi\"}")
   CHAT="$STATE"
   TURNS=$((TURNS+1))
   READY=$(printf '%s' "$STATE" | python3 -c "import sys,json;print('true' if json.load(sys.stdin).get('document_ready') else 'false')")
@@ -157,7 +160,7 @@ fi
 # 7. PDF — GET /orders/{id}/pdf → %PDF magic + consignee text
 # ---------------------------------------------------------------------------
 step "7. PDF — GET /orders/$OID/pdf"
-curl -s -m 120 "$BE_URL/orders/$OID/pdf" "${AUTH[@]}" -o "$ART_DIR/order.pdf"
+curl -s -m 120 "$BE_URL/orders/$OID/pdf?doc_type=INVOICE" "${AUTH[@]}" -o "$ART_DIR/order.pdf"
 MAGIC=$(head -c 4 "$ART_DIR/order.pdf")
 if [ "$MAGIC" = "%PDF" ]; then
   # Consignee renders Devanagari (जॉन डो) or Latin; pdftotext splits Indic
@@ -181,7 +184,7 @@ curl -s -m 60 -X POST "$BE_URL/api/voice/tts" "${AUTH[@]}" \
   -H 'content-type: application/json' \
   -d "{\"text\":\"$REPLY_LAST\",\"language\":\"hi\"}" -o "$ART_DIR/reply.wav"
 RIFF=$(head -c 4 "$ART_DIR/reply.wav")
-SIZE=$(stat -c%s "$ART_DIR/reply.wav" 2>/dev/null || echo 0)
+SIZE=$(stat -f%z "$ART_DIR/reply.wav" 2>/dev/null || stat -c%s "$ART_DIR/reply.wav" 2>/dev/null || wc -c < "$ART_DIR/reply.wav" | tr -d ' ' || echo 0)
 if [ "$RIFF" = "RIFF" ] && [ "$SIZE" -gt 10000 ]; then
   ok "TTS WAV valid ($SIZE bytes) for reply='${REPLY_LAST:0:50}…'"
 else

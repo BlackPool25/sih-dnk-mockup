@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.db import SessionLocal
 from app.models.order import Order
@@ -18,6 +18,7 @@ from app.schemas.shipment import (
 from app.services.docs.document import (
     DocumentData,
     NonLatinFreeTextError,
+    SenderBlock,
     build_document_data,
     ensure_latin_free_text,
 )
@@ -27,7 +28,52 @@ from app.services.graded import graded_evaluate
 router = APIRouter(prefix="/docs", tags=["docs"])
 
 
-def _document_data_for(order: Order, doc_type: str, parcel: dict | None = None) -> DocumentData:
+def _get_seller_details(session, seller_id) -> dict:
+    profile = None
+    if seller_id:
+        try:
+            row = session.execute(
+                text("SELECT firm_name, owner_name, iec, address_line1, address_line2, city, state, pincode, phone FROM seller_profiles WHERE user_id = :uid"),
+                {"uid": seller_id}
+            ).fetchone()
+            if row:
+                profile = dict(row._mapping)
+        except Exception:
+            profile = None
+    if profile is None:
+        try:
+            row = session.execute(
+                text("SELECT firm_name, owner_name, iec, address_line1, address_line2, city, state, pincode, phone FROM seller_profiles ORDER BY id LIMIT 1")
+            ).fetchone()
+            if row:
+                profile = dict(row._mapping)
+        except Exception:
+            profile = None
+    if not profile:
+        return {
+            "exporter_name": "Kumar Handloom Studio",
+            "exporter_address": "12, Weavers Colony, Varanasi, Uttar Pradesh, 221001",
+            "iec": "1234567890",
+            "state_code": "Uttar Pradesh",
+        }
+    firm_name = profile.get("firm_name") or profile.get("owner_name") or "Kumar Handloom Studio"
+    addr_parts = [
+        profile.get("address_line1"),
+        profile.get("address_line2"),
+        profile.get("city"),
+        profile.get("state"),
+        profile.get("pincode"),
+    ]
+    addr_str = ", ".join([str(p).strip() for p in addr_parts if p and str(p).strip()])
+    return {
+        "exporter_name": firm_name,
+        "exporter_address": addr_str or "12, Weavers Colony, Varanasi, Uttar Pradesh, 221001",
+        "iec": profile.get("iec") or "1234567890",
+        "state_code": profile.get("state"),
+    }
+
+
+def _document_data_for(order: Order, doc_type: str, parcel: dict | None = None, session: Any | None = None) -> DocumentData:
     first_li = order.line_items[0] if order.line_items else None
     category_slug = first_li.category_slug if first_li else "embroidered-home-textiles"
     destination = order.destination_country or DESTINATION_UNSTATED
@@ -70,12 +116,30 @@ def _document_data_for(order: Order, doc_type: str, parcel: dict | None = None) 
         destination_country=destination,
         confidence="high",
     )
+
+    seller_info = _get_seller_details(session, order.seller_id) if session is not None else {}
+    exporter_name = seller_info.get("exporter_name") or "Kumar Handloom Studio"
+    exporter_address = seller_info.get("exporter_address") or "12, Weavers Colony, Varanasi, Uttar Pradesh, 221001"
+    resolved_iec = order.iec or seller_info.get("iec") or "1234567890"
+    state_code = seller_info.get("state_code")
+
+    sender_block = SenderBlock(
+        name_address=f"{exporter_name}\n{exporter_address}",
+        sender_ref=resolved_iec,
+        non_delivery="return",
+        num_invoices="1",
+    )
+
     kwargs: dict = {
         "consignee": order.consignee,
         "value_minor": value_minor,
-        "iec": order.iec,
+        "iec": resolved_iec,
         "gstin": order.gstin,
         "net_weight_g": order.net_weight_g,
+        "exporter_name": exporter_name,
+        "exporter_address": exporter_address,
+        "state_code": state_code,
+        "sender": sender_block,
     }
     if parcel_lane:
         kwargs["lane"] = parcel_lane
@@ -109,7 +173,7 @@ def generate_docs(
             docs = []
             for parcel in parcels:
                 try:
-                    data = _document_data_for(order, doc_type, parcel)
+                    data = _document_data_for(order, doc_type, parcel, session=session)
                     doc = render(data, doc_type, order=order, parcel_id=parcel.get("parcel_id"))
                 except NonLatinFreeTextError as exc:
                     raise HTTPException(status_code=422, detail=f"translate before submit: {exc}") from exc
@@ -125,7 +189,7 @@ def generate_docs(
                 "parcels": [{"parcel_id": d.parcel_id, "pdf_url": d.file_path, "doc_type": d.doc_type} for d in docs],
             }
         try:
-            data = _document_data_for(order, doc_type)
+            data = _document_data_for(order, doc_type, session=session)
             parcel_id = parcels[0].get("parcel_id") if len(parcels) == 1 else None
             doc = render(data, doc_type, order=order, parcel_id=parcel_id)
         except NonLatinFreeTextError as exc:
@@ -165,7 +229,7 @@ def generate_all_docs(order_id: str = Query(...)) -> dict:
             for doc_type in ("INVOICE", "PACKING_LIST", "CN22", "PBE_IV"):
                 for parcel in parcels:
                     try:
-                        doc = render(_document_data_for(order, doc_type, parcel), doc_type, order=order, parcel_id=parcel.get("parcel_id"))
+                        doc = render(_document_data_for(order, doc_type, parcel, session=session), doc_type, order=order, parcel_id=parcel.get("parcel_id"))
                     except NonLatinFreeTextError as exc:
                         raise HTTPException(status_code=422, detail=f"translate before submit: {exc}") from exc
                     documents.append(
@@ -182,7 +246,7 @@ def generate_all_docs(order_id: str = Query(...)) -> dict:
             parcel_id_single = parcels[0].get("parcel_id") if len(parcels) == 1 else None
             for doc_type in ("INVOICE", "PACKING_LIST", "CN22", "PBE_IV"):
                 try:
-                    doc = render(_document_data_for(order, doc_type), doc_type, order=order, parcel_id=parcel_id_single)
+                    doc = render(_document_data_for(order, doc_type, session=session), doc_type, order=order, parcel_id=parcel_id_single)
                 except NonLatinFreeTextError as exc:
                     raise HTTPException(status_code=422, detail=f"translate before submit: {exc}") from exc
                 documents.append(

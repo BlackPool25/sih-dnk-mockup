@@ -24,6 +24,8 @@ _FIELD_LABELS: dict[str, dict[str, str]] = {
         "weight_grams": "वज़न",
         "destination_country": "देश",
         "value_minor": "मूल्य",
+        "buyer_name": "खरीदार का नाम",
+        "buyer_address": "खरीदार का पता",
         "consignee": "प्राप्तकर्ता",
     },
     "en": {
@@ -32,16 +34,29 @@ _FIELD_LABELS: dict[str, dict[str, str]] = {
         "weight_grams": "weight",
         "destination_country": "country",
         "value_minor": "value",
+        "buyer_name": "buyer name",
+        "buyer_address": "buyer address",
         "consignee": "recipient",
     },
 }
+
+_ALL_DRAFT_FIELDS = (
+    "product_category",
+    "destination_country",
+    "quantity",
+    "weight_grams",
+    "value_minor",
+    "buyer_name",
+    "buyer_address",
+    "consignee",
+)
 
 
 def _render_draft(lang: str, draft: dict[str, Any]) -> str:
     """Non-sentinel draft values, rendered verbatim with per-field labels."""
     labels = _FIELD_LABELS.get(lang, _FIELD_LABELS["en"])
     parts: list[str] = []
-    for field in FIELD_ORDER:
+    for field in _ALL_DRAFT_FIELDS:
         value = draft.get(field)
         if value in _SENTINELS:
             continue
@@ -141,6 +156,7 @@ class GeminiEnricher:
         next_field: str | None,
         session_state: dict[str, Any] | None = None,
     ) -> str:
+        is_en = lang == "en"
         question_rule = (
             f"Ask exactly ONE question to collect the next pending field: {next_field}."
             if next_field
@@ -150,24 +166,42 @@ class GeminiEnricher:
         hint_block = f"\nField hint: {hint}\n" if hint else ""
         identifiers = _render_session_identifiers(session_state)
         has_greeted = bool((session_state or {}).get("has_greeted"))
-        greeting_rule = (
-            "Do NOT greet with 'नमस्ते' — already greeted in the first turn."
-            if has_greeted
-            else "Greet warmly with 'नमस्ते' once at session start."
-        )
+        if is_en:
+            greeting_rule = (
+                "Do NOT greet — already greeted in the first turn."
+                if has_greeted
+                else "Greet warmly (e.g. 'Hello! Welcome to Dak Ghar Niryat Kendra.') once at session start."
+            )
+            persona_desc = (
+                "You are a warm, friendly Dak Ghar Niryat sahayak (postal export assistant) helping a small Indian artisan export their handmade goods. "
+                "Acknowledge briefly and warmly what the user has told you (from the draft values below). "
+                f"{question_rule} "
+                f"{greeting_rule} "
+                "Use natural, varied, conversational English phrasing (never the same wording as the template verbatim). "
+                "CRITICAL LANGUAGE MANDATE: You MUST reply entirely in English. Do NOT use Hindi or Devanagari script. "
+            )
+        else:
+            greeting_rule = (
+                "Do NOT greet with 'नमस्ते' — already greeted in the first turn."
+                if has_greeted
+                else "Greet warmly with 'नमस्ते' once at session start."
+            )
+            persona_desc = (
+                "You are a warm, friendly Hindi Dak Ghar Niryat sahayak (export assistant) helping a small artisan export their handmade goods. "
+                "Acknowledge briefly and warmly what the user has told you (from the draft values below). "
+                f"{question_rule} "
+                f"{greeting_rule} "
+                "Use natural, varied, conversational Hindi phrasing (never the same wording as the template verbatim). "
+                "CRITICAL LANGUAGE MANDATE: You MUST reply entirely in Hindi (Devanagari script). "
+            )
+
         return (
-            "You are a warm, friendly Hindi Dak Ghar Niryat sahayak (export "
-            "assistant) helping a small artisan export their handmade goods. "
-            "Acknowledge briefly and warmly what the user has told you (from the "
-            "draft values below). "
-            f"{question_rule} "
-            f"{greeting_rule} "
-            "Use natural, varied, conversational Hindi phrasing (never the same "
-            "wording as the template verbatim). "
+            f"{persona_desc}"
             "Reply with the message text only — no quotes, no preamble, no numbering. "
             "HARD RULE (anti-hallucination): never add any number, name, country, "
             "or figure that is not string-identical to a value in the draft or "
             "db_info below. You may only restate values that appear there.\n\n"
+            f"Required Output Language: {'English' if is_en else 'Hindi'}\n"
             f"Template reply to polish:\n{template_text}\n\n"
             f"Known draft values:\n{_render_draft(lang, draft)}\n\n"
             f"Research summary:\n{_render_db_info(db_info)}\n\n"

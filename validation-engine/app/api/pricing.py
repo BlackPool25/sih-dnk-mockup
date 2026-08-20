@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.services.db_tools import lookup_duty, quote_lane
 
@@ -26,18 +26,51 @@ def _transit_days(lane: dict) -> str:
 
 
 @router.post("/calculate")
-def calculate_pricing(
-    destination_country: str = Query(...),
-    weight_g: int = Query(...),
-    category_slug: str = Query(...),
+async def calculate_pricing(
+    request: Request,
+    destination_country: str | None = Query(None),
+    weight_g: int | None = Query(None),
+    category_slug: str | None = Query(None),
     value_minor: int = Query(0),
 ) -> dict:
     """Return lane costs, duty rates, taxes, and landed cost for a shipment.
 
     Quotes both ITPS and EMS lanes (EMS may be unavailable), looks up
     destination-country duties, and computes landed cost = value + freight
-    for each available lane.
+    for each available lane. Accepts params via JSON body or query string.
     """
+    body_data: dict = {}
+    try:
+        raw_body = await request.json()
+        if isinstance(raw_body, dict):
+            body_data = raw_body
+    except Exception:
+        body_data = {}
+
+    dest = destination_country or body_data.get("destination_country") or body_data.get("destination")
+    if not dest:
+        raise HTTPException(status_code=422, detail="destination_country is required")
+
+    wt = weight_g if weight_g is not None else body_data.get("weight_g")
+    if wt is None:
+        raise HTTPException(status_code=422, detail="weight_g is required")
+    try:
+        wt = int(wt)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="weight_g must be an integer")
+
+    cat = category_slug or body_data.get("category_slug") or "jute-products"
+    val = value_minor if value_minor else body_data.get("value_minor", 0)
+    try:
+        val = int(val or 0)
+    except (ValueError, TypeError):
+        val = 0
+
+    destination_country = str(dest).strip().upper()
+    weight_g = wt
+    category_slug = str(cat)
+    value_minor = val
+
     # ── lane quotes ──────────────────────────────────────────────────
     itps: dict = {}
     try:

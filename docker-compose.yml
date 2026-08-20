@@ -294,6 +294,8 @@ services:
       - VERIFICATION_SERVICE_URL=http://verification-service:8000
     volumes:
       - .:/app
+      - ./backend-core/app:/opt/backend-core/app
+      - ./backend-core/tests:/opt/backend-core/tests
     working_dir: /opt/backend-core
     networks:
       - dbnet

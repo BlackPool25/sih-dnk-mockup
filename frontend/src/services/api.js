@@ -1617,10 +1617,29 @@ class ApiService {
   }
 
   async getShipmentByQR(qrCode) {
+    const raw = String(qrCode || '').trim();
+    if (!raw) return this.mockShipmentByQR({ qr: '' });
+
+    // 1. Extract UUID or order ID if embedded in a URL or text
+    const uuidMatch = raw.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    const candidateId = uuidMatch ? uuidMatch[0] : (raw.startsWith('ORD-') || raw.startsWith('SH-') ? raw : null);
+
+    if (candidateId) {
+      try {
+        const details = await this.getShipmentDetails(candidateId);
+        if (details && (details.id || details.product)) {
+          return details;
+        }
+      } catch (err) {
+        console.warn('Direct order lookup by ID failed, trying fallback:', err);
+      }
+    }
+
+    // 2. Try real backend QR endpoint
     const token = getAccessToken();
     try {
-      const response = await apiFetch(`${API_BASE}/api/qr/shipments/qr/${encodeURIComponent(qrCode)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const response = await apiFetch(`${API_BASE}/api/qr/shipments/qr/${encodeURIComponent(raw)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (response.ok) {
         const o = await response.json();
@@ -1630,7 +1649,16 @@ class ApiService {
       if (err instanceof ApiError && err.status === 401) throw err;
       console.warn('Real QR fetch failed, falling back to mock:', err);
     }
-    return this.mockShipmentByQR({ qr: qrCode });
+
+    // 3. If raw string is a non-URL code, check if direct details can be resolved
+    if (!raw.includes('/')) {
+      try {
+        const details = await this.getShipmentDetails(raw);
+        if (details && details.id) return details;
+      } catch {}
+    }
+
+    return this.mockShipmentByQR({ qr: raw });
   }
 
   // ============ MOCK DATA IMPLEMENTATIONS ============

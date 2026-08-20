@@ -68,6 +68,15 @@ def healthz() -> dict[str, str]:
     return {"status": "ok", "provider": "sarvam"}
 
 
+def _normalize_lang_code(hint: str | None) -> str:
+    if not hint:
+        return "hi-IN"
+    h = str(hint).strip().lower()
+    if h.startswith("en"):
+        return "en-IN"
+    return "hi-IN"
+
+
 @app.post("/transcribe")
 async def transcribe(
     file: UploadFile = File(...), language_hint: str = Form("hi")
@@ -76,14 +85,39 @@ async def transcribe(
     if not audio:
         raise HTTPException(status_code=400, detail="empty audio file")
     start_ns = time.monotonic_ns()
+    lang_code = _normalize_lang_code(language_hint)
+    is_en = lang_code.startswith("en")
     try:
-        result = get_sarvam_client().transcribe_full(audio, language="hi-IN")
+        result = get_sarvam_client().transcribe_full(audio, language=lang_code)
     except SarvamError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     transcript = str(result["transcript"])
+
+    # Guaranteed language script enforcement:
+    # If English is selected but Devanagari is returned, translate to English
+    if is_en and any("\u0900" <= c <= "\u097F" for c in transcript):
+        try:
+            translated = get_sarvam_client().translate(
+                transcript, source="auto", target="en-IN"
+            )
+            if translated and translated.strip():
+                transcript = translated.strip()
+        except Exception:
+            pass
+    # If Hindi is selected but Latin text without Devanagari is returned, translate to Hindi
+    elif not is_en and not any("\u0900" <= c <= "\u097F" for c in transcript):
+        try:
+            translated = get_sarvam_client().translate(
+                transcript, source="auto", target="hi-IN"
+            )
+            if translated and translated.strip():
+                transcript = translated.strip()
+        except Exception:
+            pass
+
     response: dict[str, str | int | float | bool | None] = {
         "transcript": transcript,
-        "language": "hi-IN",
+        "language": lang_code,
         "duration_ms": _elapsed_ms(start_ns),
         "provider": "sarvam",
         **_quality(transcript),
@@ -97,8 +131,9 @@ async def transcribe(
 def tts(body: TTSRequest) -> Response:
     if len(body.text) > MAX_TTS_CHARS:
         raise HTTPException(status_code=400, detail=f"text exceeds {MAX_TTS_CHARS} characters")
+    lang_code = _normalize_lang_code(body.language)
     try:
-        wav = get_sarvam_client().synthesize(body.text, "hi-IN")
+        wav = get_sarvam_client().synthesize(body.text, lang_code)
     except SarvamError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return Response(content=wav, media_type="audio/wav")

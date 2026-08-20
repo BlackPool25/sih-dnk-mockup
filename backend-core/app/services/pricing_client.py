@@ -149,14 +149,17 @@ class PricingClient:
         payload: dict[str, object],
         headers: dict[str, str] | None = None,
     ) -> dict[str, object]:
-        """POST /pricing via pricing-engine (ad-hoc quote)."""
-        url = f"{self._pricing_base}/pricing"
+        """Ad-hoc quote via validation-engine or full optimization via pricing-engine."""
+        if "items" in payload:
+            url = f"{self._pricing_base}/pricing"
+        else:
+            url = f"{self._validation_base}/pricing/calculate"
         resp = await self._request_with_retry("POST", url, json=payload, headers=_forward_headers(headers))
         self._handle_status(resp)
         resp.raise_for_status()
         data = resp.json()
         if not isinstance(data, dict):
-            raise PricingClientError("expected object at POST /pricing")
+            raise PricingClientError(f"expected object at POST {url}")
         return data
 
     # Backwards compat alias

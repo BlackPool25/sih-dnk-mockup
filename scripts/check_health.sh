@@ -9,17 +9,17 @@ if [[ "${1:-}" == "--timeout" ]]; then
   TIMEOUT="${2:-60}"
 fi
 
-declare -A ENDPOINTS=(
-  ["validation-engine"]="http://127.0.0.1:8001/health"
-  ["pricing-engine"]="http://127.0.0.1:8003/healthz"
-  ["tracking-api"]="http://127.0.0.1:8004/healthz"
-  ["backend-core"]="http://127.0.0.1:8006/health"
-  ["voice-pipeline"]="http://127.0.0.1:8002/healthz"
-  ["marketplace"]="http://127.0.0.1:8007/health"
-  ["verification-service"]="http://127.0.0.1:8008/health"
-  ["messaging-service"]="http://127.0.0.1:8009/health"
-  ["frontend"]="http://127.0.0.1:8005/"
-)
+ENDPOINTS="
+validation-engine|http://127.0.0.1:8001/health
+pricing-engine|http://127.0.0.1:8003/healthz
+tracking-api|http://127.0.0.1:8004/healthz
+backend-core|http://127.0.0.1:8006/health
+voice-pipeline|http://127.0.0.1:8002/healthz
+marketplace|http://127.0.0.1:8007/health
+verification-service|http://127.0.0.1:8008/health
+messaging-service|http://127.0.0.1:8009/health
+frontend|http://127.0.0.1:8005/
+"
 
 PASS=0
 FAIL=0
@@ -32,13 +32,13 @@ all_ok=false
 while (( elapsed < TIMEOUT )); do
   ok_count=0
   total=0
-  for svc in "${!ENDPOINTS[@]}"; do
+  while IFS='|' read -r svc url; do
+    [[ -z "$svc" ]] && continue
     total=$((total+1))
-    url="${ENDPOINTS[$svc]}"
     if curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then
       ok_count=$((ok_count+1))
     fi
-  done
+  done <<< "$ENDPOINTS"
   if (( ok_count == total )); then
     all_ok=true
     break
@@ -49,8 +49,8 @@ done
 
 echo ""
 echo "Health check results:"
-for svc in $(echo "${!ENDPOINTS[@]}" | tr ' ' '\n' | sort); do
-  url="${ENDPOINTS[$svc]}"
+while IFS='|' read -r svc url; do
+  [[ -z "$svc" ]] && continue
   if curl -fsS --max-time 3 "$url" >/dev/null 2>&1; then
     echo "  OK   $svc -> $url"
     PASS=$((PASS+1))
@@ -58,7 +58,7 @@ for svc in $(echo "${!ENDPOINTS[@]}" | tr ' ' '\n' | sort); do
     echo "  FAIL $svc -> $url"
     FAIL=$((FAIL+1))
   fi
-done
+done <<< "$ENDPOINTS"
 
 if command -v docker >/dev/null 2>&1; then
   for svc in sih-dnk-postgres sih-dnk-redis; do

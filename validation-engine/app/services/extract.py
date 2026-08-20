@@ -864,24 +864,23 @@ def _truncate_at_postposition(name: str) -> str:
 def _currency_amount_span(normalized: str) -> tuple[int, int] | None:
     """(start, end) of the digit amount beside the FIRST currency signal.
 
-    Mirrors ``_extract_value_minor``'s matching: right signals take the digits
-    after the symbol ("₹15000"), left signals take the digit run at the end of
-    the preceding text ("15000 रुपये").  None when no signal has a number.
+    Supports value keywords (value 15000), preceding/trailing symbols (₹15000 / 15000₹),
+    and currency units (15000 rupees). None when no signal has a number.
     """
+    val_kw_match = re.search(r"(?:value|price|cost|मूल्य|कीमत|दाम)\s*(?:of|is|:|-)?\s*(?:₹|\$|rs\.?|inr)?\s*(\d[\d,]*)", normalized, re.IGNORECASE)
+    if val_kw_match:
+        return val_kw_match.span(1)
+
     for signal, side in _CURRENCY_SIGNALS:
-        pos = normalized.find(signal)
-        if pos == -1:
-            continue
-        if side == "right":
-            match = re.search(r"\d[\d,]*", normalized[pos + 1:])
-            if match is None:
-                continue
-            start, end = match.span()
-            return pos + 1 + start, pos + 1 + end
-        match = re.search(r"(\d[\d,]*)\s*$", normalized[:pos])
-        if match is None:
-            continue
-        return match.span(1)
+        for m in re.finditer(re.escape(signal), normalized):
+            pos = m.start()
+            left_match = re.search(r"(\d[\d,]*)\s*$", normalized[:pos])
+            if left_match:
+                return left_match.span(1)
+            right_match = re.search(r"^\s*(\d[\d,]*)", normalized[pos + len(signal):])
+            if right_match:
+                start, end = right_match.span(1)
+                return pos + len(signal) + start, pos + len(signal) + end
     return None
 
 
@@ -979,14 +978,27 @@ def _extract_value_utterance(
     (b) a price marker hugs a number run not pinned to a quantity/weight/time
     unit, or (c) the caller explicitly asked for the value (``expected ==
     "value_minor"``) and the run is not pinned to a unit.  Returns
-    ``(VALUE_UNSTATED, set())`` when nothing qualifies.  The consumed indices
-    are unioned into ``_extract_quantity``'s exclude set so a value number is
-    never re-read as the quantity.
+    ``(VALUE_UNSTATED, set())`` when nothing qualifies.
     """
     span = _currency_amount_span(normalized)
     if span is not None:
         start, end = span
         return _extract_value_minor(normalized), _token_indices_over(tokens, start, end)
+
+    if expected == "value_minor":
+        m_k = re.search(r"(\d+(?:\.\d+)?)\s*(?:k|thousand|हज़ार|हजार)", normalized)
+        if m_k:
+            val_rupees = int(float(m_k.group(1)) * 1000)
+            return val_rupees * 100, _token_indices_over(tokens, m_k.start(), m_k.end())
+        m_lakh = re.search(r"(\d+(?:\.\d+)?)\s*(?:lakh|लाख|lac)", normalized)
+        if m_lakh:
+            val_rupees = int(float(m_lakh.group(1)) * 100000)
+            return val_rupees * 100, _token_indices_over(tokens, m_lakh.start(), m_lakh.end())
+        m_num = re.search(r"(\d[\d,]*)", normalized)
+        if m_num:
+            val_rupees = int(m_num.group(1).replace(",", ""))
+            return val_rupees * 100, _token_indices_over(tokens, m_num.start(), m_num.end())
+
     index = 0
     while index < len(tokens):
         if _number_value(tokens[index][0]) is None:
@@ -1170,24 +1182,27 @@ class RuleDraftExtractor(DraftExtractor):
 # re-prompt: the model sees only the schema and (on a re-prompt) the prior
 # draft with raw_transcript stripped.
 _DRAFT_FIRST_PROMPT = (
-    "Extract the export shipment described in the transcript into the "
-    "response_schema. Reply with ONLY JSON that validates against the "
-    "response_schema. For any field you cannot determine, use the contract "
-    "sentinels (None for product_category, -1 for quantity, weight_grams and "
-    "value_minor, 'unknown' for destination_country and consignee).\n\n"
-    "To pick product_category: if the user's words do not map clearly to one "
-    "of the schema's category enum values, call the search_categories tool "
-    "with the product word (Hindi or English) to see the seeded category "
-    "catalog, then choose the best match. If several categories plausibly "
-    "fit and the user did not specify, set product_category to null — the "
-    "assistant will ask. Never invent a slug that is not in the schema enum."
+    "Extract the export shipment details explicitly stated in the transcript into the response_schema. "
+    "Reply with ONLY JSON that validates against the response_schema.\n\n"
+    "STRICT ANTI-HALLUCINATION & EXTRACTION RULES:\n"
+    "1. ZERO FABRICATION: Do NOT invent, assume, generate, or hallucinate ANY field value that was not explicitly provided by the user. "
+    "If the user did not specify a field in the transcript, you MUST use the contract sentinel value.\n"
+    "2. SENTINEL DISCIPLINE: Use these exact sentinels for any missing or unmentioned field:\n"
+    "   - product_category: null\n"
+    "   - quantity: -1\n"
+    "   - weight_grams: -1\n"
+    "   - destination_country: 'unknown'\n"
+    "   - consignee: 'unknown'\n"
+    "   - value_minor: -1\n"
+    "3. CATEGORY MATCHING: If the product is mentioned, map it to one of the enum category slugs in the schema. If unclear or not mentioned, set product_category to null. Never invent a category.\n"
+    "4. RECIPIENT / CONSIGNEE: If the user provides the recipient's buyer name and/or delivery address (e.g. 'John Doe, 101 Street Munich Germany'), extract it into consignee as 'Name, Address' (or just Name/Address if only one is given). If not stated, set to 'unknown'.\n"
+    "5. VALUE IN MINOR UNITS: Declared value is in INR minor units (paise). Multiply Rupees by 100 (e.g., ₹15,000 -> 1500000). Do NOT confuse street numbers or other non-currency numbers with the value.\n"
 )
 
 _DRAFT_REPROMPT_PROMPT = (
     "Your previous response failed schema validation. "
     "Reply with ONLY JSON that validates against the response_schema. "
-    "You may use the prior draft for consistency, but never invent fields "
-    "you do not know — use the contract sentinels."
+    "Never invent or hallucinate fields you do not know — strictly use the contract sentinels."
 )
 
 
