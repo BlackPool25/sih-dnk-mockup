@@ -291,6 +291,7 @@ def build_document_data(
     exporter_name: str | None = None,
     exporter_address: str | None = None,
     state_code: str | None = None,
+    lane: str | None = None,
 ) -> DocumentData:
     """Assemble a DocumentData from a VALIDATED Shipment + DB lookups.
 
@@ -309,7 +310,14 @@ def build_document_data(
     category = next((c for c in cats if c["slug"] == shipment.product_category), None)
     if category is None:
         raise LookupError(f"category {shipment.product_category!r} not found in product_categories")
-    lane = quote_lane(shipment.destination_country, shipment.weight_grams)
+    # Lane selection: explicit lane param wins; else ITPS/EMS fallback without hardcode
+    if lane is not None:
+        lane_data = quote_lane(shipment.destination_country, shipment.weight_grams, lane=lane)
+    else:
+        try:
+            lane_data = quote_lane(shipment.destination_country, shipment.weight_grams, lane="ITPS")
+        except (LookupError, ValueError):
+            lane_data = quote_lane(shipment.destination_country, shipment.weight_grams, lane="EMS")
     hs_codes = lookup_hs_codes(shipment.product_category)
     cache_key = f"field_schemas:{form_type}"
     cached = cache.get(cache_key)
@@ -378,9 +386,8 @@ def build_document_data(
         form_type=form_type,
         hs_codes=hs_codes,
         duties=lookup_duty(shipment.destination_country),
-        lane=lane,
-        # Landed cost = declared value + freight, only when a value is given.
-        landed_cost_minor=(value_minor + lane["cost_minor"] if value_minor is not None else None),
+        lane=lane_data,
+        landed_cost_minor=(value_minor + lane_data["cost_minor"] if value_minor is not None else None),
         consignee=consignee,
         value_minor=value_minor,
         net_weight_g=net_weight_g,

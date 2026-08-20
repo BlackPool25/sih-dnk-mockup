@@ -1,15 +1,9 @@
-"""Order API — list/fetch orders, per-order documents, and QR-token binding.
-
-- GET /orders — paginated list filtered by seller/buyer/status.
-- GET /orders/{order_id} — one order with last_report + line_items.
-- GET /orders/{order_id}/documents — Document rows for the order (version desc).
-- GET /orders/{order_id}/pdf — latest rendered PDF for a doc_type (FileResponse).
-- POST /orders/{order_id}/qr-token — idempotently set order.qr_token_jti.
-"""
+"""Order API — list/fetch orders, per-order documents, and QR-token binding."""
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
@@ -26,15 +20,12 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 
 def _order_dict(order: Order) -> dict:
-    """Serialize one Order row for the list + single-order responses."""
     return {
         "id": str(order.id),
         "seller_id": str(order.seller_id) if order.seller_id else None,
         "buyer_id": str(order.buyer_id) if order.buyer_id else None,
         "status": order.status.value if order.status else None,
-        "validation_state": order.validation_state.value
-        if order.validation_state
-        else None,
+        "validation_state": order.validation_state.value if order.validation_state else None,
         "destination_country": order.destination_country,
         "value_minor": order.value_minor,
         "currency": order.currency,
@@ -55,24 +46,26 @@ def _order_dict(order: Order) -> dict:
         "version": order.version,
         "last_report": order.last_report,
         "qr_token_jti": order.qr_token_jti,
+        "pricing_breakdown": order.pricing_breakdown,
+        "parcels": order.parcels,
+        "qr_tokens": order.qr_tokens,
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "updated_at": order.updated_at.isoformat() if order.updated_at else None,
     }
 
 
 def _document_dict(doc: Document) -> dict:
-    """Serialize one Document row for the per-order document responses."""
     return {
         "doc_type": doc.doc_type,
         "version": doc.version,
         "checksum": doc.checksum,
         "pdf_url": doc.file_path,
+        "parcel_id": doc.parcel_id,
         "generated_at": doc.created_at.isoformat() if doc.created_at else None,
     }
 
 
 def _parse_uuid(raw: str, field: str) -> uuid.UUID:
-    """Parse a UUID query param — 400 when the caller passes a non-UUID."""
     try:
         return uuid.UUID(raw)
     except ValueError:
@@ -80,9 +73,9 @@ def _parse_uuid(raw: str, field: str) -> uuid.UUID:
 
 
 class QrTokenPayload(BaseModel):
-    """Body for POST /orders/{order_id}/qr-token."""
-
     jti: str
+    parcel_id: str | None = None
+    exp: str | None = None
 
 
 @router.get("")
@@ -93,12 +86,6 @@ def list_orders(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> dict:
-    """List orders filtered by seller/buyer/status, newest first.
-
-    Role scoping is backend-core's job — it passes ``seller_id`` when the
-    calling user is a seller.  ``limit`` is clamped to 1..200 and ``offset``
-    must be non-negative; an unknown ``status`` value is a 400.
-    """
     filters = []
     if seller_id is not None:
         filters.append(Order.seller_id == _parse_uuid(seller_id, "seller_id"))
@@ -110,43 +97,24 @@ def list_orders(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=(
-                    f"invalid status {status!r} — expected one of "
-                    f"{[s.value for s in OrderStatus]}"
-                ),
+                detail=f"invalid status {status!r} — expected one of {[s.value for s in OrderStatus]}",
             ) from None
-
     with SessionLocal() as session:
-        total = (
-            session.scalar(select(func.count()).select_from(Order).where(*filters)) or 0
-        )
+        total = session.scalar(select(func.count()).select_from(Order).where(*filters)) or 0
         orders = session.scalars(
-            select(Order)
-            .where(*filters)
-            .order_by(Order.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+            select(Order).where(*filters).order_by(Order.created_at.desc()).limit(limit).offset(offset)
         ).all()
-        return {
-            "orders": [_order_dict(o) for o in orders],
-            "total": total,
-            "limit": limit,
-            "offset": offset,
-        }
+        return {"orders": [_order_dict(o) for o in orders], "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/{order_id}")
 def get_order(order_id: str) -> dict:
     with SessionLocal() as session:
         order = session.execute(
-            select(Order)
-            .where(Order.id == uuid.UUID(order_id))
-            .options(selectinload(Order.line_items))
+            select(Order).where(Order.id == uuid.UUID(order_id)).options(selectinload(Order.line_items))
         ).scalar_one_or_none()
-
         if order is None:
             raise HTTPException(status_code=404, detail=f"order {order_id!r} not found")
-
         return {
             "order": _order_dict(order),
             "last_report": order.last_report,
@@ -166,67 +134,84 @@ def get_order(order_id: str) -> dict:
         }
 
 
-@router.get("/{order_id}/documents")
-def list_order_documents(order_id: str) -> dict:
-    """List Document rows for an order, newest version first.
-
-    ``documents.order_id`` only exists once the W2-T5 migration runs — before
-    that no row carries an order link, so the response is an empty list (the
-    model file is untouched; the guard reads the mapped columns).
-    """
-    order_uuid = uuid.UUID(order_id)
-    order_id_col = getattr(Document, "order_id", None)
+@router.get("/{order_id}/pricing")
+def get_pricing(order_id: str) -> dict:
     with SessionLocal() as session:
-        if order_id_col is None:
-            documents = []
-        else:
-            documents = session.scalars(
-                select(Document)
-                .where(order_id_col == order_uuid)
-                .order_by(Document.version.desc(), Document.id.desc())
-            ).all()
+        order = session.execute(select(Order).where(Order.id == uuid.UUID(order_id))).scalar_one_or_none()
+        if order is None:
+            raise HTTPException(status_code=404, detail=f"order {order_id!r} not found")
+        if order.pricing_breakdown is None:
+            raise HTTPException(status_code=404, detail=f"no pricing for order {order_id!r}")
+        pb = order.pricing_breakdown
         return {
             "order_id": order_id,
-            "documents": [_document_dict(d) for d in documents],
+            "pricing_breakdown": pb,
+            "parcels": order.parcels or pb.get("parcels", []),
+            "lane_breakdown": pb.get("lane_breakdown"),
+            "cost": pb.get("cost"),
+            "landed_cost": pb.get("landed_cost"),
         }
 
 
-@router.get("/{order_id}/pdf")
-def order_pdf(order_id: str, doc_type: str = Query("INVOICE")) -> FileResponse:
-    """Serve the latest PDF for (order_id, doc_type) — 404 when none exists."""
+@router.get("/{order_id}/documents")
+def list_order_documents(order_id: str, parcel_id: str | None = Query(None)) -> dict:
     order_uuid = uuid.UUID(order_id)
     order_id_col = getattr(Document, "order_id", None)
     with SessionLocal() as session:
         if order_id_col is None:
-            raise HTTPException(
-                status_code=404,
-                detail=f"no {doc_type!r} document for order {order_id!r}",
-            )
-        doc = session.scalar(
-            select(Document)
-            .where(order_id_col == order_uuid, Document.doc_type == doc_type)
-            .order_by(Document.version.desc(), Document.id.desc())
-            .limit(1)
-        )
+            documents: list[Document] = []
+        else:
+            stmt = select(Document).where(order_id_col == order_uuid)
+            if parcel_id is not None:
+                stmt = stmt.where(Document.parcel_id == parcel_id)
+            stmt = stmt.order_by(Document.version.desc(), Document.id.desc())
+            documents = session.scalars(stmt).all()
+        return {"order_id": order_id, "documents": [_document_dict(d) for d in documents]}
+
+
+@router.get("/{order_id}/pdf")
+def order_pdf(
+    order_id: str, doc_type: str = Query("INVOICE"), parcel_id: str | None = Query(None)
+) -> FileResponse:
+    order_uuid = uuid.UUID(order_id)
+    order_id_col = getattr(Document, "order_id", None)
+    with SessionLocal() as session:
+        if order_id_col is None:
+            raise HTTPException(status_code=404, detail=f"no {doc_type!r} document for order {order_id!r}")
+        stmt = select(Document).where(order_id_col == order_uuid, Document.doc_type == doc_type)
+        if parcel_id is not None:
+            stmt = stmt.where(Document.parcel_id == parcel_id)
+        stmt = stmt.order_by(Document.version.desc(), Document.id.desc()).limit(1)
+        doc = session.scalar(stmt)
         if doc is None or not Path(doc.file_path).is_file():
-            raise HTTPException(
-                status_code=404,
-                detail=f"no {doc_type!r} document for order {order_id!r}",
-            )
+            raise HTTPException(status_code=404, detail=f"no {doc_type!r} document for order {order_id!r}")
         return FileResponse(doc.file_path, media_type="application/pdf")
 
 
 @router.post("/{order_id}/qr-token")
 def set_qr_token(order_id: str, payload: QrTokenPayload) -> dict:
-    """Idempotently bind the QR token's JTI to an order."""
     with SessionLocal.begin() as session:
-        order = session.execute(
-            select(Order).where(Order.id == uuid.UUID(order_id))
-        ).scalar_one_or_none()
+        order = session.execute(select(Order).where(Order.id == uuid.UUID(order_id))).scalar_one_or_none()
         if order is None:
             raise HTTPException(status_code=404, detail=f"order {order_id!r} not found")
+        parcel_id = payload.parcel_id or (order.parcels[0]["parcel_id"] if order.parcels else None) or "parcel-1"
+        if payload.exp:
+            exp_val = payload.exp
+        else:
+            exp_val = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        entry = {"parcel_id": parcel_id, "jti": payload.jti, "exp": exp_val}
+        existing = list(order.qr_tokens or [])
+        found = False
+        for idx, tok in enumerate(existing):
+            if isinstance(tok, dict) and tok.get("parcel_id") == parcel_id:
+                existing[idx] = entry
+                found = True
+                break
+        if not found:
+            existing.append(entry)
+        order.qr_tokens = existing
         order.qr_token_jti = payload.jti
-    return {"order_id": order_id, "qr_token_jti": payload.jti}
+    return {"order_id": order_id, "qr_token_jti": payload.jti, "qr_tokens": existing, "parcel_id": parcel_id}
 
 
 __all__ = ["router"]

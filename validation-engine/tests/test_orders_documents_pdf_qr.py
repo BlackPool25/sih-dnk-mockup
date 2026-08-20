@@ -102,7 +102,9 @@ def test_qr_token_binds_and_echoes(order_cleanup) -> None:
 
     response = client.post(f"/orders/{order_id}/qr-token", json={"jti": jti})
     assert response.status_code == 200
-    assert response.json() == {"order_id": order_id, "qr_token_jti": jti}
+    body = response.json()
+    assert body["order_id"] == order_id
+    assert body["qr_token_jti"] == jti
 
     order = client.get(f"/orders/{order_id}").json()["order"]
     assert order["qr_token_jti"] == jti

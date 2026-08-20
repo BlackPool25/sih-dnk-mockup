@@ -32,6 +32,7 @@ from app.services.validate import (
     validate_document_rules,
     validate_shipment,
 )
+from app.models.order import ValidationState
 
 router = APIRouter(prefix="/validate", tags=["validation"])
 
@@ -213,6 +214,17 @@ def post_validate(
         # Inject binding-freeze blocking entries.
         for entry in blocking:
             report.errors.insert(0, entry)
+            # Recompute status after injecting blocking errors
+            has_errors = any(e.severity in ("error", "block") for e in report.errors)
+            has_incomplete = any(e.severity == "incomplete" for e in report.errors)
+            if has_incomplete:
+                report.status = "incomplete"
+                report.validation_state = ValidationState.incomplete.value
+                report.doc_ready = False
+            elif has_errors:
+                report.status = "invalid"
+                report.validation_state = ValidationState.invalid.value
+                report.doc_ready = False
 
         # ── e-FIRA reconciliation (query-param gated) ────────────────
         if include_e_fira:
@@ -231,8 +243,34 @@ def post_validate(
                 iec=order.iec,
             )
 
-        # Persist last_report snapshot.
-        order.last_report = report.model_dump()
+        # ── pricing-engine optimal assignment (idempotent, non-blocking) ─
+        pricing_error: str | None = None
+        if report.validation_state == "ready" and report.status == "ready" and order.line_items:
+            # Idempotency: reuse stored breakdown if already present
+            if order.pricing_breakdown is not None and order.parcels is not None:
+                pass  # reuse stored
+            else:
+                try:
+                    from app.services.pricing_client import query_optimal_assignment_sync
+
+                    pricing_resp = query_optimal_assignment_sync(order, order.line_items)
+                    # Store full response as pricing_breakdown + parcels list
+                    order.pricing_breakdown = pricing_resp
+                    order.parcels = pricing_resp.get("parcels", [])
+                    # Also persist lane_breakdown/cost/landed_cost provenance implicitly via full dump
+                except Exception as exc:  # noqa: BLE001 — pricing must not block validation
+                    pricing_error = str(exc)
+                    # Keep report ready; surface error via last_report.pricing_error
+        # Persist last_report snapshot (+ pricing_error side-channel).
+        report_dict = report.model_dump()
+        if pricing_error is not None:
+            report_dict["pricing_error"] = pricing_error
+        # Persist validation_state on order for list/get
+        try:
+            order.validation_state = ValidationState(report.validation_state)  # type: ignore[assignment]
+        except Exception:
+            pass
+        order.last_report = report_dict
 
     return report
 

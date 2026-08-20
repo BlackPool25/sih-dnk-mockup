@@ -132,8 +132,11 @@ def _summary_rows(data: DocumentData) -> list[dict]:
         {"label": "Declared value", "value": _money(data.value_minor)},
     ]
     if data.form_type == "INVOICE":
+        lane_name = data.lane.get("lane") if isinstance(data.lane, dict) else "ITPS"
+        if lane_name not in ("ITPS", "EMS"):
+            lane_name = "ITPS"
         rows += [
-            {"label": "Freight (ITPS)", "value": _money(data.lane["cost_minor"])},
+            {"label": f"Freight ({lane_name})", "value": _money(data.lane["cost_minor"])},
             {"label": "Landed cost", "value": _money(data.landed_cost_minor)},
         ]
     return rows
@@ -393,7 +396,7 @@ def build_preview(document_data: DocumentData) -> str:
         f"Weight        : {data.weight_grams} g",
         f"Destination   : {data.destination_country}",
         (
-            f"Freight (ITPS): {_money(data.lane['cost_minor'])}"
+            f"Freight ({data.lane.get('lane', 'ITPS') if isinstance(data.lane, dict) else 'ITPS'}): {_money(data.lane['cost_minor'])}"
             f" (cost_minor {data.lane['cost_minor']})"
         ),
         f"HS codes      : {', '.join(h['hs6'] for h in data.hs_codes[:5]) or '—'}",
@@ -657,6 +660,7 @@ def render(
     out_path: str | Path | None = None,
     *,
     order: Order | None = None,
+    parcel_id: str | None = None,
 ) -> Document:
     """Render a document: gate -> Jinja2 -> WeasyPrint -> sha256 -> new row.
 
@@ -677,9 +681,7 @@ def render(
             filling-rule rejection (pbe-iii-iv-fields.md §7) or required
             pbe_field_schemas fields missing (all raised BEFORE WeasyPrint).
     """
-    # Multi-product delegation: when an Order with multiple line items is
-    # supplied for INVOICE/PACKING_LIST, build per-line documents.
-    if order is not None and len(order.line_items) > 1 and doc_type in ("INVOICE", "PACKING_LIST"):
+    if order is not None and len(order.line_items) > 1 and doc_type in ("INVOICE", "PACKING_LIST") and parcel_id is None:
         results = render_line_items(order, doc_type, out_dir=out_path)
         return results[0] if results else render(document_data, doc_type, out_path)
 
@@ -711,20 +713,34 @@ def render(
     pdf_bytes = weasyprint.HTML(string=html).write_pdf()
     checksum = _checksum(pdf_bytes)
     version, supersedes = _next_version(doc_type)
-    path = Path(out_path) if out_path is not None else DOCS_OUT / f"{doc_type}-v{version}.pdf"
+    if parcel_id is not None:
+        file_base = f"{doc_type}-{parcel_id}-v{version}.pdf"
+    else:
+        file_base = f"{doc_type}-v{version}.pdf"
+    path = Path(out_path) / file_base if out_path is not None and Path(out_path).is_dir() else (Path(out_path) if out_path is not None else DOCS_OUT / file_base)
+    # If out_path is a file-like path containing suffix, respect it but ensure parcel suffix
+    if out_path is not None and Path(out_path).suffix == ".pdf" and parcel_id is not None and parcel_id not in Path(out_path).name:
+        stem = Path(out_path).stem
+        path = Path(out_path).with_name(f"{stem}-{parcel_id}.pdf")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(pdf_bytes)
 
+    structured = data.model_dump(mode="json")
+    if parcel_id is not None:
+        structured["parcel_id"] = parcel_id
     with SessionLocal() as session:
-        row = Document(
-            doc_type=doc_type,
-            version=version,
-            checksum=checksum,
-            structured_json=data.model_dump(mode="json"),
-            file_path=str(path),
-            supersedes_doc_id=supersedes,
-            **_order_id_kwargs(order),
-        )
+        row_kwargs: dict = {
+            "doc_type": doc_type,
+            "version": version,
+            "checksum": checksum,
+            "structured_json": structured,
+            "file_path": str(path),
+            "supersedes_doc_id": supersedes,
+        }
+        if parcel_id is not None and getattr(Document, "parcel_id", None) is not None:
+            row_kwargs["parcel_id"] = parcel_id
+        row_kwargs.update(_order_id_kwargs(order))
+        row = Document(**row_kwargs)  # type: ignore[arg-type]
         session.add(row)
         session.commit()
         session.refresh(row)
