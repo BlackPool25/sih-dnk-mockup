@@ -2,8 +2,16 @@
 .env.bak
 .env.test
 .venv/
+*/.venv/
 __pycache__/
+*/__pycache__/
 *.pyc
+.DS_Store
+*/.DS_Store
+node_modules/
+*/node_modules/
+dist/
+*/dist/
 /validation-engine/seed/
 .omo/
 docs-out/

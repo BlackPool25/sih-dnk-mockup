@@ -54,7 +54,7 @@ STT=$(curl -s -m 300 -X POST "$BE_URL/api/voice/transcribe" "${AUTH[@]}" \
   -F "file=@$ART_DIR/src.wav" -F 'language_hint=hi')
 TRANSCRIPT=$(printf '%s' "$STT" | python3 -c "import sys,json;print(json.load(sys.stdin).get('transcript',''))")
 LANG_CODE=$(printf '%s' "$STT" | python3 -c "import sys,json;print(json.load(sys.stdin).get('language',''))")
-if [ -n "$TRANSCRIPT" ] && [ "$LANG_CODE" = "hi" ]; then
+if [ -n "$TRANSCRIPT" ] && [[ "$LANG_CODE" == hi* ]]; then
   ok "transcript='${TRANSCRIPT:0:80}…' language=$LANG_CODE"
 else
   bad "STT failed — body: $STT" "stt"
@@ -157,7 +157,7 @@ fi
 # 7. PDF — GET /orders/{id}/pdf → %PDF magic + consignee text
 # ---------------------------------------------------------------------------
 step "7. PDF — GET /orders/$OID/pdf"
-curl -s -m 120 "$BE_URL/orders/$OID/pdf" "${AUTH[@]}" -o "$ART_DIR/order.pdf"
+curl -s -m 120 "$BE_URL/orders/$OID/pdf?doc_type=INVOICE" "${AUTH[@]}" -o "$ART_DIR/order.pdf"
 MAGIC=$(head -c 4 "$ART_DIR/order.pdf")
 if [ "$MAGIC" = "%PDF" ]; then
   # Consignee renders Devanagari (जॉन डो) or Latin; pdftotext splits Indic
@@ -181,7 +181,7 @@ curl -s -m 60 -X POST "$BE_URL/api/voice/tts" "${AUTH[@]}" \
   -H 'content-type: application/json' \
   -d "{\"text\":\"$REPLY_LAST\",\"language\":\"hi\"}" -o "$ART_DIR/reply.wav"
 RIFF=$(head -c 4 "$ART_DIR/reply.wav")
-SIZE=$(stat -c%s "$ART_DIR/reply.wav" 2>/dev/null || echo 0)
+SIZE=$(stat -f%z "$ART_DIR/reply.wav" 2>/dev/null || stat -c%s "$ART_DIR/reply.wav" 2>/dev/null || wc -c < "$ART_DIR/reply.wav" | tr -d ' ' || echo 0)
 if [ "$RIFF" = "RIFF" ] && [ "$SIZE" -gt 10000 ]; then
   ok "TTS WAV valid ($SIZE bytes) for reply='${REPLY_LAST:0:50}…'"
 else

@@ -209,19 +209,17 @@ function VoiceChatbot() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Sync language with sessionState if backend returns one
+  const selectedLangRef = useRef(selectedLang);
   useEffect(() => {
-    if (sessionState?.language && I18N[sessionState.language]) {
-      setSelectedLang(sessionState.language);
-    }
-  }, [sessionState?.language]);
+    selectedLangRef.current = selectedLang;
+  }, [selectedLang]);
 
   const playTTS = async (text, language) => {
-    const lang = language || selectedLang;
-    if (!ttsEnabled || lang !== 'hi' || !text) return;
+    const lang = language || selectedLangRef.current || selectedLang;
+    if (!ttsEnabled || !text) return;
     setTtsNotice(null);
     try {
-      const blob = await synthesizeSpeech(token, text, 'hi');
+      const blob = await synthesizeSpeech(token, text, lang);
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.onended = () => URL.revokeObjectURL(url);
@@ -256,23 +254,21 @@ function VoiceChatbot() {
     }
   };
 
-  const sendMessage = async (textToSend) => {
+  const sendMessage = async (textToSend, overrideLang) => {
     const userMsg = (textToSend !== undefined ? textToSend : inputText).trim();
     if (!userMsg) return;
 
+    const currentLang = overrideLang || selectedLangRef.current || selectedLang;
     setInputText('');
     setVoiceError(null);
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsLoading(true);
 
     try {
-      const data = await chat(token, userMsg, conversationId, selectedLang);
+      const data = await chat(token, userMsg, conversationId, currentLang);
       if (!conversationId) setConversationId(data.conversation_id);
       
       setSessionState(data);
-      if (data.language && I18N[data.language]) {
-        setSelectedLang(data.language);
-      }
       if (data.history && data.history.length > 0) {
         setMessages(data.history);
       }
@@ -280,7 +276,7 @@ function VoiceChatbot() {
       const lastAssistant = data.history && [...data.history].reverse().find(m => m.role === 'assistant');
       const replyText = data.reply_text || (lastAssistant && lastAssistant.content) || null;
       if (replyText) {
-        playTTS(replyText, data.language || selectedLang);
+        playTTS(replyText, data.language || currentLang);
       }
     } catch (err) {
       console.error('Chat error:', err);
@@ -344,8 +340,9 @@ function VoiceChatbot() {
         }
 
         setIsTranscribing(true);
+        const activeLang = selectedLangRef.current || selectedLang;
         try {
-          const result = await transcribeAudio(token, audioBlob, selectedLang);
+          const result = await transcribeAudio(token, audioBlob, activeLang);
           const transcript = (result.transcript || result.text || '').trim();
 
           if (!transcript) {
@@ -361,7 +358,7 @@ function VoiceChatbot() {
           }
 
           setInputText(transcript);
-          await sendMessage(transcript);
+          await sendMessage(transcript, activeLang);
         } catch (err) {
           console.error("Transcription error:", err);
           setVoiceError(err.message || "Could not transcribe audio. Please try again.");

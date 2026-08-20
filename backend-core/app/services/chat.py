@@ -511,9 +511,16 @@ async def run_turn(
 
     enricher = GeminiEnricher()
     reply = _call_enricher(enricher, lang, reply, state["filled_fields"], state["db_info"] or {}, next_field, state)
-    if not is_first_turn and "नमस्ते" in reply:
-        reply = reply.replace("नमस्ते!", "").replace("नमस्ते", "").strip()
-        reply = reply.lstrip(" ,।!").strip()
+    if not is_first_turn:
+        if lang == "en":
+            for g in ("Hello!", "Hello,", "Hello", "Hi!", "Hi,", "Hi", "Welcome!", "Welcome"):
+                if reply.startswith(g):
+                    reply = reply[len(g):].strip()
+                    reply = reply.lstrip(" ,.!-").strip()
+        else:
+            if "नमस्ते" in reply:
+                reply = reply.replace("नमस्ते!", "").replace("नमस्ते", "").strip()
+                reply = reply.lstrip(" ,।!").strip()
     state["has_greeted"] = True
     state["history"].append({"role": "assistant", "content": reply})
 
@@ -543,7 +550,7 @@ def build_state_response(
         db_info=state["db_info"],
         reply_text=reply,
         document_ready=state["document_ready"],
-        tts_hint={"enabled": lang == "hi", "language": lang},
+        tts_hint={"enabled": True, "language": lang},
     )
 
 
