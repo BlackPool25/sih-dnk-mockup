@@ -752,6 +752,8 @@ _CONSIGNEE_MARKERS: tuple[tuple[str, int], ...] = (
     ("ship to", 1),
     ("for", 1),
     ("consignee", 1),
+    ("cosignee", 1),
+    ("cosinee", 1),
     ("recipient", 1),
 )
 
@@ -843,7 +845,9 @@ def _extract_consignee(text: str) -> str:
         return CONSIGNEE_UNSTATED
     pos, _, side, marker = best
     segment = text[:pos] if side < 0 else text[pos + len(marker):]
-    segment = _ARTICLE_RE.sub("", segment.strip()).strip(" ,:;")
+    segment = segment.strip()
+    segment = re.sub(r"^(?:to|ko|se)\b\s*", "", segment, flags=re.IGNORECASE)
+    segment = _ARTICLE_RE.sub("", segment).strip(" ,:;")
     if not segment:
         return CONSIGNEE_UNSTATED
     return segment[:80]

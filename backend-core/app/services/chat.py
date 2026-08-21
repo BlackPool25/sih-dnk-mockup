@@ -210,8 +210,29 @@ def _process_buyer_name_and_address(
         "पता है", "पता:", "डिलीवरी पता है", "डिलीवरी पता:", "डिलीवरी पता", "स्थान है",
     ]
 
-    # 1. Pattern-based extraction from full message (handles "buyer is X. address is Y")
+    # 0. Correction intent — "change the consignee name to Rahul" (typo-tolerant)
     import re
+    # typo tolerance for common ASR misspelling
+    msg_norm = re.sub(r"cosignee", "consignee", message, flags=re.IGNORECASE)
+    msg_norm = re.sub(r"cosinee", "consignee", msg_norm, flags=re.IGNORECASE)
+    m_correction = re.search(
+        r"(?:change|correct|update|badal|change\s+karo)\s+(?:the\s+)?(?:consignee|buyer|recipient)(?:\s+name)?\s+(?:to|ko|se)\s*([A-Za-z\u0900-\u097F\s]+?)(?:\.|,|$)",
+        msg_norm,
+        re.IGNORECASE,
+    )
+    if m_correction:
+        cand = _clean_field_prefix(m_correction.group(1).strip(), name_prefixes)
+        # strip any residual leading to/ko/se that leaked into capture
+        cand = re.sub(r"^(?:to|ko|se)\b\s*", "", cand, flags=re.IGNORECASE).strip(" ,:;")
+        if cand:
+            filled_fields["buyer_name"] = cand.strip()
+            filled_fields["consignee"] = "unknown"
+            # keep buyer_address if already present; consignee will be recomposed on address step
+            return
+
+    # 1. Pattern-based extraction from full message (handles "buyer is X. address is Y")
+    # use typo-normalized message for all subsequent pattern matching
+    message = msg_norm
     m_name_en = re.search(r"(?:(?:the\s+)?buyer(?:\x27s)?\s+name\s+is|buyer(?:\x27s)?\s+is|recipient(?:\x27s)?\s+name\s+is|recipient\s+is|consignee\s+is|name\s+is)\s*[:\-]?\s*([A-Za-z\s]+?)(?=(?:\.|\b(?:his|her|the)\s+address|\baddress\b|$))", message, re.IGNORECASE)
     m_name_hi = re.search(r"(?:खरीदार\s+का\s+नाम|प्राप्तकर्ता\s+का\s+नाम|प्राप्तकर्ता|खरीदार)\s*(?:है|:|-)?\s*([\u0900-\u097FA-Za-z\s]+?)(?=(?:\.|।|पता|डिलीवरी\s+पता|है|$))", message, re.IGNORECASE)
     found_name = m_name_en.group(1).strip() if m_name_en else (m_name_hi.group(1).strip() if m_name_hi else None)
@@ -258,7 +279,7 @@ def _process_buyer_name_and_address(
             filled_fields["consignee"] = f"{b_name}, {cleaned_addr}" if b_name else cleaned_addr
         return
 
-    has_name_prefix = any(message.lower().strip().startswith(p) for p in name_prefixes)
+    has_name_prefix = any(re.search(r"\b" + re.escape(p) + r"\b", message.lower()) for p in name_prefixes)
     is_extracted = not _sentinel(extracted_consignee) and isinstance(extracted_consignee, str)
 
     if expected_field in ("buyer_name", "consignee") or has_name_prefix or is_extracted:

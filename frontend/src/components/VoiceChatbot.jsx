@@ -271,7 +271,7 @@ function VoiceChatbot() {
     setIsLoading(true);
 
     try {
-      if (sessionState?.document_ready && AFFIRM_RE.test(userMsg.trim())) {
+      if (sessionState?.document_ready && AFFIRM_RE.test(userMsg.trim()) && !/change|correct|update|badal/i.test(userMsg) && !/to\s+\w+$/i.test(userMsg) && userMsg.trim().split(/\s+/).length <= 4) {
         await handleSimulateDraftOrder();
         return;
       }
@@ -491,11 +491,11 @@ function VoiceChatbot() {
   };
 
   return (
-    <div className="voice-chatbot-container grid grid-cols-1 lg:grid-cols-12 gap-6 w-full text-left">
+    <div className="voice-chatbot-container grid grid-cols-1 lg:grid-cols-12 gap-6 w-full text-left items-start">
       {/* Column 1: Chat Interface */}
-      <div className="lg:col-span-7 xl:col-span-7 flex flex-col bg-white rounded-xl border border-[#E1E7DF] overflow-hidden min-h-[580px] shadow-sm">
+      <div className="lg:col-span-7 xl:col-span-7 flex flex-col bg-white rounded-xl border border-[#E1E7DF] overflow-hidden min-h-[420px] self-start shadow-sm">
         {/* Panel Header */}
-        <div className="p-4 border-b border-[#E1E7DF] bg-white flex items-center justify-between">
+        <div className="p-4 border-b border-[#E1E7DF] bg-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#E8F0E6] flex items-center justify-center text-[#2E7D32]">
               <Bot size={20} />
@@ -533,9 +533,9 @@ function VoiceChatbot() {
         </div>
 
         {/* Panel Body (Chat messages thread) */}
-        <div className="flex-1 overflow-y-auto p-4 bg-[#FAFCF8] space-y-4 min-h-[380px] max-h-[440px]">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 bg-[#FAFCF8] space-y-4 max-h-[420px]">
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 min-h-[300px]">
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 min-h-[200px] py-10">
               <div className="w-16 h-16 rounded-full bg-[#E8F0E6] flex items-center justify-center text-[#2E7D32] mb-3 shadow-xs">
                 <Sparkles size={30} />
               </div>
@@ -583,7 +583,7 @@ function VoiceChatbot() {
         </div>
 
         {/* Panel Footer (Voice and text input) */}
-        <div className="p-4 border-t border-[#E1E7DF] bg-white">
+        <div className="p-4 border-t border-[#E1E7DF] bg-white shrink-0 mt-auto">
           {voiceError && (
             <div className="voice-status-bar error">
               <span>{voiceError}</span>
@@ -668,7 +668,7 @@ function VoiceChatbot() {
       </div>
 
       {/* Column 2: Shipment Tracking & Details */}
-      <div className="lg:col-span-5 xl:col-span-5 flex flex-col bg-white rounded-xl border border-[#E1E7DF] p-5 space-y-4 shadow-sm">
+      <div className="lg:col-span-5 xl:col-span-5 flex flex-col bg-white rounded-xl border border-[#E1E7DF] p-5 space-y-4 shadow-sm self-start">
         <div className="flex items-center justify-between border-b border-[#E1E7DF] pb-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#E8F0E6] flex items-center justify-center text-[#2E7D32]">
