@@ -258,6 +258,8 @@ function VoiceChatbot() {
     }
   };
 
+  const AFFIRM_RE = /^(yes|y|haan?|hā|kar do|bana do|create|ok|theek hai)\b/i;
+
   const sendMessage = async (textToSend, overrideLang) => {
     const userMsg = (textToSend !== undefined ? textToSend : inputText).trim();
     if (!userMsg) return;
@@ -269,6 +271,10 @@ function VoiceChatbot() {
     setIsLoading(true);
 
     try {
+      if (sessionState?.document_ready && AFFIRM_RE.test(userMsg.trim())) {
+        await handleSimulateDraftOrder();
+        return;
+      }
       const data = await chat(token, userMsg, conversationId, currentLang);
       if (!conversationId) setConversationId(data.conversation_id);
       
@@ -414,11 +420,11 @@ function VoiceChatbot() {
         article_id: `SH-${Date.now().toString().slice(-6)}`,
         line_items: [
           {
-            category_slug: categorySlug,
+            category_slug: String(categorySlug).toLowerCase(),
             quantity: qty,
-            weight_g: netWeight,
+            weight_g: Math.round(netWeight / qty),
             hs_code: String(hsCode),
-            value_minor: totalMinor
+            value_minor: Math.round(totalMinor / qty)
           }
         ]
       });

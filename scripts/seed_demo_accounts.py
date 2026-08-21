@@ -56,7 +56,7 @@ USERS = [
             "pan": "ABCDE1234F",
             "gstin": "07ABCDE1234F1Z5",
             "bank_account": "50100123456789",
-            "ad_code": "1234567",
+            "ad_code": "12345670000000",
         },
     },
     {
@@ -219,31 +219,44 @@ def main():
     with conn.cursor() as cur:
         cur.execute("SELECT id FROM orders WHERE id=%s", (str(DEMO_ORDER_UUID),))
         o = cur.fetchone()
+        consignee = "Test Consignee, 123 Demo St, New York, NY 10001"
         if o:
             cur.execute("""
                 UPDATE orders SET seller_id=%s, buyer_id=%s, status='quote_accepted'::order_status,
                   destination_country='US', value_minor=100000, currency='INR',
+                  consignee=%s,
                   net_weight_g=280, gross_weight_g=300, article_id='ORD-DEMO-001',
                   pricing_breakdown=%s::jsonb, parcels=%s::jsonb,
                   exporter_name=%s, exporter_address=%s, state_code='DL',
-                  iec=%s, gstin=%s, bank_name=%s, ifsc=%s,
+                  iec=%s, gstin=%s, ad_code=%s, bank_account=%s, bank_name=%s, ifsc=%s,
+                  validation_state='ready'::validation_state,
                   updated_at=now()
                 WHERE id=%s
-            """, (seller_id, buyer_id, json.dumps(pricing_breakdown), json.dumps(parcels),
+            """, (seller_id, buyer_id, consignee, json.dumps(pricing_breakdown), json.dumps(parcels),
                   prof["firm_name"], f"{prof['address_line1']}, {prof['city']} {prof['pincode']}",
-                  prof["iec"], prof["gstin"], prof["bank_name"], prof["ifsc"], str(DEMO_ORDER_UUID)))
+                  prof["iec"], prof["gstin"], prof["ad_code"], prof["bank_account"], prof["bank_name"], prof["ifsc"], str(DEMO_ORDER_UUID)))
             print(f"  updated order ORD-DEMO-001 id={DEMO_ORDER_UUID}")
         else:
             cur.execute("""
                 INSERT INTO orders (id, seller_id, buyer_id, status, destination_country, value_minor, currency,
-                  net_weight_g, gross_weight_g, article_id, pricing_breakdown, parcels,
-                  exporter_name, exporter_address, state_code, iec, gstin, bank_name, ifsc, version)
-                VALUES (%s,%s,%s,'quote_accepted'::order_status,'US',100000,'INR',280,300,'ORD-DEMO-001',%s::jsonb,%s::jsonb,%s,%s,'DL',%s,%s,%s,%s,1)
-            """, (str(DEMO_ORDER_UUID), seller_id, buyer_id,
+                  consignee, net_weight_g, gross_weight_g, article_id, pricing_breakdown, parcels,
+                  exporter_name, exporter_address, state_code, iec, gstin, ad_code, bank_account, bank_name, ifsc, validation_state, version)
+                VALUES (%s,%s,%s,'quote_accepted'::order_status,'US',100000,'INR',%s,280,300,'ORD-DEMO-001',%s::jsonb,%s::jsonb,%s,%s,'DL',%s,%s,%s,%s,%s,%s,'ready'::validation_state,1)
+            """, (str(DEMO_ORDER_UUID), seller_id, buyer_id, consignee,
                   json.dumps(pricing_breakdown), json.dumps(parcels),
                   prof["firm_name"], f"{prof['address_line1']}, {prof['city']} {prof['pincode']}",
-                  prof["iec"], prof["gstin"], prof["bank_name"], prof["ifsc"]))
+                  prof["iec"], prof["gstin"], prof["ad_code"], prof["bank_account"], prof["bank_name"], prof["ifsc"]))
             print(f"  inserted order ORD-DEMO-001 id={DEMO_ORDER_UUID}")
+
+        cur.execute("SELECT id FROM line_items WHERE order_id=%s", (str(DEMO_ORDER_UUID),))
+        if not cur.fetchone():
+            cur.execute("""
+                INSERT INTO line_items (order_id, category_slug, quantity, weight_g, hs_code, value_minor)
+                VALUES (%s, 'jute-products', 1, 280, '530710', 100000)
+            """, (str(DEMO_ORDER_UUID),))
+            print(f"  inserted line_item for ORD-DEMO-001")
+        else:
+            cur.execute("UPDATE line_items SET category_slug='jute-products', quantity=1, weight_g=280, hs_code='530710', value_minor=100000 WHERE order_id=%s", (str(DEMO_ORDER_UUID),))
 
     conn.commit()
 

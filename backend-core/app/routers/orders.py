@@ -105,14 +105,18 @@ def _derive_state_code(profile_state: str | None) -> str:
     return _STATE_CODES.get(profile_state, "")
 
 
-def _decrypt_or(encrypted_value: dict | None, user_uuid: str) -> str:
-    """Decrypt an encrypted profile field; empty string on missing/DecryptionError."""
+def _or_none(s: str | None) -> str | None:
+    return s or None
+
+
+def _decrypt_or(encrypted_value: dict | None, user_uuid: str) -> str | None:
+    """Decrypt an encrypted profile field; None on missing/DecryptionError."""
     if encrypted_value is None:
-        return ""
+        return None
     try:
         return decrypt_field(encrypted_value, user_uuid, _master_key())
     except DecryptionError:
-        return ""
+        return None
 
 
 def _build_order_payload(profile: SellerProfile, user_id: str, body: OrderCreateRequest) -> dict[str, object]:
@@ -132,12 +136,12 @@ def _build_order_payload(profile: SellerProfile, user_id: str, body: OrderCreate
         "gross_weight_g": body.gross_weight_g,
         "article_id": body.article_id,
         "line_items": [item.model_dump() for item in body.line_items],
-        "iec": profile.iec or "",
-        "gstin": body.gstin or _decrypt_or(profile.gstin_encrypted, user_id),
-        "ad_code": _decrypt_or(profile.ad_code_encrypted, user_id),
-        "bank_account": _decrypt_or(profile.bank_account_encrypted, user_id),
-        "bank_name": profile.bank_name or "",
-        "ifsc": profile.ifsc or "",
+        "iec": _or_none(profile.iec),
+        "gstin": _or_none(body.gstin or _decrypt_or(profile.gstin_encrypted, user_id)),
+        "ad_code": _or_none(_decrypt_or(profile.ad_code_encrypted, user_id)),
+        "bank_account": _or_none(_decrypt_or(profile.bank_account_encrypted, user_id)),
+        "bank_name": _or_none(profile.bank_name),
+        "ifsc": _or_none(profile.ifsc),
         "exporter_name": profile.firm_name,
         "exporter_address": _build_exporter_address(profile),
         "state_code": body.state_code or _derive_state_code(profile.state),

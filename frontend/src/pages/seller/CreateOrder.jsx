@@ -8,9 +8,18 @@ import QRCodeGenerator from "../../components/QRCodeGenerator";
 import { fetchMarketplaceFeed } from "../../services/api";
 import apiService from "../../services/api";
 
+const CATEGORY_SLUGS = ["block-printed-textiles","embroidered-bags-pouches","embroidered-home-textiles","handloom-scarves-stoles","imitation-artisan-jewellery","jute-products","small-brass-metalware","small-woodware"];
 function slugifyCategory(s) {
-  if (!s) return "handicrafts";
-  return String(s).trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 64) || "handicrafts";
+  if (!s) return "jute-products";
+  const slug = String(s).trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").slice(0, 64) || "jute-products";
+  if (CATEGORY_SLUGS.includes(slug)) return slug;
+  if (slug.includes("textile")) return "block-printed-textiles";
+  if (slug === "textiles") return "jute-products";
+  if (slug === "handicrafts") return "small-woodware";
+  if (slug === "handicraft") return "small-woodware";
+  if (slug === "toys" || slug === "toy") return "small-woodware";
+  if (slug === "food") return "jute-products";
+  return "jute-products";
 }
 
 function parseWeightG(raw, fallback = 250) {
@@ -157,8 +166,8 @@ function CreateOrder() {
         if (merged.length < 3) {
           const fallback = [
             { id: "fb-1", title: "Jute Bags - Handmade", category: "Handicrafts", price: 1250, base_cost_minor: 125000, weight_g: 500, category_slug: "jute-products", hs_code: "6214" },
-            { id: "fb-2", title: "Banarasi Silk Saree", category: "Textiles", price: 5000, base_cost_minor: 500000, weight_g: 800, category_slug: "textiles", hs_code: "5007" },
-            { id: "fb-3", title: "Eco-friendly Wooden Toys", category: "Toys", price: 2667, base_cost_minor: 266700, weight_g: 350, category_slug: "toys", hs_code: "9503" },
+            { id: "fb-2", title: "Banarasi Silk Saree", category: "Textiles", price: 5000, base_cost_minor: 500000, weight_g: 800, category_slug: "jute-products", hs_code: "5007" },
+            { id: "fb-3", title: "Eco-friendly Wooden Toys", category: "Toys", price: 2667, base_cost_minor: 266700, weight_g: 350, category_slug: "jute-products", hs_code: "9503" },
           ].map(normalizeProduct);
           for (const f of fallback) {
             if (!merged.find((m) => m.title === f.title)) merged.push(f);
